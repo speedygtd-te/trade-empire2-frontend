@@ -48,6 +48,11 @@ verschärft, wenn es nötig wird.
 | Bildschirmfotos | `powershell -File tools\screenshots.ps1` → `build\screenshots\` |
 | Android-Debug-APK | `powershell -File tools\android-debug.ps1` (`-Live` für den echten Server) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
+| 3D-Modell aus Sprite (kostet fal-Guthaben) | `node scripts\3d\sprite-to-3d.cjs --model hunyuan-lowpoly --input assets\final\mine_0.png` |
+| 3D-Modelle spielfertig machen (Blender) | `powershell -File tools\postprocess-models.ps1` → `assets\3d-test\processed\` |
+| 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 [Ordner] [Ziel]` |
+
+Die 3D-Werkzeuge sind ein Versuch: Ob die Spielwelt in 3D gebaut wird, ist noch nicht beschlossen.
 
 Serveradresse: aus dem Editor-Binary das lokale Backend (`http://127.0.0.1:18080`), exportiert
 `https://trade-empire.net`; Preset „Android Local" nimmt `http://10.0.2.2:18080`. Überschreiben:
@@ -74,6 +79,9 @@ Serveradresse: aus dem Editor-Binary das lokale Backend (`http://127.0.0.1:18080
 - Das Backend erlaubt zehn Anmeldungen/Registrierungen pro Minute und Adresse.
 - PowerShell 5.1 schreibt mit `Set-Content -Encoding utf8` eine BOM; Godot-Konfigurationsdateien
   vertragen sie nicht.
+- 3D-Modelle: Godot 4.7 kann die JPEG-Texturen nicht lesen, die Blender 5.3 in eine GLB
+  schreibt — Texturen als WebP exportieren. Ein glTF-Material ohne `metallicFactor` gilt als
+  voll metallisch und wird fast schwarz dargestellt.
 - Emulator: Solange eine Hardware-Tastatur aktiv ist (Standard im AVD), öffnet Godot keine
   Bildschirmtastatur — das Verhalten bei offener Tastatur lässt sich dort nicht prüfen.
 - Emulator: Der Speicher des AVD `Pixel_7a` ist knapp. Scheitert `adb install` mit
