@@ -1,0 +1,52 @@
+keys,en
+APP_TITLE,Trade Empire
+COMMON_LOADING,Loading…
+COMMON_RETRY,Try again
+LOGIN_TAB_SIGN_IN,Sign in
+LOGIN_TAB_REGISTER,Create account
+LOGIN_EMAIL,E-mail
+LOGIN_PASSWORD,Password
+LOGIN_PASSWORD_HINT,At least 8 characters
+LOGIN_PLAYER_NAME,Player name
+LOGIN_PLAYER_NAME_HINT,"3–24 characters: letters, digits, spaces, _ and -"
+LOGIN_SUBMIT_SIGN_IN,Sign in
+LOGIN_SUBMIT_REGISTER,Create account
+LOGIN_BUSY,Please wait…
+LOGIN_REGISTER_NOTE,Creating an account also founds your first colony.
+LOGIN_SERVER,Server: {server}
+UNREACHABLE_TITLE,Cannot reach the server
+UNREACHABLE_BODY,Your session is kept. Check your connection and try again.
+UNREACHABLE_SIGN_OUT,Sign out on this device
+HOME_WELCOME,"Welcome, {name}"
+HOME_ACCOUNT,Account
+HOME_PLAYER_ID,Player ID
+HOME_EMAIL,E-mail
+HOME_HOME_BODY,Home colony
+HOME_NO_COLONY,No colony yet
+HOME_SESSION,Session
+HOME_SESSION_EXPIRES_IN,Expires in {duration}
+HOME_LIVE,Live connection
+HOME_STREAM_STATUS,Status
+HOME_STREAM_OPEN,Connected
+HOME_STREAM_CONNECTING,Connecting…
+HOME_STREAM_WAITING,Reconnecting…
+HOME_STREAM_STOPPED,Not connected
+HOME_GAME_TIME,Game time
+HOME_GAME_TIME_PAUSED,{time} (paused)
+HOME_EVENTS_RECEIVED,Events received
+HOME_SIGN_OUT,Sign out
+HOME_PLACEHOLDER_NOTE,The game world arrives with the next packages.
+ERROR_VALIDATION_FAILED,Please check your entries.
+ERROR_VALIDATION_EMAIL,That does not look like a valid e-mail address.
+ERROR_VALIDATION_PASSWORD,The password needs 8 to 128 characters.
+ERROR_VALIDATION_PLAYER_NAME,"The player name needs 3 to 24 characters, must start with a letter and may contain letters, digits, single spaces, _ and -."
+ERROR_INVALID_CREDENTIALS,E-mail or password is wrong.
+ERROR_EMAIL_TAKEN,An account with this e-mail already exists.
+ERROR_PLAYER_NAME_TAKEN,This player name is already taken.
+ERROR_RATE_LIMITED,Too many attempts. Please wait a moment and try again.
+ERROR_RATE_LIMITED_SECONDS,Too many attempts. Try again in {seconds} s.
+ERROR_UNAUTHENTICATED,Your session has ended. Please sign in again.
+ERROR_UNAVAILABLE,The server is restarting. Please try again shortly.
+ERROR_INTERNAL,The server ran into a problem. Please try again.
+ERROR_NO_CONNECTION,Cannot reach the server. Check your connection.
+ERROR_UNKNOWN,Something went wrong. Please try again.

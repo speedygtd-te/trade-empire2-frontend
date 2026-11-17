@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biome-Übersicht — alle Surface-Tiles im Iso-Mosaik</title>
+<style>
+  :root { --w: 256; --h: 128; } /* @half tile px */
+  body { margin: 0; background: #030712; color: #d6dae0; font-family: system-ui, sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 8px; color: #9fb0c3; }
+  p.note { margin: 0 0 20px; color: #8893a0; font-size: 13px; max-width: 760px; }
+  section { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid #1a2230; }
+  .caption { font-size: 12px; color: #8893a0; margin-bottom: 6px; }
+
+  button {
+    background: #1f6f4a; color: #eafff3; border: 1px solid #2fae73;
+    border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer;
+    margin-bottom: 16px;
+  }
+  button:hover { background: #2a8a5d; }
+
+  /* Status badges + section accents */
+  .legend {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    margin: 0 0 16px; font-size: 13px; color: #8893a0;
+  }
+  .legend .count { color: #d6dae0; font-weight: 600; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; letter-spacing: 0.04em;
+    vertical-align: middle; margin-left: 8px; text-transform: uppercase;
+  }
+  .badge-neu { background: #3ddc84; color: #04220f; }
+  .badge-old { background: #4a3b1e; color: #f0c674; border: 1px solid #6b5320; }
+  section.is-neu { border-left: 3px solid #2fae73; padding-left: 14px; }
+  section.is-old { border-left: 3px solid #6b5320; padding-left: 14px; }
+  h2 { display: flex; align-items: center; }
+
+  label.filter { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  label.filter input { width: 16px; height: 16px; cursor: pointer; }
+  body.only-old section.is-neu { display: none; }
+
+  /* Interlocking iso mosaic. Diamonds tile with horizontal pitch = W/2 and
+     vertical pitch = H/2, with a half-W horizontal shift on odd rows so the
+     rauten lückenlos ineinandergreifen. */
+  .mosaic { position: relative; }
+  .mosaic img { position: absolute; width: calc(var(--w) * 1px); height: calc(var(--h) * 1px); image-rendering: auto; }
+</style>
+</head>
+<body>
+<h1>Biome-Übersicht — alle Surface-Tiles</h1>
+<p class="note">
+  Diese Seite zeigt ALLE Biome-Surface-Tiles. Jedes Biom wird als kleines
+  Interlocking-Iso-Mosaik gerendert, das seine zufälligen Slot-Varianten
+  (<code>_0</code>..<code>_3</code> @half, 256×128) mischt — genau wie im Grid mit
+  horizontalem Pitch W/2, vertikalem Pitch H/2 und halbem W-Versatz in ungeraden
+  Reihen, damit die Rauten lückenlos ineinandergreifen. So lassen sich Tiling und
+  die Übergänge zwischen den Varianten innerhalb eines Bioms prüfen. Jedes Mosaik
+  hat einen eigenen deterministischen Seed (stabil beim Laden). „Reshuffle alle"
+  würfelt alle Biome neu durch.
+</p>
+<button id="reshuffle">Reshuffle alle</button>
+<div class="legend">
+  <span><span class="badge badge-neu">Neu</span> redesigntes Tile (düster/schmutzig)</span>
+  <span><span class="badge badge-old">Batch 1</span> Original-Erstcharge (noch nicht redesignt) — seit 2026-09-06 keine mehr</span>
+  <span class="count" id="legendCount"></span>
+  <label class="filter"><input type="checkbox" id="onlyOld"> nur Batch 1 zeigen</label>
+</div>
+<p class="note" style="color:#7ee787;max-width:900px">
+  <b>Serie abgeschlossen 2026-09-06: 55 von 55 Biomen überarbeitet, keine Batch-1-Kachel mehr.</b>
+  Letzte Familie war UNDERGROUND (rock_layer, deep_stone, mineral_vein, ice_cavern) — die drei
+  Steinschichten aus einer gemeinsamen nassen Erd-Basis (abgeleitet aus <code>permafrost_0</code>),
+  ice_cavern aus <code>crystal_field</code>. Offen bleibt nur noch der Prop-Layer
+  (16 von 55 Biomen haben einen).
+</p>
+<div id="biomes"></div>
+
+<script>
+  const W = 256, H = 128;
+  const COLS = 6, ROWS = 4; // compact patch per biome (24 tiles)
+
+  // All biomes with their existing @half variant filenames (verified on disk).
+  const BIOMES = [
+    { name: 'acid_lake', variants: ['acid_lake_0@half.png','acid_lake_1@half.png','acid_lake_2@half.png','acid_lake_3@half.png'] },
+    { name: 'ash_field', variants: ['ash_field_0@half.png','ash_field_1@half.png','ash_field_2@half.png','ash_field_3@half.png'] },
+    { name: 'basalt_plain', variants: ['basalt_plain_0@half.png','basalt_plain_1@half.png','basalt_plain_2@half.png','basalt_plain_3@half.png'] },
+    { name: 'beach', variants: ['beach_0@half.png','beach_1@half.png','beach_2@half.png','beach_3@half.png'] },
+    { name: 'boulder_field', variants: ['boulder_field_0@half.png','boulder_field_1@half.png','boulder_field_2@half.png','boulder_field_3@half.png'] },
+    { name: 'caldera', variants: ['caldera_0@half.png','caldera_1@half.png','caldera_2@half.png','caldera_3@half.png'] },
+    { name: 'canyon', variants: ['canyon_0@half.png','canyon_1@half.png','canyon_2@half.png','canyon_3@half.png'] },
+    { name: 'carbon_crust', variants: ['carbon_crust_0@half.png','carbon_crust_1@half.png','carbon_crust_2@half.png','carbon_crust_3@half.png'] },
+    { name: 'cave_floor', variants: ['cave_floor_0@half.png','cave_floor_1@half.png','cave_floor_2@half.png','cave_floor_3@half.png'] },
+    { name: 'chemical_vent', variants: ['chemical_vent_0@half.png','chemical_vent_1@half.png','chemical_vent_2@half.png','chemical_vent_3@half.png'] },
+    { name: 'corroded_plain', variants: ['corroded_plain_0@half.png','corroded_plain_1@half.png','corroded_plain_2@half.png','corroded_plain_3@half.png'] },
+    { name: 'crater', variants: ['crater_0@half.png','crater_1@half.png','crater_2@half.png','crater_3@half.png'] },
+    { name: 'crevasse', variants: ['crevasse_0@half.png','crevasse_1@half.png','crevasse_2@half.png','crevasse_3@half.png'] },
+    { name: 'crystal_field', variants: ['crystal_field_0@half.png','crystal_field_1@half.png','crystal_field_2@half.png','crystal_field_3@half.png'] },
+    { name: 'deep_ocean', variants: ['deep_ocean_0@half.png','deep_ocean_1@half.png','deep_ocean_2@half.png','deep_ocean_3@half.png'] },
+    { name: 'deep_stone', variants: ['deep_stone_0@half.png','deep_stone_1@half.png','deep_stone_2@half.png','deep_stone_3@half.png'] },
+    { name: 'desert_patch', variants: ['desert_patch_0@half.png','desert_patch_1@half.png','desert_patch_2@half.png','desert_patch_3@half.png'] },
+    { name: 'dust_basin', variants: ['dust_basin_0@half.png','dust_basin_1@half.png','dust_basin_2@half.png','dust_basin_3@half.png'] },
+    { name: 'dust_plain', variants: ['dust_plain_0@half.png','dust_plain_1@half.png','dust_plain_2@half.png','dust_plain_3@half.png'] },
+    { name: 'forest', variants: ['forest_0@half.png','forest_1@half.png','forest_2@half.png','forest_3@half.png'] },
+    { name: 'fractured_zone', variants: ['fractured_zone_0@half.png','fractured_zone_1@half.png','fractured_zone_2@half.png','fractured_zone_3@half.png'] },
+    { name: 'frozen_lake', variants: ['frozen_lake_0@half.png','frozen_lake_1@half.png','frozen_lake_2@half.png','frozen_lake_3@half.png'] },
+    { name: 'fumarole', variants: ['fumarole_0@half.png','fumarole_1@half.png','fumarole_2@half.png','fumarole_3@half.png'] },
+    { name: 'glacier', variants: ['glacier_0@half.png','glacier_1@half.png','glacier_2@half.png','glacier_3@half.png'] },
+    { name: 'ice_cavern', variants: ['ice_cavern_0@half.png','ice_cavern_1@half.png','ice_cavern_2@half.png','ice_cavern_3@half.png'] },
+    { name: 'ice_shelf', variants: ['ice_shelf_0@half.png','ice_shelf_1@half.png','ice_shelf_2@half.png','ice_shelf_3@half.png'] },
+    { name: 'impact_crater', variants: ['impact_crater_0@half.png','impact_crater_1@half.png','impact_crater_2@half.png','impact_crater_3@half.png'] },
+    { name: 'island', variants: ['island_0@half.png','island_1@half.png','island_2@half.png','island_3@half.png'] },
+    { name: 'kelp_forest', variants: ['kelp_forest_0@half.png','kelp_forest_1@half.png','kelp_forest_2@half.png','kelp_forest_3@half.png'] },
+    { name: 'lava_flow', variants: ['lava_flow_0@half.png','lava_flow_1@half.png','lava_flow_2@half.png','lava_flow_3@half.png'] },
+    { name: 'magma_pocket', variants: ['magma_pocket_0@half.png','magma_pocket_1@half.png','magma_pocket_2@half.png','magma_pocket_3@half.png'] },
+    { name: 'mesa', variants: ['mesa_0@half.png','mesa_1@half.png','mesa_2@half.png','mesa_3@half.png'] },
+    { name: 'metallic_surface', variants: ['metallic_surface_0@half.png','metallic_surface_1@half.png','metallic_surface_2@half.png','metallic_surface_3@half.png'] },
+    { name: 'mineral_vein', variants: ['mineral_vein_0@half.png','mineral_vein_1@half.png','mineral_vein_2@half.png','mineral_vein_3@half.png'] },
+    { name: 'mountain', variants: ['mountain_0@half.png','mountain_1@half.png','mountain_2@half.png','mountain_3@half.png'] },
+    { name: 'oasis', variants: ['oasis_0@half.png','oasis_1@half.png','oasis_2@half.png','oasis_3@half.png'] },
+    { name: 'obsidian_ridge', variants: ['obsidian_ridge_0@half.png','obsidian_ridge_1@half.png','obsidian_ridge_2@half.png','obsidian_ridge_3@half.png'] },
+    { name: 'ocean', variants: ['ocean_0@half.png','ocean_1@half.png','ocean_2@half.png','ocean_3@half.png'] },
+    { name: 'permafrost', variants: ['permafrost_0@half.png','permafrost_1@half.png','permafrost_2@half.png','permafrost_3@half.png'] },
+    { name: 'plains', variants: ['plains_0@half.png','plains_1@half.png','plains_2@half.png','plains_3@half.png'] },
+    { name: 'reef', variants: ['reef_0@half.png','reef_1@half.png','reef_2@half.png','reef_3@half.png'] },
+    { name: 'regolith', variants: ['regolith_0@half.png','regolith_1@half.png','regolith_2@half.png','regolith_3@half.png'] },
+    { name: 'rock_layer', variants: ['rock_layer_0@half.png','rock_layer_1@half.png','rock_layer_2@half.png','rock_layer_3@half.png'] },
+    { name: 'rocky_desert', variants: ['rocky_desert_0@half.png','rocky_desert_1@half.png','rocky_desert_2@half.png','rocky_desert_3@half.png'] },
+    { name: 'rocky_outcrop', variants: ['rocky_outcrop_0@half.png','rocky_outcrop_1@half.png','rocky_outcrop_2@half.png','rocky_outcrop_3@half.png'] },
+    { name: 'salt_flat', variants: ['salt_flat_0@half.png','salt_flat_1@half.png','salt_flat_2@half.png','salt_flat_3@half.png'] },
+    { name: 'sand_dunes', variants: ['sand_dunes_0@half.png','sand_dunes_1@half.png','sand_dunes_2@half.png','sand_dunes_3@half.png'] },
+    { name: 'shallow_water', variants: ['shallow_water_0@half.png','shallow_water_1@half.png','shallow_water_2@half.png','shallow_water_3@half.png'] },
+    { name: 'silicate_plain', variants: ['silicate_plain_0@half.png','silicate_plain_1@half.png','silicate_plain_2@half.png','silicate_plain_3@half.png'] },
+    { name: 'snow_peak', variants: ['snow_peak_0@half.png','snow_peak_1@half.png','snow_peak_2@half.png','snow_peak_3@half.png'] },
+    { name: 'swamp', variants: ['swamp_0@half.png','swamp_1@half.png','swamp_2@half.png','swamp_3@half.png'] },
+    { name: 'toxic_marsh', variants: ['toxic_marsh_0@half.png','toxic_marsh_1@half.png','toxic_marsh_2@half.png','toxic_marsh_3@half.png'] },
+    { name: 'tundra', variants: ['tundra_0@half.png','tundra_1@half.png','tundra_2@half.png','tundra_3@half.png'] },
+    { name: 'void_edge', variants: ['void_edge_0@half.png','void_edge_1@half.png','void_edge_2@half.png','void_edge_3@half.png'] },
+    { name: 'volcanic_vent', variants: ['volcanic_vent_0@half.png','volcanic_vent_1@half.png','volcanic_vent_2@half.png','volcanic_vent_3@half.png'] },
+  ];
+
+  // Biome die bereits redesignt wurden (düster/schmutzig). Alles andere = Batch 1.
+  const REDESIGNED = new Set([
+    'plains', 'acid_lake', 'ash_field', 'basalt_plain', 'beach', 'boulder_field',
+    'caldera', 'canyon', 'mesa', 'sand_dunes', 'rocky_desert', 'oasis', 'salt_flat',
+    'desert_patch', 'corroded_plain', 'carbon_crust', 'cave_floor', 'obsidian_ridge',
+    'lava_flow', 'magma_pocket', 'fumarole', 'volcanic_vent', 'chemical_vent',
+    'toxic_marsh', 'crystal_field', 'swamp', 'mountain', 'tundra', 'forest',
+    'ocean', 'snow_peak',
+    // ICE-Runde 2026-08-23
+    'ice_shelf',
+    // OCEAN komplett 2026-08-25 — volcanic_vent steht bereits oben, wurde aber
+    // am 25.08. ein zweites Mal gebaut: das Juni-Tile war ein Lava-Look aus der
+    // Vulkan-Familie und widersprach dem GDD ("Planet: OCEAN", "dunkel").
+    'deep_ocean', 'shallow_water', 'reef', 'island', 'kelp_forest',
+    // ICE-Runde 2026-09-03/04 — Umstellung auf echte Eismonde (Ganymed,
+    // Kallisto, Europa, Pluto): staubiges neutrales Grau statt blauem
+    // Gletschereis. Rudi: „die biome tiles, die ja eher nach stein als nach
+    // blauem eis aussehen". Ableitungen bewusst danach, was die Dinge SIND:
+    //   glacier    ← regolith (auf einem Eismond ist der Boden Regolith), L 44, B/R 1.10
+    //   crevasse   ← glacier, feines Haarrissnetz, L 44, B/R 1.10
+    //   permafrost ← tundra, Voronoi-Wabennetz (Strukturboden),
+    //                Pluto-Tholine, L 27, B/R 0.70
+    // tundra wurde in derselben Runde entpflanzt und neu aufgebaut
+    // (steht bereits oben in der Juni-Liste).
+    //   frozen_lake ← glacier, über eine randlose texture-bombte Platte, in die
+    //                 flux ein feines Kristallkorn gezeichnet hat (Hero R3-GRAIN).
+    //                 L 51, B/R 1.52, und als einziges ICE-Tile Lichtverlauf
+    //                 tiltY 0.0 statt 3.0: auf einer glatten Kachel ist die
+    //                 Rampe der größte Teil der Naht und alterniert mit der
+    //                 Spiegelung von Slot 2/3 — das liest sich als Steppdecke.
+    //                 Damit ist die ICE-Familie geschlossen.
+    'glacier', 'crevasse', 'permafrost', 'frozen_lake',
+    // BARREN-Runde 2026-09-05 — die Familie ist damit geschlossen.
+    //   regolith    Slot 2 ersetzt (zu präsenter Krater), Slot 3 entgelbt
+    //               B/R 0.942 → 1.010. Slots 0/1 unberührt.
+    //   dust_plain  Slots 2/3 neu, Slot 0 entgelbt. Raster 12.15 → 2.61,
+    //               Naht 2.81 → 1.14.
+    //   rocky_outcrop  Ganzer Satz auf p70 86 neu gegradet (Rudis Pegelwahl):
+    //               Flatten + Chroma-Flatten + Verlauf 0, B/R 1.215 / G/R 1.115
+    //               (Median der drei Keeper). Slot 0 zweimal verworfen — als
+    //               ausgeliefert („braun/blau grenze quer durch und sehr flach")
+    //               und als flux-Variante („zu flach"). Er ist jetzt ein
+    //               latticeRoll(128,64) des Slot-1-Heros und erbt dessen Relief:
+    //               meso 27.96 im Band 26.3–31.3, ohne Nachschärfen.
+    //               Raster 33.89 → 15.17, Naht 1.80 → 1.49.
+    //   boulder_field  Nur Slot 2, und nur Farbe + feiner Kontrast: der Slot lag
+    //               3.6 sd (B/R) bzw. 11.8 sd (G/R) unter dem Mittel der anderen
+    //               drei — Rudis Rotstich. G ×1.058, B ×1.041, Luma pro Pixel
+    //               gehalten, dazu Feinband ×0.962. Relief unangetastet
+    //               (meso 39.65 → 39.52). Slots 0/1/3 bitweise unverändert.
+    //               (stand schon oben in der Juni-Liste)
+    //   crater      Kompletter Neuaufbau aus regolith, weil crater die
+    //               schlechteste Kachelung im Bestand hatte: Raster 46.70,
+    //               Naht 9.30 → jetzt 5.21 / 1.23. flux liefert nur das
+    //               Tieffrequenzfeld der flachen Mulden (Radius 8, Tiefe 1.4),
+    //               das Korn kommt von regolith; der Träger ist um (256,0)
+    //               gerollt, sonst wäre jede Kachel ihr regolith-Slot mit
+    //               Schatten (max|NCC| 0.897 → 0.090). Pegel p70 60 auf Rudis
+    //               Wahl: „im spiel würde man das kaum von regolith
+    //               unterscheiden" — d′-Pegelbein 6.67 → 10.52.
+    'regolith', 'dust_plain', 'rocky_outcrop', 'crater',
+    // ASTEROIDS-Runde 2026-09-05 — die Familie ist damit geschlossen. Acht Biome
+    // über drei Asteroidentypen, und KEIN einziger flux-Aufruf: sechs Sätze
+    // entstanden aus Compositing, Gitterversätzen und einer Materialschicht.
+    //   impact_crater   Komplett aus crater abgeleitet — crater steht auf BARREN
+    //               und MOON_ROCKY, impact_crater auf ASTEROID_M und _S, kein
+    //               Körper trägt beide. latticeRoll(128,64) des crater-Trägers,
+    //               dazu ein ZWEITES, feineres Muldenfeld (R8 / Tiefe 0.7 gegen
+    //               craters R8 / 1.4) als die von PLAN 5.6 verlangte
+    //               Motivvariation: mehr, kleinere, flachere Einschläge.
+    //               p70 62, B/R 1.200. Raster 16.06 → 5.20, Naht 4.48 → 1.22,
+    //               Blowout 0.00 %. MESO 14.2–20.9, also MEHR Relief als crater
+    //               selbst (12.42). Slots 0 und 3 waren vorher je EIN Kraterbecken.
+    //   metallic_surface  Materialwechsel, kein Farbgrade. Rudi: „rötlich
+    //               korrodiert und bläulich, aber eher stumpf, nicht so glänzend
+    //               wie jetzt." Zwei Farbtöne gleichzeitig kann ein globaler
+    //               B/R-Zielwert nicht ausdrücken — er mittelt sie zu Braungrau.
+    //               Also Farbe als FELD: Stahl B/R 1.18 / G/R 1.08, Rost B/R 0.70
+    //               / G/R 0.80, dazwischen eine Maske aus Torus-Rauschen (Summe
+    //               von Kosinussen auf dem DUALEN GITTER des Iso-Torus, also
+    //               nahtlos per Konstruktion) plus 35 % Krümmungsterm, damit der
+    //               Rost in den eigenen Klüften sitzt. corrode() hält die Rec709-
+    //               Luma pro Pixel exakt, deshalb bewegen sich p70, sd, MESO und
+    //               micro über die ganze Korrosionsleiter nicht. Matt über eine
+    //               Knie-Kompression bei 1.4×p70: Spitzenanteil über 1.6×p70 von
+    //               11.8 % auf 2.8 %, Blowout 4.06 % → 0.00 %, und MESO STIEG
+    //               dabei von 12.42 auf 12.98. Slot 0 behielt nach dem Flatten
+    //               einen dunklen Fleck unten links (Luma-Merkmal, das die
+    //               Korrosion nicht verdecken kann) → ersetzt durch
+    //               latticeRoll(256,64) von Slot 3. Raster 40.47 → 8.18 (coh
+    //               36.24 → 4.60), Naht 4.29 → 1.60.
+    //   dust_basin  Vier Gitterversätze des EIGENEN Slot 1 — der einzige
+    //               brauchbare Original-Slot, eine glatte Ebene; die anderen drei
+    //               waren Kraterbecken. Die naheliegende Ableitung aus regolith
+    //               funktionierte auch (Raster 7.89), gab aber regoliths Relief
+    //               zurück (meso 9.4) und damit gerade nicht das „glatt", das
+    //               PLAN 5.6 verlangt. p70 137, B/R 1.05. Raster 32.02 → 3.04,
+    //               Naht 3.94 → 1.25, meso 4.3–5.4.
+    //   fractured_zone  Die crevasse-Maschinerie (prozedurales Rissnetz) war
+    //               NICHT nötig: die Kacheln SIND bereits ein Rissnetz. Es fehlte
+    //               die Vereinheitlichung — B/R lief von 1.00 bis 1.66, der Pegel
+    //               von 46 bis 70. Compositing auf p70 60 / B/R 1.150, Slot 0 neu
+    //               (Rudi: „0 ist zu unterschiedlich zu den anderen 3") als
+    //               zweites Fenster des Slot-1-Heros. Alle vier gerollt, weil der
+    //               Satz sonst silicate_plain doppelt zeigt: Slot n war dieselbe
+    //               Aufnahme, max|NCC| 0.773 → 0.041. Raster 20.33 → 5.57,
+    //               Naht 2.85 → 1.11.
+    //   void_edge   Vorher waren drei von vier Slots je EIN schwarzes Loch mit
+    //               hellem Wulstrand — im 2×2-Repeat ein Feld schwarzer Punkte
+    //               (Raster 20.48, Naht 4.94, uCV bis 0.792). Rudi: „cave_floor
+    //               ist neu, 0 ist davon der intensivste mit den meisten steinen
+    //               ... man kann ja 4 ableitungen davon erstellen nicht 3 wie
+    //               sonst, danach noch etwas abdunkeln, ist schließlich void."
+    //               Vier Gitterversätze von cave_floor_0, alle sechs
+    //               Paardifferenzen gegen das Torusgitter geprüft. Zwei Pegel
+    //               vorgelegt, p70 40 gewählt. Das Schwarz steht jetzt in den
+    //               FUGEN, nicht als Fleck in der Mitte. MESO 29.5–32.3 (der
+    //               höchste Wert der Familie), vacMESO 24.5–26.5 — es säuft unter
+    //               der Vakuum-Abdunklung nicht ab. Raster → 7.14, Naht → 1.59.
+    //   silicate_plain  Nur die Lichtrampe raus, sonst nichts. Rudi: „sieht gut
+    //               aus, es kachelt etwas, weil es so hell ist, vlt. könnte man
+    //               das etwas flatten." Rampe 58.6–86.9 → 0.0; Pegel (208–215),
+    //               Farbton, MESO, micro4, uCV und grain je Slot unverändert.
+    //               Raster 15.14 → 4.23, coh 13.54 → 1.13, Naht 3.56 → 1.58.
+    //               Die Falle bei dieser Kachel: 47–70 % Blowout, ein Flatten
+    //               multipliziert und kann auf fast geklemmten Pixeln nichts
+    //               zurückholen. Mit der GEKLEMMTEN Variante (Gain 0.55–1.45)
+    //               stiegen die echten Anschlagspixel nur von 82 auf 105 von
+    //               262 144. Der Pegel wurde bewusst NICHT gesenkt.
+    // boulder_field und carbon_crust waren schon vorher fertig und stehen oben.
+    'metallic_surface', 'impact_crater', 'dust_basin', 'fractured_zone',
+    'void_edge', 'silicate_plain',
+    // UNDERGROUND-Runde 2026-09-06 — die letzte offene Familie. Damit sind
+    // 55 von 55 Biomen überarbeitet und die Serie ist abgeschlossen.
+    //
+    //   DIE GEMEINSAME ERD-BASIS — im ursprünglichen Plan gab es sie nicht.
+    //               Rudi: „wir machen erstmal eine basis aus dunkler feuchter
+    //               brauner erde. daraus leiten wir dann rock layer, deep stone
+    //               und mineral vein ab". Quelle ist permafrost_0, und zwar nach
+    //               dem Prinzip „ableiten nach dem, was die Dinge SIND":
+    //               Permafrost IST gefrorener Boden, das Eis abgezogen bleibt
+    //               genau der Grund. Es ist außerdem die einzige fertige Kachel
+    //               im Korpus, die motivfreier gleichmäßiger Boden ist
+    //               (Raster 2.89, Naht 1.13, Blowout 0.00 %).
+    //                 Die erste Nass-Runde wirkte zu trocken, weil sie die
+    //               nassen Stellen nur VERSCHOBEN und nicht GESPREIZT hat.
+    //               Nasser Boden wird dunkler, WEIL Wasser die Poren füllt —
+    //               und bekommt gleichzeitig eine spiegelnde Komponente
+    //               obendrauf. Also drei Operatoren, alle nur innerhalb der
+    //               Feuchtemaske: Porenfüllung (lokaler Pegel r16 sinkt),
+    //               asymmetrische Spreizung des Meso-Bandes nach unten, und
+    //               Spiegellichter aus der eigenen Mikro-Geometrie (Blinn-Phong
+    //               über toroidale ±2-px-Differenzen, Licht von oben-links),
+    //               additiv auf alle drei Kanäle — eine Spiegelung trägt die
+    //               Farbe des LICHTS, nicht die des Materials. Gewählt: w3_nass,
+    //               p70 44 / B/R 0.660, Raster 1.68 / Naht 1.13.
+    //
+    //   DAS STEINFELD — prozedural auf dem DUALEN GITTER des Iso-Torus
+    //               (lib-corrode.torusNoise), also nahtlos per Konstruktion,
+    //               derselbe Weg wie bei metallic_surface. Als MAXIMUM über vier
+    //               Größenklassen, nicht als Schwelle auf einem breiten Band:
+    //               ein breites Band bei hoher Deckung ergibt ein Labyrinth, ein
+    //               Maximum lässt zwischen zwei Steinen eine Kerbe stehen, und
+    //               genau die macht ein Kopfsteinpflaster als EINZELNE Steine
+    //               lesbar. Und ein Stein ist nicht nur eine Beule: der
+    //               Lambert-Term allein lässt die OBERSEITE eines Steins genau so
+    //               aussehen wie den Grund daneben (Normale senkrecht, Gewinn 1),
+    //               sichtbar sind nur Ränder und die lesen als Löcher. Dazu
+    //               kamen Albedo (Steinfläche auf eigenem Pegel, mittelwertfrei)
+    //               und eine Dämpfung von Meso- und Kornband INNERHALB der
+    //               Maske — Stein ist glatt, Erde krümelig.
+    //               Jeder Slot bekam ein EIGENES Steinfeld (eigener Seed) auf
+    //               einer eigens gerollten Basis: vier Rollungen eines Heros
+    //               brachten bei deep_stones großem λ max|NCC| 0.110 unter den
+    //               eigenen Slots, zu knapp an der Schwelle 0.12.
+    //               Kein Flop auf Slot 2/3 — die Slots sind eigenständig, es
+    //               gibt nichts zu trennen, und ein Flop würde das Licht von
+    //               oben-links nach oben-rechts kippen.
+    //
+    //   rock_layer  λ 30–70 px, Deckung 18 %, Amplitude schwach, Pegel = Basis
+    //               (p70 44), keine Farbe — Erdklumpen und Kiesel, viel Grund
+    //               sichtbar. Vorher waren Slot 0/3 je EIN großer konzentrischer
+    //               Ring: Raster 23.07 → 2.17, Naht 2.53 → 1.04, Blowout 0.00 %.
+    //               WO ZAHL UND BILD AUSEINANDERLAUFEN: meso geht von 12.14
+    //               (Basis) nur auf 13.2, weil sichtbare Steine bei λ 40–90 px
+    //               am oberen Bandrand liegen — micro8 geht dabei von 5.63 auf
+    //               7.4, also +32 %, und DAS ist die Bewegung, die man sieht.
+    //   deep_stone  λ 55–130 px, Deckung 42 %, Amplitude stark, Pegel −9
+    //               (p70 35), kühler und entsättigt (B/R 0.66 → 0.78). Auf der
+    //               Basis vorher bandScale(kMeso 0.60), damit das Schollennetz
+    //               zurücktritt und die Steine das Relief tragen — meso ist mit
+    //               17.1–17.9 trotzdem das höchste der drei.
+    //               Raster 15.20 → 2.44, Naht 2.38 → 1.07.
+    //   mineral_vein  λ 40–95 px, Deckung 22 %, Amplitude mittel, Pegel −4
+    //               (p70 40), ZWEITER Farbton über corrode(): Grund B/R 0.66 /
+    //               G/R 0.83, Brocken B/R 1.10 / G/R 1.00, dazu ein metallischer
+    //               Glanz aus dem Höhenfeld der Brocken. Die Farbe kommt ZULETZT,
+    //               nach dem Pegel-Solve — corrode hält die Rec709-Luma pro Pixel
+    //               exakt, ein globales B/R-Ziel würde die zwei Materialien sonst
+    //               zu Braungrau mitteln. Vorher leuchtende elektrisch-blaue
+    //               Adern; Raster 22.52 → 2.36, Naht 1.19 → 1.02.
+    //               Das Zielband cbSd 0.8–1.7 aus dem Plan war aus dem ALTEN
+    //               Neon-Zustand abgeleitet und mit einem glaubwürdigen Farbpaar
+    //               arithmetisch unerreichbar (eine Leiter belegte 0.14 → 0.25 →
+    //               0.43, und bei der obersten Sprosse kletterte cbPP auf 0.23
+    //               mit). Ausgeliefert bei 0.135–0.144; Referenz für ein
+    //               glaubwürdiges zweifarbiges Material ist metallic_surface
+    //               mit 0.123. Rudi hat die gebaute Stärke gewählt.
+    //   ice_cavern  Komplett ersetzt: das alte war der void_edge-Fehler in groß,
+    //               EIN Loch pro Kachel, Raster 35.20, Blowout bis 9.16 %.
+    //               Quelle ist crystal_field (TOXIC) und NICHT die ICE-Familie —
+    //               Eis im Berg ist dasselbe Motiv wie ein Kristallfeld in
+    //               anderem Material, und Material kommt aus dem Grade.
+    //               crystal_field hat allerdings nur ZWEI eigenständige
+    //               Anordnungen ({0,2,3} sind ein Drilling, {1} der
+    //               Einzelgänger), also kommen Slot 0/1 per Gitterversatz von
+    //               dort und Slot 2/3 aus zwei flux-Fenstern (randlose gebombte
+    //               768×512-Platte, Tiefpassanteil 0.384; von 27 gemessenen
+    //               Fenstern hielten 19 die Schranke meso ≥ 10 — verworfen,
+    //               nicht nachgeschärft).
+    //               Die Umfärbung braucht eine AUS DEM BILD abgeleitete Maske
+    //               (Kristall gegen Matrix über Sättigung/Luma) mit zwei
+    //               Zielverhältnissen: eine globale Umfärbung mit konstanter
+    //               Maske ist eine Farbersetzung und ebnet den Kontrast ein.
+    //               Abnahmezahl ist hier NICHT cbSd — die Kristalle sind klein
+    //               gegen die 16-px-Blöcke —, sondern der Luma-Abstand
+    //               Kristall↔Matrix: Quelle 1.00, reine Umfärbung 0.91, mit dem
+    //               gewählten Eis-Lift 2.11. Gewählt: p70 56 / Eis-Lift /
+    //               b1_blau. Raster 35.20 → 5.07, Naht 2.60 → 1.47,
+    //               Blowout 6.99 % → 0.00 %.
+    'rock_layer', 'deep_stone', 'mineral_vein', 'ice_cavern',
+  ]);
+
+  // Deterministic PRNG (mulberry32) so a given seed always yields the same mix.
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Generic interlocking-iso mosaic builder. `variants` are paths relative to
+  // this file (biome subfolder prefixed by the caller).
+  function makeMosaic(el, variants) {
+    return function (seed) {
+      el.innerHTML = '';
+      const rand = mulberry32(seed);
+      let maxRight = 0, maxBottom = 0;
+      const placements = [];
+      for (let r = 0; r < ROWS; r++) {
+        const odd = r % 2 === 1;
+        for (let col = 0; col < COLS; col++) {
+          const x = col * W + (odd ? W / 2 : 0);
+          const y = r * (H / 2);
+          placements.push([x, y]);
+          if (x + W > maxRight) maxRight = x + W;
+          if (y + H > maxBottom) maxBottom = y + H;
+        }
+      }
+      el.style.width = maxRight + 'px';
+      el.style.height = maxBottom + 'px';
+      for (const [x, y] of placements) {
+        const img = document.createElement('img');
+        img.src = variants[Math.floor(rand() * variants.length)];
+        img.style.left = x + 'px';
+        img.style.top = y + 'px';
+        el.appendChild(img);
+      }
+    };
+  }
+
+  // Build a section per biome and collect the rebuild closures.
+  const container = document.getElementById('biomes');
+  const builders = [];
+  let neuCount = 0;
+  BIOMES.forEach((biome, i) => {
+    const isNeu = REDESIGNED.has(biome.name);
+    if (isNeu) neuCount++;
+
+    const section = document.createElement('section');
+    section.className = isNeu ? 'is-neu' : 'is-old';
+
+    const h2 = document.createElement('h2');
+    h2.textContent = biome.name;
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (isNeu ? 'badge-neu' : 'badge-old');
+    badge.textContent = isNeu ? 'Neu' : 'Batch 1';
+    h2.appendChild(badge);
+    section.appendChild(h2);
+
+    const cap = document.createElement('div');
+    cap.className = 'caption';
+    cap.textContent = biome.variants.length + ' Varianten · '
+      + (COLS * ROWS) + ' Tiles (' + COLS + '×' + ROWS + ')';
+    section.appendChild(cap);
+
+    const mosaic = document.createElement('div');
+    mosaic.className = 'mosaic';
+    section.appendChild(mosaic);
+
+    container.appendChild(section);
+
+    // Variant paths are relative: <biome>/<file>
+    const paths = biome.variants.map(f => biome.name + '/' + f);
+    const build = makeMosaic(mosaic, paths);
+    // Deterministic, distinct per-biome seed; stable on load.
+    build(0x1000 + i * 2654435761 >>> 0);
+    builders.push(build);
+  });
+
+  document.getElementById('legendCount').textContent =
+    neuCount + '/' + BIOMES.length + ' neu · ' + (BIOMES.length - neuCount) + ' Batch 1';
+
+  document.getElementById('onlyOld').addEventListener('change', (e) => {
+    document.body.classList.toggle('only-old', e.target.checked);
+  });
+
+  document.getElementById('reshuffle').addEventListener('click', () => {
+    builders.forEach(build => build((Math.random() * 0xffffffff) >>> 0));
+  });
+</script>
+</body>
+</html>

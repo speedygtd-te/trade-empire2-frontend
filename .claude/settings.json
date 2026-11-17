@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(git branch)",
+      "Bash(git branch -a*)",
+      "Bash(git branch --show-current*)",
+      "Bash(git fetch*)",
+      "Bash(git ls-files*)",
+      "Bash(git rev-parse*)",
+      "Bash(git rev-list*)",
+
+      "Bash(C:/Users/SpeedyGTD/AppData/Local/Android/Sdk/platform-tools/adb.exe *)",
+      "Bash(\"C:/Users/SpeedyGTD/AppData/Local/Android/Sdk/platform-tools/adb.exe\" *)",
+      "Bash(C:\\Users\\SpeedyGTD\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe *)",
+      "Bash(\"C:\\Users\\SpeedyGTD\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe\" *)",
+
+      "Bash(curl -s -X GET *)",
+      "Bash(curl -s -o *)",
+      "Bash(curl -s -w *)",
+      "Bash(curl -s -H *)",
+      "Bash(curl -s http*)",
+      "Bash(curl -s \"http*)",
+
+      "Bash(tasklist*)"
+    ]
+  }
+}

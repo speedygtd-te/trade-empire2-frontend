@@ -1,0 +1,152 @@
+<!doctype html><meta charset="utf-8"><title>Biom-Übergänge — Alpha gegen gebacken</title>
+<style>
+ :root{color-scheme:dark}
+ body{background:#14171c;color:#c9d1d9;font:13px/1.6 ui-monospace,Consolas,monospace;margin:0;padding:24px 28px 80px}
+ h1{color:#79c0ff;font-size:21px;margin:0 0 4px}
+ h2{color:#7ee787;font-size:16px;margin:0 0 8px}
+ h3{color:#ffa657;font-size:13px;margin:18px 0 6px;font-weight:normal}
+ p.sub{color:#8b949e;margin:0 0 16px;max-width:140ch}
+ section{margin:0 0 40px;border-top:1px solid #30363d;padding-top:14px}
+ .lead{border-left:3px solid #79c0ff;padding:8px 14px;margin:12px 0 20px;background:#161b22;max-width:140ch}
+ .verdict{border-left:3px solid #7ee787;padding:6px 12px;margin:6px 0 20px;background:#161b22;max-width:140ch}
+ .verdict.bad{border-color:#ff7b72}.verdict.warn{border-color:#ffa657}.verdict.neutral{border-color:#8b949e}
+ .row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:4px 0 2px}
+ figure{margin:0}
+ figcaption{color:#8b949e;font-size:11px;margin-bottom:3px}
+ img{max-width:100%;display:block;background:#14171c;border:1px solid #21262d}
+ .state{color:#e6edf3;font-size:13px;margin:20px 0 2px;padding:3px 8px;background:#1c2330;border-left:3px solid #30363d}
+ .state b{color:#79c0ff}
+ .s1{border-left-color:#6e7681}.s2{border-left-color:#d29922}.s3{border-left-color:#3fb950}.s4{border-left-color:#a371f7}
+ table{border-collapse:collapse;margin:8px 0 16px;font-size:12px}
+ th,td{border:1px solid #30363d;padding:3px 8px;text-align:right}
+ th:first-child,td:first-child{text-align:left}
+ th{color:#ffa657;font-weight:normal;background:#1c2330}
+ tr.hl td{background:#1c2330}
+ td.ok{color:#7ee787}td.no{color:#ff7b72}
+ b{color:#e6edf3}code{color:#79c0ff}
+ table.pairs{font-size:11.5px}
+ table.pairs td:nth-child(7){text-align:left;color:#8b949e}
+ table.pairs td:nth-child(2),table.pairs td:nth-child(3){text-align:left}
+ table.pairs tr.geb td.v{color:#ff7b72}
+ table.pairs tr.alp td.v{color:#7ee787}
+ table.pairs tr.off td.v{color:#ffa657}
+ table.pairs tr.ent td.v{color:#6e7681}
+ table.pairs tr.ent td{color:#6e7681}
+ .cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ .note{color:#8b949e;font-size:12px;max-width:140ch}
+ ul{max-width:140ch}
+</style>
+
+<h1>Biom-Übergänge — Alpha gegen gebacken</h1>
+<p class="sub">
+Erzeugt von <code>scripts/tiles-uebergang-vergleich.cjs</code>, Zahlen in <code>_uebergang_zahlen.txt</code>, Rohdaten in <code>_uebergang_data.json</code>.
+Alles aus den <b>echten</b> Kacheln in <code>src/assets/tiles/</code>, mit der Iso-Geometrie des Renderers (<code>worldToScreen</code>, TW&nbsp;48 / TH&nbsp;24) und der Regel <b>Übergänge nur an den unteren Kanten</b>.
+Nichts wurde nach <code>src/</code> geschrieben, kein fal.ai, kein Netz.
+<b>Alle 55 Biome sind fertig</b> — die 40 Kacheln der ASTEROIDS- und UNDERGROUND-Runden, die beim letzten Bogen noch Zwischenstand waren, sind hier neu vermessen.
+</p>
+
+<div class="lead">
+<b>Wie dieser Bogen zu lesen ist.</b> Jedes Paar wird in <b>vier Zuständen</b> gezeigt, und jeder Zustand in <b>drei Maßstäben</b>: links die 512er&#8209;Kachelpaarung (eine Grenzzelle mit ihren beiden unteren Nachbarn, Originalauflösung), in der Mitte ein gemischtes Feld von 15×15 Zellen, rechts dasselbe Feld auf <b>Spielskala</b> (48×24 je Zelle, für die Ansicht 2× nearest vergrößert — so groß ist eine Kachel im Spiel wirklich).
+<ul>
+<li><b>1 · heute</b> — kein Übergang. Die Biomgrenze ist die Rautenkante, also eine 45°-Treppe.</li>
+<li><b>2 · Alpha glatt</b> — die Nachbarkachel wird über eine <i>smoothstep</i>-Rampe zur unteren Kante eingeblendet.</li>
+<li><b>3 · Alpha verrauscht</b> — dieselbe Rampe, aber mit einer in <b>Weltkoordinaten</b> ausgewerteten Rauschfunktion moduliert, also über die Kachelgrenze hinweg stetig.</li>
+<li><b>4 · gebacken</b> — eine <b>wirklich erzeugte</b> Übergangskachel: 512×256, als <code>.webp</code> samt drei Mip-Stufen geschrieben, mit gezeichneter Silhouette und einem Saum passend zur Grenzart. Diese Kacheln liegen als <code>_uebergang_bake_*.webp</code> daneben.</li>
+</ul>
+<b>Zustand 4 ist der Grund für diesen Bogen.</b> Bisher war „gebacken“ eine Kostenzeile ohne Bild.
+</div>
+
+<section>
+<h2>0 &nbsp; Das Ergebnis vorweg</h2>
+<table>
+<tr><th>Frage</th><th style="text-align:left">Antwort</th></tr>
+<tr><td>Reale Nachbarpaare</td><td style="text-align:left"><b>132</b> — davon 4, die nie auf derselben z-Ebene stehen können → <b>128 wirksam</b></td></tr>
+<tr class="hl"><td>Verteilung</td><td style="text-align:left"><b>105 Alpha</b> · <b>20 gebacken</b> · 3 offen (<code>void_edge</code>) · 4 entfallen</td></tr>
+<tr><td>Was entscheidet?</td><td style="text-align:left">die <b>Materialfamilie</b> (11/11 Rudi-Urteile getroffen), nicht der optische Abstand (7/11, und nur mit einer Schwelle, die alles „nah“ nennt)</td></tr>
+<tr><td>Trägt die gebackene Kachel?</td><td style="text-align:left"><b>ja, und sie ist der einzige Weg, der Struktur-Ghosting wirklich beendet</b> — jeder Pixel trägt ein Material</td></tr>
+<tr class="hl"><td>Kostet sie Assets?</td><td style="text-align:left"><b>nein — überraschendes Ergebnis dieses Laufs.</b> Die Silhouette ist eine Funktion von rund 40 Zeilen. Sie <i>kann</i> gebacken werden, muss aber nicht. Damit fällt die alte Frage „Weg A oder Weg B“ zusammen: es gibt nur noch <b>weiche Blende</b> gegen <b>harte Silhouette</b>, beide gerechnet, beide 0 Assets.</td></tr>
+<tr><td>Wenn doch gebacken wird</td><td style="text-align:left">31,9 KB je Kachel samt Mips (90 gemessen) — die 20 harten Paare kosten 120 Kacheln = <b>3,7 MB</b> = +3,6 % APK, mit den nötigen Varianten aber bis <b>44,9 MB</b> = +43,6 %</td></tr>
+</table>
+</section>
+
+<section>
+<h2>1 &nbsp; Was seit dem letzten Bogen anders ist</h2>
+<p class="sub">Der Vorgängerbogen <code>_transition_test_sheet.html</code> lief, während BARREN noch geschrieben wurde, und vor ASTEROIDS und UNDERGROUND. Neu gemessen wurden <b>40 Kacheln</b> (10 Biome × 4 Varianten): <code>impact_crater</code>, <code>metallic_surface</code>, <code>fractured_zone</code>, <code>silicate_plain</code>, <code>void_edge</code>, <code>dust_basin</code>, <code>rock_layer</code>, <code>deep_stone</code>, <code>mineral_vein</code>, <code>ice_cavern</code>.</p>
+<table>
+<tr><th>Befund</th><th>alter Bogen</th><th>jetzt</th><th style="text-align:left">Folge</th></tr>
+<tr><td>Materialfamilie trifft Rudis Urteile</td><td>11/11</td><td class="ok">11/11</td><td style="text-align:left">unverändert gültig</td></tr>
+<tr><td>optischer Abstand trifft</td><td>7/11</td><td class="no">7/11</td><td style="text-align:left">unverändert untauglich</td></tr>
+<tr><td>Mittel d „nah“ gegen „weit“</td><td>1.10 / 0.76</td><td>1.19 / 0.81</td><td style="text-align:left">die harten Paare bleiben im Mittel die <i>ähnlicheren</i></td></tr>
+<tr class="hl"><td>harte Paare</td><td>21</td><td>20</td><td style="text-align:left"><code>deep_stone|ice_cavern</code> fällt weg — die beiden können auf keiner Tiefe koexistieren (eisig: <code>deep_stone</code> erst ab Tiefe 6, <code>ice_cavern</code> nur bis 5)</td></tr>
+<tr><td>weiche Paare</td><td>108</td><td>105</td><td style="text-align:left">3 weitere Untergrundpaare entfallen aus demselben Grund</td></tr>
+<tr><td>Kachelkosten</td><td>31,8 KB</td><td>31,4 KB</td><td style="text-align:left">220 Kacheln = 6,75 MB (vorher 6,83)</td></tr>
+<tr><td>Release-APK</td><td>103,1 MB</td><td>103,0 MB</td><td style="text-align:left">Bezugsgröße praktisch unverändert</td></tr>
+</table>
+<div class="verdict neutral"><b>Die Einordnung hat sich durch die neuen Kacheln nicht verschoben</b> — sie hängt an der Materialfamilie, und die ist eine Eigenschaft des Motivs, nicht der Pixel. Verschoben hat sich nur die <i>Zahl</i> der harten Paare, und zwar aus einem Grund, der mit den neuen Kacheln nichts zu tun hat: der konsequent angewandten z-Ebenen-Regel.</div>
+</section>
+
+<section>
+<h2>2 &nbsp; Die Grenzlinie selbst — zwei Zahlen, und warum es zwei sein müssen</h2>
+<p class="sub">Gemessen an der 0.5-Niveaulinie einer 512×256-Kachel, an der SE-Kante. <b>Kontur-Index</b> = Länge der Linie, bezogen auf die glatte Rampe. <b>Auslenkung sd</b> = Streuung des Abstands der Linie von der geraden Kante, in Pixeln.</p>
+<!--KONTUR-->
+<div class="verdict warn"><b>Die glatte Rampe lässt die Kante gerade — Auslenkung 0.6 px.</b> Sie verwischt den Farbsprung und lässt die 45°-Treppe stehen; das ist der Kernbefund des Vorgängerbogens, hier mit einer Zahl statt mit einem Eindruck.
+<br><b>Und die beiden Zahlen widersprechen sich, das ist Absicht.</b> Die gebackene Wasserlinie hat einen Kontur-Index von 1.01 — sie ist <i>kurz</i>, also glatt und nicht zackig — und trotzdem eine Auslenkung von 17 px: eine große, langsame Bucht. Die verrauschte Rampe ist umgekehrt <i>zackig</i> (Index 1.44) und lenkt weit aus (25 px). <b>Der Kontur-Index misst Zackigkeit, nicht Formabweichung</b>; wer nur ihn liest, hält eine gemalte Küstenlinie für eine gerade Kante. Beide gehören ausgewiesen (<code>LESSONS §5</code>).</div>
+</section>
+
+<!--PAARE-->
+
+<section>
+<h2>8 &nbsp; Was eine gebackene Kachel wirklich ist</h2>
+<p class="sub">Sechs Übergänge je Paar: drei Kantenkonfigurationen (unten links, unten rechts, unten beide) × zwei Richtungen. Hier <code>beach</code>↔<code>ocean</code>, Rauschvariante k=0, als das, was sie sind — sechs Dateien.</p>
+<figure><figcaption><code>_uebergang_bake_beach__ocean_*_k0.webp</code> — obere Reihe: die <code>beach</code>-Kachel mit hereinragendem Wasser; untere Reihe: die <code>ocean</code>-Kachel mit hereinragendem Sand</figcaption>
+<img src="_uebergang_beach__ocean_assets.png" alt="sechs gebackene Übergangskacheln"></figure>
+<h3>Wie sie erzeugt wurde — und warum nicht mit flux</h3>
+<p class="note">
+Eine Übergangskachel muss an ihren <b>drei anderen Kanten exakt die Basiskachel bleiben</b>, sonst reißt die Naht zum Nachbarn. flux regeneriert die Fläche (<code>LESSONS §3</code>: „kontext ist NIE additiv“) und heftet Formen an die Rautenmaske, weil es sie als Bildrahmen liest — beides bricht genau das. Der Inhalt links und rechts der Linie ist außerdem <b>schon vorhanden</b>: es sind die beiden fertigen Biomkacheln. Zu erfinden ist allein die <b>Silhouette</b> und ihr <b>Saum</b> — und das ist eine Masken-, keine Generierungsaufgabe. Deshalb prozedural:
+</p>
+<table>
+<tr><th>Grenzart</th><th style="text-align:left">Silhouette</th><th style="text-align:left">Saum</th><th style="text-align:left">wo sie gilt</th></tr>
+<tr><td><code>wasser</code></td><td style="text-align:left">weiche Buchten, ~2 Perioden je Kante</td><td style="text-align:left">Band nassen Sandes auf der Landseite (26 px, entsättigt und abgedunkelt), 4 px heller Schaumstrich auf der Wasserseite</td><td style="text-align:left">Kliff, 2 Paare</td></tr>
+<tr><td><code>vegetation</code></td><td style="text-align:left">Grundkurve plus einzelne Büschel, die über die Linie hinausstehen</td><td style="text-align:left">Fußschatten unter dem Bewuchs (7 px), heller Sandsaum davor (3 px)</td><td style="text-align:left">Vegetationslinie, 12 Paare</td></tr>
+<tr><td><code>decke</code></td><td style="text-align:left">facettiert, fast gerade Abschnitte mit Versatz</td><td style="text-align:left">belichtete Lippe auf der Deckenseite (6 px), Schatten dahinter (9 px)</td><td style="text-align:left">Ausnahme <code>basalt_plain</code>, 5 Paare</td></tr>
+<tr><td><code>bruch</code></td><td style="text-align:left">gerade Facetten, härter versetzt</td><td style="text-align:left">2 px dunkle Fuge, dahinter schmale helle Bruchfläche</td><td style="text-align:left">Eis gegen Fels unter Tage, 1 Paar</td></tr>
+</table>
+<div class="verdict"><b>Der wichtigste Nebenbefund des ganzen Laufs:</b> weil die Silhouette gerechnet wird, ist sie <b>keine Datei</b>. Dieselben vierzig Zeilen, die diese 90 Kacheln erzeugt haben, könnten im Aufbau des Offscreen-Scene-Caches laufen und dort dieselbe Kante zeichnen — mit der <b>echten</b> Nachbarvariante statt einer eingefrorenen, über Kachelgrenzen hinweg stetig, und ohne ein einziges Asset. Gebacken wird nur dann, wenn der Saum von Hand gemalt werden soll und sich nicht rechnen lässt. <b>Dafür hat dieser Lauf keinen Fall gefunden.</b></div>
+
+<h3>Die Kette gleicher Lappen — der Preis des Backens</h3>
+<p class="sub">Eine gebackene Kachel ist an jeder Grenzzelle dieselbe. <b>Zellgleichheit</b> = mittlere |NCC| der hochpassgefilterten Zell-Luma zweier Grenzzellen derselben Kantenkonfiguration; 1.00 hieße „immer dasselbe Bild“. Roh gemessen erreichen zwei ruhige Kacheln 0.99, ohne verwandt zu sein — deshalb der Hochpass (<code>LESSONS §8</code>).</p>
+<!--REPEAT-->
+<div class="cols2">
+ <figure><figcaption>gebacken mit <b>3</b> Rauschvarianten je Kante</figcaption><img src="_uebergang_beach__ocean_gebacken_feld.png" alt=""></figure>
+ <figure><figcaption>gebacken mit <b>1</b> Variante — dieselbe Bucht an jeder Zelle</figcaption><img src="_uebergang_beach__ocean_gebackenK1_feld.png" alt=""></figure>
+</div>
+<div class="verdict warn"><b>Die Zahl sieht es, das Auge hier noch nicht.</b> Mit einer einzigen Variante steigt die Zellgleichheit von 0.43 auf 0.67; in den beiden Bildern oben ist der Unterschied bei dieser Küstendichte kaum auszumachen. Das ist genau die Konstellation aus <code>LESSONS §5</code> — die Kennzahl misst die Ursache, das Auge urteilt über die Wirkung. <b>Belastbar ist trotzdem:</b> gebackene Kacheln liegen in jedem gezeigten Paar bei 0.43–0.56, die gerechneten Blenden bei 0.22–0.29. Das Wiederholungsrisiko ist eine Eigenschaft des Backens, und es wird mit K Varianten <i>gemildert</i>, nicht behoben — zum Preis von K × Assets.</div>
+</section>
+
+<section>
+<h2>9 &nbsp; Die Kostenrechnung, neu gerechnet</h2>
+<p class="sub">Gemessene Grundlagen: eine Biomkachel samt drei Mip-Stufen <b>31,4 KB</b> (7 076 436 B über 220 Basiskacheln); eine gebackene Übergangskachel samt Mips <b>31,9 KB</b> (90 Stück gemessen, Spanne 24,7–41,1 KB); alle Biomkacheln zusammen <b>6,75 MB</b>; Release-APK <b>103,0 MB</b>. Die <code>.png</code> in <code>src/assets/tiles/</code> sind nicht im Bundle — der Glob in <code>spriteCache.ts:33</code> nimmt nur <code>*.webp</code>.</p>
+<!--KOSTEN-->
+<div class="verdict"><b>Die Zeile, auf die es ankommt, ist die unterste.</b> Eine gebackene Vollkachel enthält den Grund von X, und der wird heute pro Zelle aus <b>vier Varianten</b> gewürfelt (<code>floorVariant</code>, <code>isoConstants.ts:218</code>). Eine feste Variante heißt: an jeder Biomgrenze eine Kette identischer Böden. Und gegen die Kette gleicher Lappen braucht es zusätzlich K Rauschvarianten. Beide Faktoren multiplizieren: 20 × 6 × 3 × 4 = <b>1 440 Kacheln, 44,9 MB, +43,6 % APK</b> — für 20 von 128 Paaren. Streng korrekt wären es sogar 4×4 Kombinationen der Grundvarianten.
+<br>Die gerechnete Silhouette hat keine dieser beiden Zeilen: sie nimmt die echte Nachbarkachel in ihrer echten Variante, und ihr Rauschen läuft in Weltkoordinaten.</div>
+<h3>Was sie stattdessen an Laufzeit kostet</h3>
+<p class="note">In node gemessen, je Grenzzelle bei 48×24 Zeichengröße: gerechnete <b>Rampe + Blende 103 µs</b>, gerechnete <b>Silhouette + Saum 135 µs</b> (davon 107 µs für Maske und Distanzfeld). Bei einem Feld mit 14 % Grenzzellen und 13 689 Zellen am Zoom-Boden wären das 195 bzw. 257 ms je <b>Cache-Rebuild</b> — nicht je Frame. Das ist unoptimiertes JS in node, nicht im WebView, und der Grenzzellenanteil ist der meines synthetischen Feldes. <b>Beide Zahlen sind Größenordnungen, keine Gerätewerte</b>; der Anteil echter Grenzzellen ist an Live-Daten zu messen, bevor daraus eine Entscheidung wird.</p>
+</section>
+
+<section>
+<h2>10 &nbsp; Alle 132 Paare</h2>
+<p class="sub">Sortiert: <b>gebacken</b> zuerst, dann offen, dann die entfallenden, dann Alpha. <code>d</code> = optischer Abstand (nur als Beobachtung, er entscheidet nichts). <code>min MESO</code> = die schwächer strukturierte der beiden Kacheln; ab etwa 12 ist Struktur-Ghosting zu erwarten — als <b>Prüfliste</b> brauchbar, als Klassifikator überfeuert sie.</p>
+<!--TABELLE-->
+</section>
+
+<section>
+<h2>11 &nbsp; Was offen bleibt</h2>
+<ul>
+<li><b><code>beach</code> ↔ <code>plains</code> und die 11 anderen Vegetationslinien.</b> Auch dieser Lauf kann Rudis Urteil weder bestätigen noch widerlegen: überblendet liest es sich als ausdünnender Bewuchs, gebacken als gemähte Kante. Beides ist plausibel, keins ist falsch. <b>An dieser einen Entscheidung hängen 12 der 20 harten Paare</b> — fallen sie, bleiben 8.</li>
+<li><b>Kliff.</b> <code>ocean|mountain</code> und <code>ocean|snow_peak</code> stehen hart, <code>mesa|oasis</code> und <code>canyon|oasis</code> weich — derselbe Fall in klein. Beide gleich behandeln?</li>
+<li><b><code>void_edge</code></b> — 3 Paare bleiben unentscheidbar, solange das Motiv offen ist.</li>
+<li><b>Die z-Ebenen-Regel im Untergrund</b> ist aus der Regel<i>reihenfolge</i> in <code>planet-biomes-by-type.md</code> abgeleitet, nicht am Backend verifiziert. An ihr hängen die 4 entfallenden Paare und damit die Zahl 20.</li>
+<li><b>Grenzzellenanteil und Mischzellen</b> (drei Biome an einer Zelle) sind weiterhin nur geschätzt. Ohne sie ist die Laufzeitrechnung oben eine Größenordnung.</li>
+<li><b>Achtel-Mip.</b> Dieser Bogen zeigt die Spielskala, nicht die kleinste Zoomstufe. Der Vorgängerbogen fand dort die Treppe teilweise zurückkommen; für die gebackene Kachel ist das noch nicht geprüft.</li>
+</ul>
+</section>

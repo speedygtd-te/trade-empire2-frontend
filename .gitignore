@@ -1,0 +1,42 @@
+# Godot 4
+.godot/
+*.translation
+/android/
+/build/
+/override.cfg
+
+# Test reports (gdUnit4)
+/reports/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and local scratch
+*.log
+.tmp/
+
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+keystore.properties
+
+# Claude Code workspace artefacts
+.claude/settings.local.json
+.claude/logcat-*.txt
+
+# Local development backend (copy of ted, build output, world data)
+/.local-backend/
+
+# Asset pipeline (Node tooling lives in scripts/)
+node_modules/
+scripts/previews/
+
+# Asset pipeline working folder (raw generations, intermediates, style tests): several GB,
+# local only. The sprites the game uses live in src/assets/ and are tracked.
+/assets/

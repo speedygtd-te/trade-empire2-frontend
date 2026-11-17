@@ -1,0 +1,62 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Trade Empire"
+run/main_scene="res://game/main/boot.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/quit_on_go_back=false
+config/icon="res://game/branding/app_icon.png"
+
+[autoload]
+
+Services="*res://game/main/services.gd"
+
+[debug]
+
+gdscript/warnings/directory_rules={
+"res://addons": 0
+}
+gdscript/warnings/untyped_declaration=2
+gdscript/warnings/unsafe_call_argument=2
+gdscript/warnings/unsafe_property_access=1
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/window_width_override=540
+window/size/window_height_override=960
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://i18n/strings.en.translation")
+locale/fallback="en"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.039, 0.059, 0.11, 1)
+
+[trade_empire]
+
+server/base_url="https://trade-empire.net"
+server/base_url.editor="http://127.0.0.1:18080"
+server/base_url.local_backend="http://10.0.2.2:18080"

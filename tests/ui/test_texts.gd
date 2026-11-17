@@ -1,0 +1,93 @@
+extends GdUnitTestSuite
+## Guards the rule that the player never sees a raw key or error code.
+
+const TRANSLATION_PATH := "res://i18n/strings.en.translation"
+const SOURCE_DIRS: PackedStringArray = ["res://game", "res://core", "res://net"]
+const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR)_[A-Z0-9_]+)"'
+
+var _translation: Translation
+
+
+func before() -> void:
+	_translation = load(TRANSLATION_PATH)
+	TranslationServer.set_locale("en")
+
+
+func _has_text(key: String) -> bool:
+	return not String(_translation.get_message(key)).is_empty()
+
+
+func _collect_scripts(dir: String, into: PackedStringArray) -> void:
+	for file: String in DirAccess.get_files_at(dir):
+		if file.ends_with(".gd"):
+			into.append(dir + "/" + file)
+	for sub: String in DirAccess.get_directories_at(dir):
+		_collect_scripts(dir + "/" + sub, into)
+
+
+func test_translation_file_is_loaded() -> void:
+	assert_object(_translation).is_not_null()
+	assert_bool(_has_text("APP_TITLE")).is_true()
+
+
+func test_every_handled_error_code_has_a_text() -> void:
+	for code: String in ErrorText.HANDLED_CODES:
+		assert_bool(_has_text("ERROR_" + code)).override_failure_message(
+			"no translation for ERROR_" + code
+		).is_true()
+
+
+func test_every_text_key_used_in_code_exists() -> void:
+	var scripts := PackedStringArray()
+	for dir: String in SOURCE_DIRS:
+		_collect_scripts(dir, scripts)
+	var pattern := RegEx.new()
+	pattern.compile(KEY_PATTERN)
+	var checked := 0
+	for path: String in scripts:
+		var source := FileAccess.get_file_as_string(path)
+		for found: RegExMatch in pattern.search_all(source):
+			var key := found.get_string(1)
+			checked += 1
+			assert_bool(_has_text(key)).override_failure_message(
+				"%s uses %s, which has no translation" % [path, key]
+			).is_true()
+	# The scan must actually have found the keys, otherwise this test proves nothing.
+	assert_int(checked).is_greater(30)
+
+
+func test_transport_failure_gets_the_connection_text() -> void:
+	assert_str(ErrorText.key_for(ApiError.transport("refused"))).is_equal("ERROR_NO_CONNECTION")
+
+
+func test_known_code_gets_its_own_text() -> void:
+	var error := ApiError.from_response(409, '{"error":"EMAIL_TAKEN","message":"x"}')
+
+	assert_str(ErrorText.key_for(error)).is_equal("ERROR_EMAIL_TAKEN")
+
+
+func test_unknown_codes_get_the_generic_text_not_the_raw_code() -> void:
+	var build_error := ApiError.from_response(409, '{"error":"HULL_IS_BRIDGE","message":"x"}')
+	var proxy_error := ApiError.from_response(502, "<html>Bad Gateway</html>")
+
+	assert_str(ErrorText.key_for(build_error)).is_equal("ERROR_UNKNOWN")
+	assert_str(ErrorText.key_for(proxy_error)).is_equal("ERROR_UNKNOWN")
+
+
+func test_rate_limit_text_names_the_waiting_time() -> void:
+	var translator: Node = auto_free(Node.new())
+	var body := '{"error":"RATE_LIMITED","message":"x","details":{"retryAfterMs":12500}}'
+	var error := ApiError.from_response(429, body)
+
+	var text := ErrorText.describe(error, translator)
+
+	assert_str(text).is_equal("Too many attempts. Try again in 13 s.")
+
+
+func test_rate_limit_without_waiting_time_uses_the_plain_text() -> void:
+	var translator: Node = auto_free(Node.new())
+	var error := ApiError.from_response(429, '{"error":"RATE_LIMITED","message":"x"}')
+
+	var text := ErrorText.describe(error, translator)
+
+	assert_str(text).is_equal("Too many attempts. Please wait a moment and try again.")
