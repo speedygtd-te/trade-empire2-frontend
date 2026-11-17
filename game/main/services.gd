@@ -57,14 +57,12 @@ func _on_meta_received(_rev: int, game_time_ms: int) -> void:
 
 
 ## The clock only runs while the event channel is up: game time stands still while the backend
-## is down, and without the channel we cannot tell. `ready` carries no game time, so fetch it.
-func _on_stream_ready(_rev: int) -> void:
-	var health := await api.get_json("/v2/health", false)
-	if not health.is_ok() or health.game_time_ms < 0:
+## is down, and without the channel we cannot tell. `ready` carries the backend's game time, so
+## the clock is set again on every (re)connect.
+func _on_stream_ready(_rev: int, game_time_ms: int) -> void:
+	if game_time_ms < 0:
 		return
-	if events.state() != EventStream.State.OPEN:
-		return
-	clock.resync(health.game_time_ms)
+	clock.resync(game_time_ms)
 	clock.set_running(true)
 
 

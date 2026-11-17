@@ -13,6 +13,7 @@ var _failures := 0
 var _event_types: Array[String] = []
 var _ready_revs: Array[int] = []
 var _resync_revs: Array[int] = []
+var _ready_game_times: Array[int] = []
 
 
 func _initialize() -> void:
@@ -63,8 +64,9 @@ func _new_session(server: ServerUrl, api: ApiClient, events: EventStream, path: 
 	return session
 
 
-func _on_ready_received(rev: int) -> void:
+func _on_ready_received(rev: int, game_time_ms: int) -> void:
 	_ready_revs.append(rev)
+	_ready_game_times.append(game_time_ms)
 
 
 func _on_resync_requested(rev: int) -> void:
@@ -127,6 +129,10 @@ func _run() -> void:
 	var got_ready := await _wait_until(func() -> bool: return not _ready_revs.is_empty(), 5000)
 	_check(got_ready, "event channel: ready received")
 	_check(events.state() == EventStream.State.OPEN, "event channel is open")
+	_check(
+		not _ready_game_times.is_empty() and _ready_game_times[0] >= 0,
+		"ready carries the game time"
+	)
 
 	# --- game clock ---
 	clock.set_running(true)
@@ -145,6 +151,10 @@ func _run() -> void:
 	_check(second.is_ok(), "second sign-in -> ok")
 	var got_created := await _wait_until(func() -> bool: return _event_types.has("session.created"), 5000)
 	_check(got_created, "event: session.created received")
+	_check(
+		events.position().contains("-") and StreamPosition.is_valid(events.position()),
+		"stream position is the id of the last event (%s)" % events.position()
+	)
 
 	# --- rejected calls ---
 	var wrong := await other.post_json("/v2/auth/login", {"email": email, "password": "wrong-password-1"}, false)
@@ -183,7 +193,10 @@ func _run() -> void:
 	var got_ready_again := await _wait_until(func() -> bool: return not _ready_revs.is_empty(), 8000)
 	_check(got_ready_again, "stream reconnects on its own after resync")
 	if got_resync:
-		_check(events.last_rev() >= _resync_revs[0] and events.last_rev() < 999999999, "stream continues from the rev the backend named")
+		_check(
+			events.position() == str(_resync_revs[0]) or events.position().begins_with("%d-" % _resync_revs[0]),
+			"stream continues from the rev the backend named (%s)" % events.position()
+		)
 
 	# --- sign out ---
 	var old_token := api.token

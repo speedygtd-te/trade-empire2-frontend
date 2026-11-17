@@ -66,8 +66,9 @@ Serveradresse: aus dem Editor-Binary das lokale Backend (`http://127.0.0.1:18080
 - Im `_initialize` eines SceneTree-Skripts ist `root` noch nicht im Baum; erst einen Frame warten.
 - `HTTPRequest` puffert die ganze Antwort. Gestreamte Antworten (Ereigniskanal, später Layout
   und Oberfläche) laufen über `HTTPClient`; Muster ist `net/event_stream.gd`.
-- `ready` und `resync` des Ereigniskanals tragen keine Spielzeit; die Uhr wird danach per
-  `/v2/health` gesetzt und läuft nur, solange der Kanal steht.
+- Die Uhr läuft nur, solange der Ereigniskanal steht, und wird mit der Spielzeit aus `ready`
+  bei jedem Verbinden neu gesetzt. Ereignis-IDs sind `<rev>-<seq>` und keine Zahlen; mit der
+  letzten ID als `since` setzt der Kanal lückenlos fort.
 - Lokales Backend: `stop` ist ein harter Abbruch, `build` geht nur bei gestoppter Instanz, und
   unter `F:\Trade Empire\Backend-V2` wird nie etwas geschrieben.
 - Das Backend erlaubt zehn Anmeldungen/Registrierungen pro Minute und Adresse.

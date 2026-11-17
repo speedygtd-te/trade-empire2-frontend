@@ -3,17 +3,20 @@ extends Node
 ## Keeps the backend's event channel (`GET /v2/events`, Server-Sent Events) open.
 ##
 ## The stream is read incrementally with the low-level HTTPClient, polled once per frame. It
-## reconnects on its own with growing delays and resumes with `since=<last seen rev>`, so events
-## missed while disconnected are replayed by the backend. A heartbeat comment arrives every
-## 15 s; when nothing arrives for SILENCE_TIMEOUT_MS the connection counts as dead.
+## reconnects on its own with growing delays and resumes with `since=<position>`, where the
+## position is the id of the last event seen ("<rev>-<seq>"). The backend then continues right
+## after that event, so nothing is lost or repeated, even when the connection dropped between
+## two events of the same rev. A heartbeat comment arrives every 15 s; when nothing arrives for
+## SILENCE_TIMEOUT_MS the connection counts as dead.
 ##
 ## Event handlers must tolerate seeing an event twice: after a `resync` the app reloads its
 ## state and the stream continues from the rev the backend named.
 
 ## A domain event (everything except `ready` and `resync`).
 signal event_received(event: SseEvent)
-## The stream is established; `rev` is the backend's state at that moment.
-signal ready_received(rev: int)
+## The stream is established; `rev` is the backend's state at that moment and `game_time_ms`
+## its game time (-1 if the backend sent none).
+signal ready_received(rev: int, game_time_ms: int)
 ## The backend cannot replay from our position. Reload state; the stream reconnects from `rev`.
 signal resync_requested(rev: int)
 ## The backend rejected the token. The stream stops.
@@ -37,7 +40,8 @@ const SILENCE_TIMEOUT_MS := 40000
 
 var _server: ServerUrl = null
 var _token := ""
-var _since := -1
+## Where to resume: a StreamPosition, "" to start at the backend's current state.
+var _since := ""
 var _state: State = State.STOPPED
 var _client: HTTPClient = null
 var _request_sent := false
@@ -49,14 +53,14 @@ var _parser := SseParser.new()
 var _backoff := Backoff.new()
 
 
-## Opens the channel. `since` is the rev of the state the app has loaded (e.g. the `rev` of the
-## login or `/v2/me` response), so nothing between loading and connecting is missed; -1 starts
-## at the backend's current state.
-func start(server: ServerUrl, token: String, since: int) -> void:
+## Opens the channel. `since_rev` is the rev of the state the app has loaded (e.g. the `rev` of
+## the login or `/v2/me` response), so nothing between loading and connecting is missed; -1
+## starts at the backend's current state.
+func start(server: ServerUrl, token: String, since_rev: int) -> void:
 	stop()
 	_server = server
 	_token = token
-	_since = since
+	_since = StreamPosition.from_rev(since_rev)
 	_backoff.reset()
 	_open_connection()
 
@@ -71,8 +75,9 @@ func state() -> State:
 	return _state
 
 
-## The rev of the last event seen, or the value passed to `start`.
-func last_rev() -> int:
+## Where the stream would resume: the id of the last event seen, otherwise the rev it was
+## started or resynchronised with. "" before anything is known.
+func position() -> String:
 	return _since
 
 
@@ -138,8 +143,8 @@ func _poll_connecting() -> void:
 
 func _send_request() -> void:
 	var path := PATH
-	if _since >= 0:
-		path += "?since=%d" % _since
+	if not _since.is_empty():
+		path += "?since=" + _since
 	var headers: PackedStringArray = ["Authorization: Bearer " + _token, "Accept: text/event-stream"]
 	if _client.request(HTTPClient.METHOD_GET, path, headers) != OK:
 		_retry_later()
@@ -183,19 +188,21 @@ func _poll_open() -> void:
 
 
 func _handle_event(event: SseEvent) -> void:
-	if event.id.is_valid_int():
-		_since = maxi(_since, event.id.to_int())
+	if StreamPosition.is_valid(event.id):
+		_since = event.id
 	match event.type:
 		"ready":
 			_backoff.reset()
-			var rev := Wire.as_int(Wire.parse_object(event.data).get("rev"), -1)
-			if _since < 0:
-				_since = rev
-			ready_received.emit(rev)
+			var data := Wire.parse_object(event.data)
+			var rev := Wire.as_int(data.get("rev"), -1)
+			if _since.is_empty():
+				_since = StreamPosition.from_rev(rev)
+			ready_received.emit(rev, Wire.as_int(data.get("gameTime"), -1))
 		"resync":
 			# The backend ends the stream after this event; reconnect from the rev it named.
-			_since = Wire.as_int(Wire.parse_object(event.data).get("rev"), -1)
-			resync_requested.emit(_since)
+			var rev := Wire.as_int(Wire.parse_object(event.data).get("rev"), -1)
+			_since = StreamPosition.from_rev(rev)
+			resync_requested.emit(rev)
 		_:
 			event_received.emit(event)
 
