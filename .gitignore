@@ -40,3 +40,6 @@ scripts/previews/
 # Asset pipeline working folder (raw generations, intermediates, style tests): several GB,
 # local only. The sprites the game uses live in src/assets/ and are tracked.
 /assets/
+
+# Python caches (Blender model scripts)
+__pycache__/

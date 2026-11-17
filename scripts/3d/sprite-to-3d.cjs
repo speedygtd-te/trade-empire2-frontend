@@ -15,7 +15,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..', '..');
+const { ROOT, runQueued, download } = require('./fal-queue.cjs');
+
 const MODELS = {
   'hunyuan-lowpoly': {
     endpoint: 'fal-ai/hunyuan3d-v3/image-to-3d',
@@ -48,14 +49,6 @@ function arg(name, fallback) {
   return index !== -1 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
 }
 
-function readKey() {
-  const envPath = path.join(ROOT, 'scripts', '.env');
-  const line = fs.readFileSync(envPath, 'utf8').split('\n').find((l) => l.startsWith('FAL_API_KEY='));
-  const key = line ? line.replace('FAL_API_KEY=', '').trim() : '';
-  if (!key) throw new Error('FAL_API_KEY missing in scripts/.env');
-  return key;
-}
-
 async function main() {
   const modelName = arg('model', '');
   const model = MODELS[modelName];
@@ -69,35 +62,11 @@ async function main() {
   const name = arg('name', path.basename(inputPath).replace(/\.[^.]+$/, ''));
   fs.mkdirSync(outDir, { recursive: true });
 
-  const key = readKey();
-  const headers = { Authorization: `Key ${key}`, 'Content-Type': 'application/json' };
   const mime = inputPath.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/png';
   const image = `data:${mime};base64,${fs.readFileSync(inputPath).toString('base64')}`;
 
   const started = Date.now();
-  const submit = await fetch(`https://queue.fal.run/${model.endpoint}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(model.body(image)),
-  });
-  const submitted = await submit.json();
-  if (!submit.ok || !submitted.status_url) {
-    throw new Error(`submit failed (HTTP ${submit.status}): ${JSON.stringify(submitted).slice(0, 400)}`);
-  }
-
-  let result = null;
-  for (let attempt = 0; attempt < 180 && !result; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-    const status = await (await fetch(submitted.status_url, { headers })).json();
-    if (status.status === 'COMPLETED') {
-      const response = await fetch(submitted.response_url, { headers });
-      result = await response.json();
-      if (!response.ok) throw new Error(`result failed (HTTP ${response.status}): ${JSON.stringify(result).slice(0, 400)}`);
-    } else if (status.status !== 'IN_QUEUE' && status.status !== 'IN_PROGRESS') {
-      throw new Error(`unexpected status: ${JSON.stringify(status).slice(0, 400)}`);
-    }
-  }
-  if (!result) throw new Error('timed out after 15 minutes');
+  const result = await runQueued(model.endpoint, model.body(image));
 
   const mainUrl = model.glbUrl(result);
   if (!mainUrl) throw new Error(`no model in the response: ${JSON.stringify(result).slice(0, 600)}`);
@@ -120,14 +89,6 @@ async function main() {
   let total = 0;
   for (const [url, fileName] of names) total += await download(url, path.join(base, fileName));
   console.log(`${modelName}: saved ${names.size} files to ${path.relative(ROOT, base)} (${(total / 1048576).toFixed(1)} MB, main file ${extension}) in ${seconds()} s`);
-}
-
-async function download(url, target) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`download failed (HTTP ${response.status}): ${url}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(target, bytes);
-  return bytes.length;
 }
 
 main().catch((error) => {
