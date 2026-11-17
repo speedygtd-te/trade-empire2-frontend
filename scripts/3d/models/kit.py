@@ -23,6 +23,7 @@ import argparse
 import math
 import os
 import sys
+from contextlib import contextmanager
 
 import bmesh
 import bpy
@@ -36,7 +37,8 @@ STAGE_SCENE = "Trade Empire"
 TEXTURE_FOLDER = os.environ.get("TE_TEXTURE_FOLDER") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "textures")
 
-# Colour name -> (sRGB colour, surface kind). New colours go to the end.
+# Colour name -> (sRGB colour, surface kind). Kinds: "metal" (surface texture, rust),
+# "concrete" (surface texture), "plain" (flat: glass, openings, rubber).
 PALETTE = {
     "steel": ((0.34, 0.44, 0.47), "metal"),
     "steel_dark": ((0.20, 0.27, 0.30), "metal"),
@@ -46,7 +48,15 @@ PALETTE = {
     "rust": ((0.60, 0.32, 0.17), "metal"),
     "red": ((0.74, 0.17, 0.12), "metal"),
     "yellow": ((0.93, 0.71, 0.16), "metal"),
+    "blue": ((0.17, 0.32, 0.52), "metal"),
+    "blue_dark": ((0.11, 0.20, 0.35), "metal"),
+    "rock": ((0.41, 0.36, 0.31), "concrete"),
+    "solar": ((0.06, 0.10, 0.24), "plain"),
+    "glass": ((0.52, 0.72, 0.80), "plain"),
+    "dark": ((0.07, 0.08, 0.09), "plain"),
 }
+# How a surface kind is stored in the fourth channel of the face colour.
+_KINDS = {"concrete": 0.0, "plain": 0.5, "metal": 1.0}
 
 # --- The recipe of the baked look -----------------------------------------------------------
 # Edge length of the texture of one model, in pixels.
@@ -89,22 +99,36 @@ class Builder:
         self.name = name
         self._mesh = bmesh.new()
         self._tint = self._mesh.loops.layers.color.new(_TINT)
+        self._frame = Matrix.Identity(4)
+
+    @contextmanager
+    def placed(self, location=(0.0, 0.0, 0.0), turn: float = 0.0, tilt: float = 0.0):
+        """Everything added inside the with-block is moved to *location*, turned around Z
+        and then tilted around its own X axis (radians; a positive tilt leans the top
+        towards -Y). Blocks can be nested."""
+        previous = self._frame
+        self._frame = (previous @ Matrix.Translation(Vector(location))
+                       @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Rotation(tilt, 4, "X"))
+        try:
+            yield
+        finally:
+            self._frame = previous
 
     def box(self, center, size, color: str, turn: float = 0.0) -> None:
         """A box with its centre at *center*; *turn* rotates it around Z (radians)."""
-        matrix = (Matrix.Translation(Vector(center)) @ Matrix.Rotation(turn, 4, "Z")
+        matrix = (self._frame @ Matrix.Translation(Vector(center)) @ Matrix.Rotation(turn, 4, "Z")
                   @ Matrix.Diagonal((size[0], size[1], size[2], 1.0)))
         self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
 
     def beam(self, start, end, thickness: float, color: str) -> None:
         """A square bar from *start* to *end*."""
-        matrix = _along(Vector(start), Vector(end), thickness, thickness)
+        matrix = _along(self._frame @ Vector(start), self._frame @ Vector(end), thickness, thickness)
         self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
 
     def cylinder(self, start, end, radius: float, color: str, segments: int = 10,
                  end_radius: float | None = None) -> None:
         """A round bar from *start* to *end*; *end_radius* makes it a cone or taper."""
-        start, end = Vector(start), Vector(end)
+        start, end = self._frame @ Vector(start), self._frame @ Vector(end)
         created = bmesh.ops.create_cone(
             self._mesh, cap_ends=True, cap_tris=False, segments=segments, radius1=radius,
             radius2=radius if end_radius is None else end_radius, depth=1.0,
@@ -123,7 +147,7 @@ class Builder:
         a hair in front of the surface it sits on."""
         normal, across, up = _FACINGS[facing]
         center = Vector(center)
-        corners = [center + across * (sx * size[0] / 2.0) + up * (sy * size[1] / 2.0)
+        corners = [self._frame @ (center + across * (sx * size[0] / 2.0) + up * (sy * size[1] / 2.0))
                    for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
         if across.cross(up).dot(normal) < 0.0:
             corners.reverse()
@@ -157,7 +181,7 @@ class Builder:
         srgb, kind = PALETTE[color]
         # This kind of colour layer stores sRGB; Blender converts it for the shader itself.
         # Converting here as well made every colour far too dark (tried 2026-11-17).
-        value = (*srgb, 1.0 if kind == "metal" else 0.0)
+        value = (*srgb, _KINDS[kind])
         for face in faces:
             for loop in face.loops:
                 loop[self._tint] = value
@@ -308,14 +332,18 @@ def _look_material() -> bpy.types.Material:
         link(mapping.outputs["Vector"], texture.inputs["Vector"])
         surfaces[kind] = texture.outputs["Color"]
     tint = node("ShaderNodeVertexColor", layer_name=_TINT)
-    tint_color, is_metal = tint.outputs[0], tint.outputs[1]
+    tint_color, kind = tint.outputs[0], tint.outputs[1]
+    is_metal = math_node("GREATER_THAN", kind, 0.75)
+    textured = math_node("ADD", is_metal, math_node("LESS_THAN", kind, 0.25))
 
     surface = node("ShaderNodeSeparateColor")
     link(mix("MIX", is_metal, surfaces["concrete"], surfaces["metal"]), surface.inputs[0])
     detail, rust = surface.outputs[0], surface.outputs[1]
-    # detail is stored halved: 1 + strength * (2 * detail - 1), kept within sane bounds.
+    # detail is stored halved: 1 + strength * (2 * detail - 1), kept within sane bounds;
+    # plain surfaces keep their flat colour.
     shade = math_node("MULTIPLY_ADD", detail, 2.0 * SURFACE_STRENGTH, 1.0 - SURFACE_STRENGTH)
     shade = math_node("MINIMUM", math_node("MAXIMUM", shade, 0.35), 1.6)
+    shade = math_node("MULTIPLY_ADD", math_node("SUBTRACT", shade, 1.0), textured, 1.0)
 
     color = mix("MULTIPLY", 1.0, tint_color, shade)
     rusty = mix("MULTIPLY", 1.0, _linear(RUST_COLOR), shade)
@@ -339,7 +367,8 @@ def _look_material() -> bpy.types.Material:
     noise.inputs["Scale"].default_value = 35.0
     link(coordinates.outputs["Object"], noise.inputs["Vector"])
     breakup = math_node("MULTIPLY_ADD", noise.outputs[0], 0.8, 0.2, clamp=True)
-    wear = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup), EDGE_AMOUNT)
+    wear = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup),
+                     math_node("MULTIPLY_ADD", textured, 0.7 * EDGE_AMOUNT, 0.3 * EDGE_AMOUNT))
     color = mix("MIX", wear, color, _linear(EDGE_COLOR))
 
     glow = node("ShaderNodeEmission")

@@ -49,14 +49,15 @@ verschärft, wenn es nötig wird.
 | Android-Debug-APK | `powershell -File tools\android-debug.ps1` (`-Live` für den echten Server) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `build\models\` |
-| 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 build\models build\model-preview` |
+| 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 build\models build\model-preview -NoFit` (Übersicht: `all_45.png`) |
 | Materialtextur erzeugen (kostet fal-Guthaben) | `node scripts\3d\make-texture.cjs --preset metal` → `scripts\3d\textures\` |
 | 3D-Modell aus Sprite (kostet fal-Guthaben) | `node scripts\3d\sprite-to-3d.cjs --model hunyuan-lowpoly --input assets\final\mine_0.png` |
 | Generiertes 3D-Modell spielfertig machen | `powershell -File tools\postprocess-models.ps1` → `assets\3d-test\processed\` |
 
 **3D-Assets (Versuch seit 2026-11-17):** Ein Modell ist Blender-Code unter `scripts\3d\models\`
-(Bausatz `kit.py`); sein Aussehen wird aus Palette, wenigen Materialtexturen und einem
-gemeinsamen Rezept in eine Textur je Modell gebacken. Stiländerungen gehören in Palette,
+(Bausatz `kit.py`, wiederverwendbare Teile `parts.py`); sein Aussehen wird aus Palette,
+wenigen Materialtexturen und einem gemeinsamen Rezept in eine Textur je Modell gebacken.
+Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
 am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Die Modelle sind noch
 nicht ins Spiel eingebunden.

@@ -10,8 +10,15 @@ const CELL := 1.0
 const FILL := 0.9
 const CAMERA_PITCH_DEGREES := 30.0
 const VIEW_YAWS: Array[float] = [45.0, 225.0]
+## The overview picture: models side by side in a grid that is upright on the screen.
+const SHEET_COLUMNS := 2
+## Width and height of one place of that grid, in world units on the screen.
+const SHEET_PLACE := Vector2(1.5, 1.45)
 
 var _camera: Camera3D
+var _cell: MeshInstance3D
+## False for models that are already built to cell size: they are shown as they are.
+var _fit := true
 
 
 func _ready() -> void:
@@ -26,6 +33,8 @@ func _run() -> void:
 			models_dir = argument.trim_prefix("--models=")
 		elif argument.begins_with("--out="):
 			out_dir = argument.trim_prefix("--out=")
+		elif argument == "--no-fit":
+			_fit = false
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	_add_stage()
@@ -44,11 +53,7 @@ func _run() -> void:
 			continue
 		add_child(model)
 		var bounds := _bounds(model)
-		var footprint := maxf(bounds.size.x, bounds.size.z)
-		var factor := FILL * CELL / footprint if footprint > 0.0 else 1.0
-		var center := bounds.get_center()
-		model.scale = Vector3.ONE * factor
-		model.position = -Vector3(center.x, bounds.position.y, center.z) * factor
+		var factor := _place(model, bounds, Vector3.ZERO)
 		print(
 			(
 				"MODEL %s: %.2f x %.2f x %.2f (w x h x d), %d triangles, %d surfaces, height in cells %.2f"
@@ -71,7 +76,55 @@ func _run() -> void:
 		model.queue_free()
 		await get_tree().process_frame
 
+	if files.size() > 1:
+		await _sheet(models_dir, files, out_dir)
 	get_tree().quit()
+
+
+## Fits a model into the cell at [param place] (or only moves it there when fitting is off)
+## and returns the scale factor used.
+func _place(model: Node3D, bounds: AABB, place: Vector3) -> float:
+	if not _fit:
+		model.position = place
+		return 1.0
+	var footprint := maxf(bounds.size.x, bounds.size.z)
+	var factor := FILL * CELL / footprint if footprint > 0.0 else 1.0
+	var center := bounds.get_center()
+	model.scale = Vector3.ONE * factor
+	model.position = place - Vector3(center.x, bounds.position.y, center.z) * factor
+	return factor
+
+
+## One picture with every model, each on its own cell, in a grid upright on the screen.
+func _sheet(models_dir: String, files: PackedStringArray, out_dir: String) -> void:
+	var yaw := deg_to_rad(VIEW_YAWS[0])
+	var pitch := deg_to_rad(CAMERA_PITCH_DEGREES)
+	# Ground directions that run to the right and upwards on the screen.
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var away := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var rows := ceili(float(files.size()) / SHEET_COLUMNS)
+	_cell.visible = false
+	for index: int in files.size():
+		var model := _load_glb(models_dir + "/" + files[index])
+		if model == null:
+			continue
+		add_child(model)
+		var column := index % SHEET_COLUMNS
+		@warning_ignore("integer_division")
+		var row := index / SHEET_COLUMNS
+		var across := (column - (SHEET_COLUMNS - 1) * 0.5) * SHEET_PLACE.x
+		var up := ((rows - 1) * 0.5 - row) * SHEET_PLACE.y
+		var place := right * across + away * (up / sin(pitch))
+		_place(model, _bounds(model), place)
+		var ground := MeshInstance3D.new()
+		ground.mesh = _cell.mesh
+		ground.material_override = _cell.material_override
+		ground.position = place
+		add_child(ground)
+	var screen := get_viewport().get_visible_rect().size
+	_camera.size = maxf(rows * SHEET_PLACE.y + 0.4, SHEET_COLUMNS * SHEET_PLACE.x * screen.y / screen.x)
+	_aim(Vector3(0.0, 0.35, 0.0), VIEW_YAWS[0])
+	await _capture("%s/all_%d.png" % [out_dir, int(VIEW_YAWS[0])])
 
 
 func _add_stage() -> void:
@@ -91,14 +144,14 @@ func _add_stage() -> void:
 	add_child(sun)
 
 	# One grid cell, so the scale of the model is visible.
-	var cell := MeshInstance3D.new()
+	_cell = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(CELL, CELL)
-	cell.mesh = plane
+	_cell.mesh = plane
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color(0.30, 0.36, 0.44)
-	cell.material_override = material
-	add_child(cell)
+	_cell.material_override = material
+	add_child(_cell)
 
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL

@@ -1,14 +1,19 @@
 # Saves pictures of every .glb in a folder from the game's camera angle and prints their size
 # and triangle counts. Opens a game window for a few seconds.
 #
-#   powershell -File tools\preview-models.ps1 [models folder] [output folder]
+#   powershell -File tools\preview-models.ps1 [models folder] [output folder] [-NoFit]
+#
+# Each model is scaled to fill one grid cell; -NoFit shows models as they are (for the models
+# from tools\build-models.ps1, which are built to cell size). With more than one model an
+# overview picture all_45.png is saved as well.
 #
 # Defaults: assets\3d-test -> build\model-preview (both ignored by git). The run is stopped
 # after -TimeoutSeconds. Exit code: 0 = ok, 3 = stopped after the timeout.
 param(
     [string]$Models = '',
     [string]$Out = '',
-    [int]$TimeoutSeconds = 90
+    [int]$TimeoutSeconds = 90,
+    [switch]$NoFit
 )
 
 $ErrorActionPreference = 'Continue'
@@ -32,6 +37,7 @@ try {
     & $godot --headless --path . --import --quit *> $null
     $arguments = @('--path', '.', 'res://smoke/model_preview.tscn', '--',
         "`"--models=$modelsForGodot`"", "`"--out=$outForGodot`"")
+    if ($NoFit) { $arguments += '--no-fit' }
     $process = Start-Process -FilePath $godot -ArgumentList $arguments -PassThru -NoNewWindow `
         -RedirectStandardOutput $log -RedirectStandardError $errLog
     $null = $process.Handle

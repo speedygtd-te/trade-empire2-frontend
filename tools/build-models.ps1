@@ -1,4 +1,4 @@
-# Builds every hand-made model (scripts\3d\models\*.py, except the kit) into a game-ready GLB:
+# Builds every hand-made model (scripts\3d\models\*.py, except kit and parts) into a game-ready GLB:
 # geometry from code, the look baked into one texture per model. Runs Blender without a window.
 #
 #   powershell -File tools\build-models.ps1 [output folder] [-Only pump]
@@ -24,7 +24,8 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 $failed = 0
 $models = Get-ChildItem -LiteralPath (Join-Path $root 'scripts\3d\models') -Filter '*.py' -File |
-    Where-Object { $_.BaseName -ne 'kit' -and (-not $Only -or $_.BaseName -eq $Only) } | Sort-Object Name
+    Where-Object { $_.BaseName -notin @('kit', 'parts') -and (-not $Only -or $_.BaseName -eq $Only) } |
+    Sort-Object Name
 foreach ($model in $models) {
     $target = Join-Path $Out ($model.BaseName + '.glb')
     $lines = & $blender --background --factory-startup --python $model.FullName -- --output $target 2>&1 |
