@@ -37,23 +37,40 @@ STAGE_SCENE = "Trade Empire"
 TEXTURE_FOLDER = os.environ.get("TE_TEXTURE_FOLDER") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "textures")
 
-# Colour name -> (sRGB colour, surface kind). Kinds: "metal" (surface texture, rust),
-# "concrete" (surface texture), "plain" (flat: glass, openings, rubber).
+# Colour name -> (sRGB colour, surface kind, finish). Kinds: "metal" (surface texture, rust),
+# "concrete" (surface texture), "plain" (flat: glass, openings, rubber). The finish is
+# (roughness, metalness), each 0..1: low roughness shines, high metalness mirrors the
+# surroundings in the colour of the surface.
+_PAINT = (0.42, 0.35)
+_MATTE = (0.90, 0.0)
 PALETTE = {
-    "steel": ((0.34, 0.44, 0.47), "metal"),
-    "steel_dark": ((0.20, 0.27, 0.30), "metal"),
-    "steel_light": ((0.55, 0.64, 0.66), "metal"),
-    "concrete": ((0.64, 0.64, 0.60), "concrete"),
-    "concrete_dark": ((0.37, 0.36, 0.34), "concrete"),
-    "rust": ((0.60, 0.32, 0.17), "metal"),
-    "red": ((0.74, 0.17, 0.12), "metal"),
-    "yellow": ((0.93, 0.71, 0.16), "metal"),
-    "blue": ((0.17, 0.32, 0.52), "metal"),
-    "blue_dark": ((0.11, 0.20, 0.35), "metal"),
-    "rock": ((0.41, 0.36, 0.31), "concrete"),
-    "solar": ((0.06, 0.10, 0.24), "plain"),
-    "glass": ((0.52, 0.72, 0.80), "plain"),
-    "dark": ((0.07, 0.08, 0.09), "plain"),
+    "steel": ((0.34, 0.44, 0.47), "metal", (0.45, 0.35)),
+    "steel_dark": ((0.20, 0.27, 0.30), "metal", (0.50, 0.30)),
+    "steel_light": ((0.55, 0.64, 0.66), "metal", (0.35, 0.60)),
+    "concrete": ((0.64, 0.64, 0.60), "concrete", _MATTE),
+    "concrete_dark": ((0.37, 0.36, 0.34), "concrete", _MATTE),
+    "rust": ((0.60, 0.32, 0.17), "metal", (0.85, 0.10)),
+    "red": ((0.74, 0.17, 0.12), "metal", _PAINT),
+    "yellow": ((0.93, 0.71, 0.16), "metal", _PAINT),
+    # A metal mirrors the surroundings in its own colour, so a dark colour turns almost black
+    # when it is made metallic (tried 2026-11-17). The blues are therefore lighter than the
+    # paint they stand for.
+    "blue": ((0.26, 0.45, 0.72), "metal", (0.28, 0.60)),
+    "blue_dark": ((0.17, 0.30, 0.52), "metal", (0.30, 0.60)),
+    "rock": ((0.41, 0.36, 0.31), "concrete", _MATTE),
+    "solar": ((0.06, 0.10, 0.24), "plain", (0.10, 0.30)),
+    "glass": ((0.52, 0.72, 0.80), "plain", (0.06, 0.0)),
+    "dark": ((0.07, 0.08, 0.09), "plain", (0.60, 0.0)),
+    "rust_brown": ((0.42, 0.24, 0.16), "metal", (0.70, 0.30)),
+    "rust_brown_dark": ((0.28, 0.16, 0.11), "metal", (0.75, 0.25)),
+    "green": ((0.30, 0.55, 0.25), "plain", (0.80, 0.0)),
+    "white": ((0.86, 0.88, 0.88), "metal", _PAINT),
+    # Bright colours of lit things (molten metal, grow lights, screens); not yet emissive.
+    "glow_orange": ((1.0, 0.55, 0.12), "plain", (0.40, 0.0)),
+    "glow_purple": ((0.78, 0.35, 1.0), "plain", (0.40, 0.0)),
+    "glow_cyan": ((0.35, 0.90, 0.90), "plain", (0.20, 0.0)),
+    "soil": ((0.36, 0.24, 0.16), "concrete", _MATTE),
+    "plant": ((0.24, 0.62, 0.22), "plain", (0.85, 0.0)),
 }
 # How a surface kind is stored in the fourth channel of the face colour.
 _KINDS = {"concrete": 0.0, "plain": 0.5, "metal": 1.0}
@@ -73,9 +90,19 @@ CORNER_DARKNESS = 0.45
 EDGE_WIDTH = 0.008
 EDGE_AMOUNT = 0.5
 EDGE_COLOR = (0.80, 0.80, 0.77)
+# Finish of rust, of bare metal at worn edges, and how much dirt in corners roughens.
+RUST_ROUGHNESS = 0.95
+BARE_ROUGHNESS = 0.30
+DIRT_ROUGHNESS = 0.25
+# Uneven gloss: size of the dull and shiny patches (higher = smaller patches), how far they
+# move the roughness, and how much the scratches of the surface texture add.
+GLOSS_PATCH_SCALE = 5.0
+GLOSS_PATCHES = 0.7
+GLOSS_SCRATCHES = 0.6
 BAKE_SAMPLES = 24
 
 _TINT = "tint"
+_FINISH = "finish"
 _SURFACE_PIXELS = 512
 _FACINGS = {
     "+x": (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))),
@@ -99,6 +126,7 @@ class Builder:
         self.name = name
         self._mesh = bmesh.new()
         self._tint = self._mesh.loops.layers.color.new(_TINT)
+        self._finish = self._mesh.loops.layers.float_color.new(_FINISH)
         self._frame = Matrix.Identity(4)
 
     @contextmanager
@@ -172,19 +200,22 @@ class Builder:
         scene.collection.objects.link(target)
         if bpy.app.background:
             _bake_look(target)
+        else:
+            mesh.color_attributes.active_color_name = _TINT
         return target
 
     def _faces(self, created: dict) -> set:
         return {face for vert in created["verts"] for face in vert.link_faces}
 
     def _paint(self, faces: set, color: str) -> None:
-        srgb, kind = PALETTE[color]
+        srgb, kind, finish = PALETTE[color]
         # This kind of colour layer stores sRGB; Blender converts it for the shader itself.
         # Converting here as well made every colour far too dark (tried 2026-11-17).
         value = (*srgb, _KINDS[kind])
         for face in faces:
             for loop in face.loops:
                 loop[self._tint] = value
+                loop[self._finish] = (finish[0], finish[1], 0.0, 1.0)
 
 
 def _along(start: Vector, end: Vector, width: float, depth: float) -> Matrix:
@@ -280,9 +311,11 @@ def _surface_image(kind: str) -> bpy.types.Image:
 
 # --- The baked look --------------------------------------------------------------------------
 
-def _look_material() -> bpy.types.Material:
+def _look_material() -> tuple:
     """The recipe as a node graph: palette colour x surface texture, rust on metal, dirt in
-    corners, worn edges. It glows with the result, so the bake records it without lighting."""
+    corners, worn edges, and the finish (roughness, metalness). Returns the material, the
+    input of its glow, and the two results to feed into it one after the other: the colour
+    and the finish. A glowing surface is baked without lighting."""
     material = bpy.data.materials.get("te_look") or bpy.data.materials.new("te_look")
     if material.node_tree is None:
         material.use_nodes = True
@@ -347,8 +380,8 @@ def _look_material() -> bpy.types.Material:
 
     color = mix("MULTIPLY", 1.0, tint_color, shade)
     rusty = mix("MULTIPLY", 1.0, _linear(RUST_COLOR), shade)
-    color = mix("MIX", math_node("MULTIPLY", math_node("MULTIPLY", rust, is_metal), RUST_AMOUNT),
-                color, rusty)
+    rust_amount = math_node("MULTIPLY", math_node("MULTIPLY", rust, is_metal), RUST_AMOUNT)
+    color = mix("MIX", rust_amount, color, rusty)
 
     occlusion = node("ShaderNodeAmbientOcclusion", samples=16, only_local=True)
     occlusion.inputs["Distance"].default_value = 0.3
@@ -371,19 +404,47 @@ def _look_material() -> bpy.types.Material:
                      math_node("MULTIPLY_ADD", textured, 0.7 * EDGE_AMOUNT, 0.3 * EDGE_AMOUNT))
     color = mix("MIX", wear, color, _linear(EDGE_COLOR))
 
+    # The finish starts from the palette colour. Rust is rough and dull, worn edges of metal
+    # are bare and shiny, dirt in corners roughens.
+    def blend(first, second, factor):
+        return math_node("MULTIPLY_ADD", factor, second,
+                         math_node("MULTIPLY", first, math_node("SUBTRACT", 1.0, factor)))
+
+    finish = node("ShaderNodeSeparateColor")
+    link(node("ShaderNodeVertexColor", layer_name=_FINISH).outputs[0], finish.inputs[0])
+    bare = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup), is_metal, clamp=True)
+    # Uneven gloss on textured surfaces: large dull and shiny patches from a noise texture,
+    # fine scratches from the surface texture (its dark spots are rougher).
+    patches = node("ShaderNodeTexNoise")
+    patches.inputs["Scale"].default_value = GLOSS_PATCH_SCALE
+    patches.inputs["Detail"].default_value = 4.0
+    link(coordinates.outputs["Object"], patches.inputs["Vector"])
+    uneven = math_node("ADD",
+                       math_node("MULTIPLY_ADD", patches.outputs[0], GLOSS_PATCHES, -0.5 * GLOSS_PATCHES),
+                       math_node("MULTIPLY_ADD", detail, -2.0 * GLOSS_SCRATCHES, GLOSS_SCRATCHES))
+    roughness = math_node("MULTIPLY_ADD", uneven, textured, finish.outputs[0], clamp=True)
+    roughness = blend(blend(roughness, RUST_ROUGHNESS, rust_amount), BARE_ROUGHNESS, bare)
+    roughness = math_node("MULTIPLY_ADD", math_node("SUBTRACT", 1.0, occlusion.outputs[1]),
+                          DIRT_ROUGHNESS, roughness, clamp=True)
+    metalness = blend(blend(finish.outputs[1], 0.0, rust_amount), 1.0, bare)
+    # Packed the way glTF expects it: green = roughness, blue = metalness.
+    packed = node("ShaderNodeCombineColor")
+    packed.inputs[0].default_value = 1.0
+    link(roughness, packed.inputs[1])
+    link(metalness, packed.inputs[2])
+
     glow = node("ShaderNodeEmission")
-    link(color, glow.inputs["Color"])
     output = node("ShaderNodeOutputMaterial")
     link(glow.outputs[0], output.inputs["Surface"])
-    return material
+    return material, glow.inputs["Color"], color, packed.outputs[0]
 
 
 def _bake_look(target: bpy.types.Object) -> None:
-    """Unwraps the model, bakes the look into one texture and leaves the model with a plain
-    material that shows this texture."""
+    """Unwraps the model, bakes the look into two textures (colour and finish) and leaves the
+    model with a plain material that shows them."""
     scene = target.users_scene[0]
     mesh = target.data
-    look = _look_material()
+    look, glow_input, color_result, finish_result = _look_material()
     mesh.materials.append(look)
     if len(mesh.uv_layers) == 0:
         mesh.uv_layers.new(name="UVMap")
@@ -395,46 +456,64 @@ def _bake_look(target: bpy.types.Object) -> None:
     bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.004)
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    image = bpy.data.images.new(target.name + "_look", TEXTURE_PIXELS, TEXTURE_PIXELS, alpha=False)
     receiver = look.node_tree.nodes.new("ShaderNodeTexImage")
-    receiver.image = image
     look.node_tree.nodes.active = receiver
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = BAKE_SAMPLES
-    bpy.ops.object.bake(type="EMIT", margin=6, use_clear=True)
-    image.pack()
+
+    def bake(result, suffix: str, is_data: bool) -> bpy.types.Image:
+        for existing in list(glow_input.links):
+            look.node_tree.links.remove(existing)
+        look.node_tree.links.new(result, glow_input)
+        image = bpy.data.images.new(target.name + suffix, TEXTURE_PIXELS, TEXTURE_PIXELS,
+                                    alpha=False, is_data=is_data)
+        receiver.image = image
+        bpy.ops.object.bake(type="EMIT", margin=6, use_clear=True)
+        image.pack()
+        return image
+
+    color_image = bake(color_result, "_color", False)
+    finish_image = bake(finish_result, "_finish", True)
 
     final = bpy.data.materials.new(target.name)
     if final.node_tree is None:
         final.use_nodes = True
-    nodes = final.node_tree.nodes
+    nodes, links = final.node_tree.nodes, final.node_tree.links
     nodes.clear()
     output = nodes.new("ShaderNodeOutputMaterial")
     shader = nodes.new("ShaderNodeBsdfPrincipled")
-    texture = nodes.new("ShaderNodeTexImage")
-    texture.image = image
-    shader.inputs["Metallic"].default_value = 0.0
-    shader.inputs["Roughness"].default_value = 0.8
-    final.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
-    final.node_tree.links.new(shader.outputs["BSDF"], output.inputs["Surface"])
+    color_texture = nodes.new("ShaderNodeTexImage")
+    color_texture.image = color_image
+    finish_texture = nodes.new("ShaderNodeTexImage")
+    finish_texture.image = finish_image
+    split = nodes.new("ShaderNodeSeparateColor")
+    links.new(color_texture.outputs["Color"], shader.inputs["Base Color"])
+    links.new(finish_texture.outputs["Color"], split.inputs[0])
+    links.new(split.outputs[1], shader.inputs["Roughness"])
+    links.new(split.outputs[2], shader.inputs["Metallic"])
+    links.new(shader.outputs["BSDF"], output.inputs["Surface"])
     mesh.materials.clear()
     mesh.materials.append(final)
-    mesh.color_attributes.remove(mesh.color_attributes[_TINT])
+    for name in (_TINT, _FINISH):
+        mesh.color_attributes.remove(mesh.color_attributes[name])
 
 
 # --- Checking, showing, writing ---------------------------------------------------------------
 
-def describe(target: bpy.types.Object) -> dict:
-    """Size and triangle count, plus what breaks the limits of a 1x1x1 module."""
+def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1)) -> dict:
+    """Size and triangle count, plus what breaks the limits of the model: within `footprint`
+    of each of its `cells` (x, y) on the ground and below MAX_HEIGHT."""
     mesh = target.data
     low = Vector((min(v.co.x for v in mesh.vertices), min(v.co.y for v in mesh.vertices),
                   min(v.co.z for v in mesh.vertices)))
     high = Vector((max(v.co.x for v in mesh.vertices), max(v.co.y for v in mesh.vertices),
                    max(v.co.z for v in mesh.vertices)))
     problems = []
-    if max(abs(low.x), abs(low.y), abs(high.x), abs(high.y)) > FOOTPRINT / 2.0 + 1e-6:
-        problems.append("reaches outside the footprint of %.2f" % FOOTPRINT)
+    limit_x = cells[0] - 1.0 + footprint
+    limit_y = cells[1] - 1.0 + footprint
+    if max(abs(low.x), abs(high.x)) > limit_x / 2.0 + 1e-6 or max(abs(low.y), abs(high.y)) > limit_y / 2.0 + 1e-6:
+        problems.append("reaches outside the footprint of %.2f x %.2f" % (limit_x, limit_y))
     if high.z > MAX_HEIGHT + 1e-6:
         problems.append("taller than %.2f" % MAX_HEIGHT)
     if abs(low.z) > 1e-6:
@@ -500,15 +579,52 @@ def export_glb(target: bpy.types.Object, path: str) -> None:
         )
 
 
-def run_from_command_line(build) -> None:
-    """Entry point of a model script started with blender --background --python."""
+def run_many_from_command_line(builders: dict) -> None:
+    """Entry point of a script that builds several models: `builders` maps a file name (without
+    .glb) to (build function, cells). Writes every model into --output-dir; --only limits it to
+    some names (comma separated)."""
+    arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--only", default="")
+    options = parser.parse_args(arguments)
+    wanted = [name for name in options.only.split(",") if name]
+    failed = 0
+    for name, (build, cells) in builders.items():
+        if wanted and name not in wanted:
+            continue
+        path = os.path.join(options.output_dir, name + ".glb")
+        try:
+            target = build()
+            facts = describe(target, FOOTPRINT, cells)
+            export_glb(target, path)
+            mesh = target.data
+            bpy.data.objects.remove(target, do_unlink=True)
+            bpy.data.meshes.remove(mesh)
+        except Exception as error:
+            import traceback
+            traceback.print_exc()
+            print("FAIL  %s: %s" % (name, error))
+            failed += 1
+            continue
+        print("RESULT %s.glb: %d triangles, size %s, %.1f KB%s" % (
+            name, facts["triangles"], facts["size"], os.path.getsize(path) / 1024.0,
+            "".join(", PROBLEM: " + problem for problem in facts["problems"])))
+        if facts["problems"]:
+            failed += 1
+    sys.exit(1 if failed else 0)
+
+
+def run_from_command_line(build, footprint: float = FOOTPRINT, cells=(1, 1)) -> None:
+    """Entry point of a model script started with blender --background --python. Hulls pass
+    footprint 1.0 (they fill their cell); modules larger than one cell pass `cells` (x, y)."""
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     options = parser.parse_args(arguments)
     try:
         target = build()
-        facts = describe(target)
+        facts = describe(target, footprint, cells)
         export_glb(target, options.output)
     except Exception as error:  # Blender would otherwise exit with code 0.
         import traceback

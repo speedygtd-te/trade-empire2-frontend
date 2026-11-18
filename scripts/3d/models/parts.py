@@ -141,6 +141,26 @@ def braced_frame(model, center, half: float, bottom: float, top: float, leg: flo
         model.beam((*following, bottom + 0.01), (*corner, top - 0.01), leg * 0.57, brace)
 
 
+def room(model, floor: str = "blue", wall: str = "blue", cap: str = "blue_dark",
+         height: float = 0.40, half: float = 0.42, trim: str = "yellow") -> float:
+    """An open room: a floor plate and two walls meeting in the back left corner (+y, -x), the
+    open sides towards the camera. Returns the height of the floor's top."""
+    floor_top = 0.06
+    model.box((0.0, 0.0, floor_top / 2.0), (half * 2.0, half * 2.0, floor_top), floor)
+    model.plate((0.0, -half - _HAIR, floor_top - 0.012), (half * 2.0, 0.012), "-y", trim)
+    model.plate((half + _HAIR, 0.0, floor_top - 0.012), (half * 2.0, 0.012), "+x", trim)
+    thickness = 0.07
+    middle = floor_top + height / 2.0
+    model.box((thickness / 2.0, half - thickness / 2.0, middle), (half * 2.0 - thickness, thickness, height), wall)
+    model.box((-half + thickness / 2.0, 0.0, middle), (thickness, half * 2.0, height), wall)
+    top = floor_top + height
+    model.box((thickness / 2.0, half - thickness / 2.0, top + 0.01), (half * 2.0 - thickness + 0.02, thickness + 0.02, 0.02), cap)
+    model.box((-half + thickness / 2.0, 0.0, top + 0.01), (thickness + 0.02, half * 2.0 + 0.02, 0.02), cap)
+    model.plate((0.05, half - thickness - _HAIR, top - 0.03), (half * 2.0 - thickness - 0.1, 0.014), "-y", trim)
+    model.plate((-half + thickness + _HAIR, -0.04, top - 0.03), (half * 2.0 - 0.1, 0.014), "+x", trim)
+    return floor_top
+
+
 def lattice_mast(model, center, bottom: float, top: float, half_bottom: float, half_top: float,
                  bays: int = 3, leg: float = 0.028, color: str = "steel",
                  brace: str = "steel_dark") -> None:
