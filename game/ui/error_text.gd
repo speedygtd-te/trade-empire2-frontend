@@ -34,6 +34,11 @@ const HANDLED_CODES: PackedStringArray = [
 	"STRUCTURE_NOT_EMPTY",
 	"LAST_STRUCTURE",
 	"TIER_NOT_UNLOCKED",
+	# Combat and the core module (draft.22).
+	"CORE_MODULE_LOCKED",
+	"HULL_DESTROYED",
+	"HULL_NOT_DESTROYED",
+	"PROTECTED_ZONE",
 	# Movement (draft.19): building is refused while a structure or its host travels.
 	"STRUCTURE_MOVING",
 	"HOST_MOVING",

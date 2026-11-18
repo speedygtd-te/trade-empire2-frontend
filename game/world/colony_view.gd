@@ -46,6 +46,7 @@ const AIRLESS_GROUND_DARKENING := 0.45
 const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
 const COLOR_BUILDING := Color(0.984, 0.749, 0.141, 0.40)
+const COLOR_DISABLED := Color(0.55, 0.08, 0.08, 0.45)
 const COLOR_SELECTED := Color(0.133, 0.827, 0.933, 0.9)
 const COLOR_STRUCTURE := Color(0.133, 0.827, 0.933, 0.18)
 
@@ -410,6 +411,8 @@ func _build_structure(structure: ColonyModel) -> void:
 		node.rotation.y = -deg_to_rad(placed.rotation)
 		if placed.is_building():
 			_tint(node, COLOR_BUILDING)
+		elif placed.is_disabled():
+			_tint(node, COLOR_DISABLED)
 		module_group.add_child(node)
 
 

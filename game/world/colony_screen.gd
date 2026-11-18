@@ -25,6 +25,8 @@ const REFRESH_SECONDS := 1.0
 ## fall towards the camera's upper right.
 const FIXED_SUN_ELEVATION := 0.87
 const FIXED_SUN_AZIMUTH := 3.67
+## The module every home colony has (draft.22): it cannot be built or removed.
+const CORE_MODULE := "CORE_MODULE"
 ## Where the detail tier of this device is kept between starts.
 const DETAIL_PATH := "user://detail.json"
 ## How often the sun is moved along its path (seconds); it crawls, so this is plenty.
@@ -628,8 +630,14 @@ func _refresh_view() -> void:
 	else:
 		_info.text = tr("COLONY_CELL_MODULE").format({"module": module_name, "hull": hull_name})
 		_info.text += "\n" + _recipe_line(placed)
+		if placed.is_disabled():
+			_info.text += "\n" + tr("COLONY_MODULE_DISABLED")
 	_primary.visible = true
 	_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "module" else tr("COLONY_REMOVE_MODULE")
+	# The core module shields the home colony; neither it nor its hull can be removed.
+	if placed.module_type == CORE_MODULE:
+		_info.text += "\n" + tr("COLONY_CORE_MODULE")
+		_primary.disabled = true
 	var module_def := definitions.module(placed.module_type)
 	if module_def != null and module_def.blueprint_driven and not placed.is_building():
 		_secondary.visible = true

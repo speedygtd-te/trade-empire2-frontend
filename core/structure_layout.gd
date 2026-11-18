@@ -48,6 +48,10 @@ class Module:
 	func is_building() -> bool:
 		return status == "building"
 
+	## Out of action because one of its hulls was destroyed in combat (draft.22).
+	func is_disabled() -> bool:
+		return status == "disabled"
+
 	## Every local cell of the footprint.
 	func cells() -> Array[Vector3i]:
 		var result: Array[Vector3i] = []

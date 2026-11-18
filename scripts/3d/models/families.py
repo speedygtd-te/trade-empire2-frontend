@@ -150,6 +150,30 @@ def block(name, accent="yellow", body="blue", height=0.46, cells=(1, 1), roof=No
     return model.finish()
 
 
+def core_module(name):
+    """The core module (CORE_MODULE): the heart of the home colony that shields it. A reactor
+    core of glowing cyan rings inside a frame of four struts, on a heavy round pedestal."""
+    model = kit.Builder(name)
+    base = 0.05
+    model.box((0.0, 0.0, base / 2.0), (0.84, 0.84, base), "steel_dark")
+    model.cylinder((0.0, 0.0, base), (0.0, 0.0, base + 0.10), 0.34, "steel", segments=16)
+    model.cylinder((0.0, 0.0, base + 0.10), (0.0, 0.0, base + 0.12), 0.36, "yellow", segments=16)
+    top = base + 0.12
+    # The core: a glowing column with rings around it.
+    model.cylinder((0.0, 0.0, top), (0.0, 0.0, top + 0.46), 0.12, "glow_cyan", segments=12)
+    for height in (0.10, 0.23, 0.36):
+        model.cylinder((0.0, 0.0, top + height - 0.015), (0.0, 0.0, top + height + 0.015), 0.20,
+                       "steel_dark", segments=16)
+        model.cylinder((0.0, 0.0, top + height - 0.006), (0.0, 0.0, top + height + 0.006), 0.205,
+                       "glow_cyan", segments=16)
+    model.cylinder((0.0, 0.0, top + 0.46), (0.0, 0.0, top + 0.52), 0.18, "steel", segments=16)
+    # Four struts hold the cap.
+    for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        model.beam((sx * 0.26, sy * 0.26, top), (sx * 0.15, sy * 0.15, top + 0.50), 0.035, "steel_dark")
+    model.cylinder((0.0, 0.0, top + 0.52), (0.0, 0.0, top + 0.60), 0.05, "red", segments=8)
+    return model.finish()
+
+
 def chimneys(model, top, accent, half):
     for x in (-half[0] * 0.5, half[0] * 0.1):
         model.cylinder((x, 0.18, top), (x, 0.18, top + 0.22), 0.04, "steel_dark", segments=8)
@@ -522,6 +546,7 @@ MODELS = {
     "fusion_reactor": (lambda: block("te_fusion_reactor", "glow_purple", body="white", height=0.40, roof=[core]), ONE),
     "geothermal_plant": (lambda: towers("te_geothermal_plant", "glow_orange", 2, color="concrete"), ONE),
     "rtg": (lambda: block("te_rtg", "glow_orange", body="steel_dark", height=0.30, roof=[fans]), ONE),
+    "core_module": (lambda: core_module("te_core_module"), ONE),
     "tidal_generator": (lambda: block("te_tidal_generator", "glow_cyan", body="white", height=0.30, roof=[fans]), ONE),
     "wind_turbine": (lambda: mast("te_wind_turbine", "red", head=rotor_head, height=0.70), ONE),
     "chemical_plant": (lambda: block("te_chemical_plant", "plant", body="steel", height=0.42, roof=[tanks, chimneys], front=[barrels_front]), ONE),

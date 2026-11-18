@@ -126,6 +126,42 @@ func describe(entry: StructureLog.Entry) -> String:
 			return tr("LOG_LAB_SLOTS_SET")
 		"researchCompleted":
 			return tr("LOG_RESEARCH_COMPLETED")
+		"corePlaced":
+			return tr("LOG_CORE_PLACED")
+		"stanceSet":
+			return tr("LOG_STANCE_SET")
+		"combatWarning":
+			return tr("LOG_COMBAT_WARNING")
+		"combatStarted":
+			return tr("LOG_COMBAT_STARTED")
+		"combatEnded":
+			return tr("LOG_COMBAT_ENDED")
+		"hullDestroyed":
+			return tr("LOG_HULL_DESTROYED")
+		"captured":
+			return tr("LOG_CAPTURED")
+		"hullRepaired":
+			return tr("LOG_HULL_REPAIRED")
+		"travelStarted":
+			return tr("LOG_TRAVEL_STARTED")
+		"travelArrived":
+			return tr("LOG_TRAVEL_ARRIVED")
+		"travelBlocked":
+			return tr("LOG_TRAVEL_BLOCKED")
+		"routeArrived":
+			return tr("LOG_ROUTE_ARRIVED")
+		"routeDeparted":
+			return tr("LOG_ROUTE_DEPARTED")
+		"routeStalled":
+			return tr("LOG_ROUTE_STALLED")
+		"routePaused":
+			return tr("LOG_ROUTE_PAUSED")
+		"routeDeleted":
+			return tr("LOG_ROUTE_DELETED")
+		"routeTransfer":
+			return tr("LOG_ROUTE_TRANSFER")
+		"routeFuelPaid":
+			return tr("LOG_ROUTE_FUEL_PAID")
 	return ""
 
 

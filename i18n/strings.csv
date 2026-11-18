@@ -351,3 +351,27 @@ COLONY_CATEGORY_TRANSPORT,Transport
 COLONY_CATEGORY_MILITARY,Military
 COLONY_CATEGORY_OTHER,Other
 COLONY_BUILD_CHANGE,Change
+COLONY_CORE_MODULE,The core module shields your home colony from attacks. It cannot be removed.
+COLONY_MODULE_DISABLED,"Out of action: one of its hulls was destroyed. Repair the hull to start it again."
+ERROR_CORE_MODULE_LOCKED,The core module and the hull under it cannot be removed.
+ERROR_HULL_DESTROYED,This hull is destroyed. Repair it before building on it.
+ERROR_HULL_NOT_DESTROYED,This hull is not destroyed; there is nothing to repair.
+ERROR_PROTECTED_ZONE,This place lies in the protected zone around another player's home colony.
+LOG_CORE_PLACED,"The core module was installed; it shields the home colony."
+LOG_STANCE_SET,"The combat stance was changed."
+LOG_COMBAT_WARNING,"Warning: an armed structure nearby turned aggressive."
+LOG_COMBAT_STARTED,"Combat started."
+LOG_COMBAT_ENDED,"Combat ended."
+LOG_HULL_DESTROYED,"A hull was destroyed in combat."
+LOG_CAPTURED,"Cargo was captured."
+LOG_HULL_REPAIRED,"A destroyed hull was repaired."
+LOG_TRAVEL_STARTED,"Set off on a journey."
+LOG_TRAVEL_ARRIVED,"Arrived at the destination."
+LOG_TRAVEL_BLOCKED,"The journey was stopped: the destination could not be reached."
+LOG_ROUTE_ARRIVED,"Arrived at a station of its route."
+LOG_ROUTE_DEPARTED,"Left a station of its route."
+LOG_ROUTE_STALLED,"The route is stuck."
+LOG_ROUTE_PAUSED,"The route was paused."
+LOG_ROUTE_DELETED,"The route was ended."
+LOG_ROUTE_TRANSFER,"Goods were moved by a route."
+LOG_ROUTE_FUEL_PAID,"Paid fuel for a transporter of a route."
