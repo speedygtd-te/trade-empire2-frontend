@@ -39,6 +39,7 @@ const HANDLED_CODES: PackedStringArray = [
 	"HULL_DESTROYED",
 	"HULL_NOT_DESTROYED",
 	"PROTECTED_ZONE",
+	"NO_CARGO_SPACE",
 	# Movement (draft.19): building is refused while a structure or its host travels.
 	"STRUCTURE_MOVING",
 	"HOST_MOVING",

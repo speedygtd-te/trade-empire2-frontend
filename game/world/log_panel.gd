@@ -128,6 +128,8 @@ func describe(entry: StructureLog.Entry) -> String:
 			return tr("LOG_RESEARCH_COMPLETED")
 		"corePlaced":
 			return tr("LOG_CORE_PLACED")
+		"intentFallback":
+			return tr("LOG_INTENT_FALLBACK")
 		"stanceSet":
 			return tr("LOG_STANCE_SET")
 		"combatWarning":
