@@ -62,7 +62,8 @@ func _run() -> void:
 	view.look_at_cell(centre)
 	view.zoom = 9.0
 	view.zoom_by(1.0)
-	view.set_sun(deg_to_rad(-25.0), deg_to_rad(250.0), colony._model.star_kelvin, colony._model.atmosphere_density)
+	view.set_sun(deg_to_rad(-25.0), deg_to_rad(250.0), colony._model.star_kelvin, colony._model.atmosphere_density,
+		colony._model.star_brightness(), colony._model.star_size())
 	await _capture("showcase_closed_night")
 	colony.set_process(true)
 

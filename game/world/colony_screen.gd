@@ -336,12 +336,14 @@ func _on_ready_to_show() -> void:
 ## star and this air.
 func _update_sun() -> void:
 	if _model.sun == null:
-		_view.set_sun(FIXED_SUN_ELEVATION, FIXED_SUN_AZIMUTH, _model.star_kelvin, _model.atmosphere_density)
+		_view.set_sun(FIXED_SUN_ELEVATION, FIXED_SUN_AZIMUTH, _model.star_kelvin, _model.atmosphere_density,
+		_model.star_brightness(), _model.star_size())
 		return
 	var cell := _view.focus_cell()
 	var angles := SunPosition.cell_angles(cell.x, cell.y, _model.size_x)
 	var sky := _model.sun.sky_at(angles.x, angles.y, Services.clock.now_ms() / 1000.0)
-	_view.set_sun(sky.elevation, sky.azimuth, _model.star_kelvin, _model.atmosphere_density)
+	_view.set_sun(sky.elevation, sky.azimuth, _model.star_kelvin, _model.atmosphere_density,
+		_model.star_brightness(), _model.star_size())
 
 
 func _on_load_failed(error: ApiError) -> void:

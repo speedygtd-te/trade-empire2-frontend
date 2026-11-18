@@ -83,3 +83,45 @@ func test_airless_runs_from_no_air_to_thin_air() -> void:
 	assert_float(SkyLight.airless(0.0)).is_equal(1.0)
 	assert_float(SkyLight.airless(0.35)).is_equal_approx(0.5, 0.001)
 	assert_float(SkyLight.airless(EARTH_AIR)).is_equal(0.0)
+
+
+func test_irradiance_falls_with_the_square_of_the_distance() -> void:
+	assert_float(SkyLight.irradiance(1.0, 1.0)).is_equal_approx(1.0, 0.0001)
+	assert_float(SkyLight.irradiance(1.0, 2.0)).is_equal_approx(0.25, 0.0001)
+	# A red dwarf (0.022 suns) seen from 0.7 AU: about 4.5 % of Earth's sunlight.
+	assert_float(SkyLight.irradiance(0.022, 0.7)).is_equal_approx(0.0449, 0.001)
+
+
+func test_brightness_is_compressed_but_ordered() -> void:
+	assert_float(SkyLight.brightness(1.0)).is_equal_approx(1.0, 0.0001)
+	var red_dwarf := SkyLight.brightness(0.045)
+	var close_hot := SkyLight.brightness(10.0)
+	assert_float(red_dwarf).is_between(0.6, 0.7)
+	assert_float(close_hot).is_between(1.2, 1.3)
+	assert_float(SkyLight.brightness(0.0)).is_equal(SkyLight.BRIGHTNESS_MIN)
+	assert_float(SkyLight.brightness(1.0e6)).is_equal(SkyLight.BRIGHTNESS_MAX)
+
+
+func test_star_radius_follows_luminosity_and_temperature() -> void:
+	assert_float(SkyLight.star_radius(1.0, 5778.0)).is_equal_approx(1.0, 0.001)
+	# A red giant: bright but cool, so very large.
+	assert_float(SkyLight.star_radius(150.0, 4000.0)).is_greater(20.0)
+	# A white dwarf: hot but faint, so tiny.
+	assert_float(SkyLight.star_radius(0.003, 15000.0)).is_less(0.02)
+
+
+func test_large_looking_stars_soften_shadows() -> void:
+	var sun := SkyLight.shadow_blur(SkyLight.apparent_size(1.0, 1.0), 0.0)
+	var giant := SkyLight.shadow_blur(SkyLight.apparent_size(25.0, 5.0), 0.0)
+	var dwarf := SkyLight.shadow_blur(SkyLight.apparent_size(0.01, 1.0), 0.0)
+	assert_float(giant).is_greater(sun * 3.0)
+	assert_float(dwarf).is_less(sun)
+	# Haze adds on top.
+	assert_float(SkyLight.shadow_blur(1.0, 2.0)).is_greater(sun + 2.0)
+
+
+func test_star_brightness_scales_sun_and_sky() -> void:
+	var full := SkyLight.at(deg_to_rad(40.0), SUN_LIKE, EARTH_AIR)
+	var dim := SkyLight.at(deg_to_rad(40.0), SUN_LIKE, EARTH_AIR, 0.6)
+	assert_float(dim.sun.r).is_equal_approx(full.sun.r * 0.6, 0.0001)
+	assert_float(dim.sky.b).is_equal_approx(full.sky.b * 0.6, 0.0001)

@@ -29,9 +29,6 @@ const NIGHT_COLOR := Color(0.45, 0.55, 0.85)
 ## Light strengths at full sun and full skylight (SkyLight gives 0..1).
 const SUN_ENERGY := 1.25
 const SKY_ENERGY := 0.6
-## Shadow edge blur without air and with very thick air (Light3D.shadow_blur).
-const SHADOW_BLUR_AIRLESS := 0.2
-const SHADOW_BLUR_THICK := 3.0
 ## Strength of lamps and windows (the models' glow masks) by bright day and at night or
 ## without air (SkyLight.lamp_level).
 const LAMP_DAY := 0.25
@@ -611,14 +608,15 @@ func _add_environment() -> void:
 ## temperature (Kelvin) and the atmosphere's density (SkyLight): low sun through air turns red,
 ## thick air dims, airless bodies keep white light under a black sky. At night a dim bluish
 ## light stays, so the colony remains readable on a phone.
-func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, density: float = 1.0) -> void:
+func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, density: float = 1.0,
+		star_brightness: float = 1.0, star_size: float = 1.0) -> void:
 	var to_sun := Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
 	var up := Vector3.UP if absf(to_sun.y) < 0.999 else Vector3.FORWARD
 	_sun.basis = Basis.looking_at(-to_sun, up)
-	var light := SkyLight.at(elevation, star_kelvin, density)
-	# Haze softens shadow edges a little; without air they stay crisp. A constant blur is all the
-	# Compatibility renderer offers (no PCSS).
-	_sun.shadow_blur = lerpf(SHADOW_BLUR_AIRLESS, SHADOW_BLUR_THICK, clampf(density / 2.0, 0.0, 1.0))
+	var light := SkyLight.at(elevation, star_kelvin, density, star_brightness)
+	# A large-looking star and haze soften shadow edges; a small star without air keeps them
+	# crisp. A constant blur is all the Compatibility renderer offers (no PCSS).
+	_sun.shadow_blur = SkyLight.shadow_blur(star_size, density)
 	var strength := maxf(light.sun.r, maxf(light.sun.g, light.sun.b))
 	_sun.visible = strength > 0.001
 	if _sun.visible:

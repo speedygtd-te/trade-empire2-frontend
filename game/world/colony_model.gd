@@ -48,6 +48,9 @@ var body_name := ""
 var body_type := ""
 ## Light of this place: the star's surface temperature (Kelvin) and the air's density.
 var star_kelvin := 5800.0
+## The star's luminosity (in suns) and its distance from this body (AU; a moon's planet's).
+var star_luminosity := 1.0
+var star_distance_au := 1.0
 var atmosphere_density := 1.0
 ## Gases of the air → share 0..1 (`Environment.atmosphere`); empty without air.
 var atmosphere: Dictionary = {}
@@ -135,11 +138,19 @@ func load_home() -> void:
 		if planet.is_ok():
 			parent = planet.data
 	sun = SunPosition.from_body(body.data, parent)
+	var orbit := Wire.as_dict((parent if not parent.is_empty() else body.data).get("orbit"))
+	var distance: Variant = orbit.get("radiusAu")
+	if typeof(distance) == TYPE_FLOAT:
+		star_distance_au = distance
 	var system := await Services.api.get_json("/v2/systems/" + system_id.uri_encode())
 	if system.is_ok():
-		var kelvin: Variant = Wire.as_dict(system.data.get("star")).get("temperature")
+		var star := Wire.as_dict(system.data.get("star"))
+		var kelvin: Variant = star.get("temperature")
 		if typeof(kelvin) == TYPE_FLOAT:
 			star_kelvin = kelvin
+		var luminosity: Variant = star.get("luminosity")
+		if typeof(luminosity) == TYPE_FLOAT:
+			star_luminosity = luminosity
 
 	var layout_error := await _load_layout(true)
 	if layout_error != null:
@@ -150,6 +161,17 @@ func load_home() -> void:
 	ready_to_show.emit()
 	reload_research()
 	reload_production()
+
+
+## Brightness of the starlight here (SkyLight.brightness): dim around a red dwarf, bright close
+## to a hot star.
+func star_brightness() -> float:
+	return SkyLight.brightness(SkyLight.irradiance(star_luminosity, star_distance_au))
+
+
+## How large the star looks here compared with the Sun from Earth (soft shadows when large).
+func star_size() -> float:
+	return SkyLight.apparent_size(SkyLight.star_radius(star_luminosity, star_kelvin), star_distance_au)
 
 
 func is_guest() -> bool:
@@ -480,6 +502,8 @@ func _add_guest(id: int) -> ColonyModel:
 	guest.body_type = body_type
 	guest.size_x = size_x
 	guest.star_kelvin = star_kelvin
+	guest.star_luminosity = star_luminosity
+	guest.star_distance_au = star_distance_au
 	guest.atmosphere_density = atmosphere_density
 	guest.atmosphere = atmosphere
 	guest.sun = sun

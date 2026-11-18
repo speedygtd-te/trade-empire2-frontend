@@ -152,11 +152,13 @@ func _look(cell: Vector3i, zoom: float) -> void:
 
 
 func _day() -> void:
-	_colony._view.set_sun(deg_to_rad(48.0), deg_to_rad(210.0), _colony._model.star_kelvin, _colony._model.atmosphere_density)
+	_colony._view.set_sun(deg_to_rad(48.0), deg_to_rad(210.0), _colony._model.star_kelvin, _colony._model.atmosphere_density,
+		_colony._model.star_brightness(), _colony._model.star_size())
 
 
 func _night() -> void:
-	_colony._view.set_sun(deg_to_rad(-25.0), deg_to_rad(250.0), _colony._model.star_kelvin, _colony._model.atmosphere_density)
+	_colony._view.set_sun(deg_to_rad(-25.0), deg_to_rad(250.0), _colony._model.star_kelvin, _colony._model.atmosphere_density,
+		_colony._model.star_brightness(), _colony._model.star_size())
 
 
 ## Props built and drawn, and the frame's draw calls and primitives with and without them.

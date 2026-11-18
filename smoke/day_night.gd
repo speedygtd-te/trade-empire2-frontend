@@ -48,15 +48,29 @@ func _run() -> void:
 		["shadow_airless", 30.0, 5800.0, 0.0],
 		["shadow_earth", 30.0, 5800.0, 1.0],
 		["shadow_thick", 30.0, 5800.0, 2.5],
+		# Star types at the same sun height and Earth-like air: [luminosity (suns), distance (AU)].
+		["star_g_1au", 35.0, 5778.0, 1.0, 1.0, 1.0],
+		["star_m_dwarf", 35.0, 2754.0, 1.0, 0.022, 0.7],
+		["star_red_giant", 35.0, 3900.0, 1.0, 150.0, 6.0],
+		["star_f_close", 35.0, 7000.0, 1.0, 6.0, 0.8],
+		["star_white_dwarf", 35.0, 15000.0, 1.0, 0.003, 0.05],
+		["colony_own_star", 35.0, own_kelvin, own_air, colony._model.star_luminosity, colony._model.star_distance_au],
 	]
 	for scene: Array in scenes:
 		var label: String = scene[0]
 		var elevation: float = scene[1]
 		var kelvin: float = scene[2]
 		var air: float = scene[3]
+		var luminosity: float = scene[4] if scene.size() > 4 else 1.0
+		var distance: float = scene[5] if scene.size() > 5 else 1.0
+		var brightness := SkyLight.brightness(SkyLight.irradiance(luminosity, distance))
+		var size := SkyLight.apparent_size(SkyLight.star_radius(luminosity, kelvin), distance)
 		# The screen sets the real sun again every few seconds; hold it off for the picture.
 		colony._sun_left = 3600.0
-		colony._view.set_sun(deg_to_rad(elevation), deg_to_rad(250.0), kelvin, air)
+		colony._view.set_sun(deg_to_rad(elevation), deg_to_rad(250.0), kelvin, air, brightness, size)
+		if scene.size() > 4:
+			print("STAR  %s: brightness %.2f, apparent size %.2f, shadow blur %.2f" % [
+				label, brightness, size, SkyLight.shadow_blur(size, air)])
 		await get_tree().create_timer(0.5).timeout
 		await RenderingServer.frame_post_draw
 		var path := "%s/%s.png" % [_out_dir, label]

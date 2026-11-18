@@ -13,6 +13,16 @@ extends RefCounted
 const ZENITH_DEPTH := Vector3(0.06, 0.13, 0.31)
 ## How far below the horizon the sky still glows (twilight), in radians per unit of density.
 const TWILIGHT_PER_DENSITY := deg_to_rad(9.0)
+## How much brighter or darker the light gets per tenfold starlight (Earth = 1), and the
+## limits: real starlight spans orders of magnitude, the game keeps it playable.
+const BRIGHTNESS_PER_DECADE := 0.26
+const BRIGHTNESS_MIN := 0.55
+const BRIGHTNESS_MAX := 1.3
+## Shadow edge blur (Light3D.shadow_blur): per unit of the star's apparent size (the Sun seen
+## from Earth = 1), and what thick haze adds on top (density 2 and more).
+const SHADOW_BLUR_PER_SIZE := 0.2
+const SHADOW_BLUR_HAZE := 2.8
+const SUN_KELVIN := 5778.0
 ## Air density from which a body is no longer airless for its lamps (V1: airless factor
 ## 1 - density / 0.7, lit buildings from 0.5 on).
 const AIRLESS_DENSITY := 0.7
@@ -51,8 +61,40 @@ static func star_color(kelvin: float) -> Color:
 	return Color(r / top, g / top, b / top)
 
 
-## Sunlight and skylight for a sun `elevation` radians above the horizon.
-static func at(elevation: float, star_kelvin: float, density: float) -> Light:
+## Starlight reaching a body compared with the Sun's at Earth: luminosity (in suns) divided by
+## the square of the distance (AU).
+static func irradiance(luminosity: float, distance_au: float) -> float:
+	return maxf(luminosity, 0.0) / maxf(distance_au * distance_au, 0.0001)
+
+
+## Brightness of sunlight and skylight for an irradiance: 1 at Earth, a quarter more or less
+## per tenfold, within BRIGHTNESS_MIN..BRIGHTNESS_MAX (a red dwarf's planet is dim, not black).
+static func brightness(irradiance_earths: float) -> float:
+	var decades := log(maxf(irradiance_earths, 0.000001)) / log(10.0)
+	return clampf(1.0 + BRIGHTNESS_PER_DECADE * decades, BRIGHTNESS_MIN, BRIGHTNESS_MAX)
+
+
+## Radius of a star in solar radii from its luminosity (suns) and surface temperature (Kelvin),
+## after Stefan–Boltzmann: L = R² · T⁴.
+static func star_radius(luminosity: float, kelvin: float) -> float:
+	var ratio := SUN_KELVIN / maxf(kelvin, 1.0)
+	return sqrt(maxf(luminosity, 0.0)) * ratio * ratio
+
+
+## How large the star looks in the sky compared with the Sun from Earth.
+static func apparent_size(radius_suns: float, distance_au: float) -> float:
+	return maxf(radius_suns, 0.0) / maxf(distance_au, 0.0001)
+
+
+## Blur of the shadow edges: a large-looking star (red giant, close orbit) casts soft shadows,
+## a small one (white dwarf, far away) crisp ones; thick haze softens them further.
+static func shadow_blur(apparent: float, density: float) -> float:
+	return SHADOW_BLUR_PER_SIZE * clampf(apparent, 0.25, 8.0) + SHADOW_BLUR_HAZE * clampf(density / 2.0, 0.0, 1.0)
+
+
+## Sunlight and skylight for a sun `elevation` radians above the horizon; `star_brightness`
+## (see `brightness`) scales both.
+static func at(elevation: float, star_kelvin: float, density: float, star_brightness: float = 1.0) -> Light:
 	var light := Light.new()
 	var star := star_color(star_kelvin)
 	var air := maxf(density, 0.0)
@@ -78,6 +120,8 @@ static func at(elevation: float, star_kelvin: float, density: float) -> Light:
 		tint = tint.lerp(Color(1.0, 0.55, 0.35), low * 0.6)
 		var strength := clampf(strongest * 2.5, 0.0, 1.0) * glow
 		light.sky = Color(star.r * tint.r, star.g * tint.g, star.b * tint.b) * strength
+	light.sun *= star_brightness
+	light.sky *= star_brightness
 	return light
 
 
