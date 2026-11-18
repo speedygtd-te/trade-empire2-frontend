@@ -5,7 +5,9 @@
 //   node scripts/3d/make-texture.cjs --preset metal [--model grok|flux] [--seed 7] [--out scripts/3d/textures] [--name file]
 //
 // Presets: see PRESETS. Output: <out>/<name or preset>.jpg (1024 x 1024). Every run costs credits.
-// In use since 2026-11-18: metal.jpg = metal_grimy, concrete.jpg = concrete_raw (darker, dirtier).
+// In use since 2026-11-18: metal.jpg = metal_grimy, concrete.jpg = concrete_raw (darker, dirtier);
+// the nature presets (granite … snow) under their own names, for the props.
+// In a git worktree: set FAL_ENV_FILE to the main checkout's scripts/.env.
 // grok is the default: in the comparison of 2026-11-17 it filled the whole image evenly, while
 // flux left a rim, a vignette and a nearly empty middle.
 // The prompts follow Docs/LESSONS-asset-pipeline.md, section 3: no negative prompts, describe
@@ -58,6 +60,46 @@ const PRESETS = {
   concrete_floor_dirty:
     'Extreme close-up of an old dirty industrial concrete floor seen from directly above, the floor continues far beyond the image on all sides. ' +
     'Raw grey concrete with oil stains, tyre and boot scuffs, dust, dark grime patches, small cracks and pores, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  // Nature on the surface (props.py, 2026-11-18): stones, volcanic rock, ice, sulfur, moss and
+  // snow caps. kit.py tints them with the palette colours (PALETTE names the texture).
+  // The first granite and sandstone (smooth stone, fine layers) were too even: the bake keeps only
+  // the contrast of a texture, so they came out flat. These ask for coarse relief.
+  granite:
+    'Extreme close-up of a rough weathered grey rock face in the mountains, seen straight on, the rock continues far beyond the image on all sides. ' +
+    'Coarse grainy granite with dark and light speckles, deep cracks, chipped edges, pits, small ledges and crumbly patches, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  sandstone:
+    'Extreme close-up of a deeply eroded desert sandstone rock face, seen straight on, the rock continues far beyond the image on all sides. ' +
+    'Wavy sediment bands of different hardness, wind-carved hollows and holes, crumbly sandy grain and cracks, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  tuff:
+    'Extreme close-up of a large grey volcanic tuff rock face, seen straight on, the rock continues far beyond the image on all sides. ' +
+    'Compacted ash with embedded small pebbles, crumbly pits and dusty patches, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  basalt:
+    'Extreme close-up of the side of a dark basalt rock column, seen straight on, the rock continues far beyond the image on all sides. ' +
+    'Dense fine-grained volcanic stone with tiny gas bubbles, sharp fractures and thin cracks, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  scoria:
+    'Extreme close-up of a large field of cooled black volcanic scoria rock, seen from directly above, the rock continues far beyond the image on all sides. ' +
+    'Porous rough surface full of gas holes, glassy sharp obsidian flakes and cracks, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  glacier_ice:
+    'Extreme close-up of the surface of an old glacier, seen straight on, the ice continues far beyond the image on all sides. ' +
+    'Compressed blue-white ice with trapped air bubbles, fine fractures, scratches and frosted patches, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  sulfur:
+    'Extreme close-up of a thick crust of yellow sulfur crystals around a volcanic fumarole, seen from directly above, the crust continues far beyond the image on all sides. ' +
+    'Crystalline grains, small lumps, cracks and powdery patches, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  moss:
+    'Extreme close-up of a dense carpet of moss on a forest floor, seen from directly above, the moss continues far beyond the image on all sides. ' +
+    'Tiny moss leaves, tufts and soft clumps, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  snow:
+    'Extreme close-up of wind-packed old snow, seen from directly above, the snow continues far beyond the image on all sides. ' +
+    'Granular crusty surface with small ripples, ice grains and shallow dents, evenly spread across the whole image. ' +
     'Texture for a video game.',
 };
 

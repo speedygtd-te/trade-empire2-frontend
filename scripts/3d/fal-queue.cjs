@@ -10,7 +10,8 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 
 function readKey() {
-  const envPath = path.join(ROOT, 'scripts', '.env');
+  // FAL_ENV_FILE points a git worktree (which has no scripts/.env) at the main checkout's file.
+  const envPath = process.env.FAL_ENV_FILE || path.join(ROOT, 'scripts', '.env');
   const line = fs.readFileSync(envPath, 'utf8').split('\n').find((l) => l.startsWith('FAL_API_KEY='));
   const key = line ? line.replace('FAL_API_KEY=', '').trim() : '';
   if (!key) throw new Error('FAL_API_KEY missing in scripts/.env');
