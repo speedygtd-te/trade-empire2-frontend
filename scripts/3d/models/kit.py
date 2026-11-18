@@ -76,6 +76,9 @@ PALETTE = {
     "glow_cyan": ((0.35, 0.90, 0.90), "plain", (0.20, 0.0)),
     "window": ((0.08, 0.09, 0.10), "plain", (0.12, 0.0)),
     "glow_green": ((0.35, 0.95, 0.45), "plain", (0.30, 0.0)),
+    # Floodlight lenses (pale glass by day) and red warning lights (perimeter.py).
+    "glow_lamp": ((0.86, 0.84, 0.76), "plain", (0.15, 0.0)),
+    "glow_red": ((0.85, 0.12, 0.08), "plain", (0.30, 0.0)),
     # See-through glass: these faces become a separate transparent surface (GLASS_*), not baked.
     "pane": ((0.45, 0.60, 0.65), "plain", (0.05, 0.0)),
     # Cleaner paints of hulls and housing (V1 hull sprites).
@@ -108,6 +111,8 @@ GLOWS = {
     "glow_cyan": (0.35, 0.90, 0.90),
     "window": (1.0, 0.76, 0.45),
     "glow_green": (0.35, 0.95, 0.45),
+    "glow_lamp": (1.0, 0.88, 0.66),
+    "glow_red": (1.0, 0.14, 0.08),
 }
 PANE = "pane"
 # The see-through glass: tint (sRGB), opacity, roughness.
@@ -714,9 +719,11 @@ def _add_glass(target: bpy.types.Object, glass: bmesh.types.BMesh) -> None:
 
 # --- Checking, showing, writing ---------------------------------------------------------------
 
-def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1)) -> dict:
+def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1),
+             max_height: float = MAX_HEIGHT) -> dict:
     """Size and triangle count, plus what breaks the limits of the model: within `footprint`
-    of each of its `cells` (x, y) on the ground and below MAX_HEIGHT."""
+    of each of its `cells` (x, y) on the ground and below `max_height` (MAX_HEIGHT for modules;
+    the masts around a base, perimeter.py, may be taller)."""
     mesh = target.data
     low = Vector((min(v.co.x for v in mesh.vertices), min(v.co.y for v in mesh.vertices),
                   min(v.co.z for v in mesh.vertices)))
@@ -727,8 +734,8 @@ def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1
     limit_y = cells[1] - 1.0 + footprint
     if max(abs(low.x), abs(high.x)) > limit_x / 2.0 + 1e-6 or max(abs(low.y), abs(high.y)) > limit_y / 2.0 + 1e-6:
         problems.append("reaches outside the footprint of %.2f x %.2f" % (limit_x, limit_y))
-    if high.z > MAX_HEIGHT + 1e-6:
-        problems.append("taller than %.2f" % MAX_HEIGHT)
+    if high.z > max_height + 1e-6:
+        problems.append("taller than %.2f" % max_height)
     if abs(low.z) > 1e-6:
         problems.append("does not stand on the ground")
     return {
@@ -792,7 +799,8 @@ def export_glb(target: bpy.types.Object, path: str) -> None:
         )
 
 
-def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT) -> None:
+def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT,
+                               max_height: float = MAX_HEIGHT) -> None:
     """Entry point of a script that builds several models: `builders` maps a file name (without
     .glb) to (build function, cells). Writes every model into --output-dir; --only limits it to
     some names (comma separated). Hulls pass footprint 1.0."""
@@ -809,7 +817,7 @@ def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT) -> 
         path = os.path.join(options.output_dir, name + ".glb")
         try:
             target = build()
-            facts = describe(target, footprint, cells)
+            facts = describe(target, footprint, cells, max_height)
             export_glb(target, path)
             mesh = target.data
             bpy.data.objects.remove(target, do_unlink=True)

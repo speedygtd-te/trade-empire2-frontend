@@ -88,6 +88,14 @@ func _run() -> void:
 	# Ground blocks stream in after the colony.
 	await get_tree().create_timer(4.0).timeout
 	await _capture("colony")
+	# The same view at night: windows, lamps and the floodlights' cones around the base. The
+	# screen sets the real sun again once the hold-off ends.
+	var model := colony._model
+	colony._sun_left = 3600.0
+	colony._view.set_sun(deg_to_rad(-25.0), deg_to_rad(250.0), model.star_kelvin, model.atmosphere_density,
+		model.star_brightness(), model.star_size())
+	await _capture("colony_night")
+	colony._sun_left = 0.0
 	if OS.get_cmdline_user_args().has("--only=map"):
 		await _capture_map(colony)
 		await _finish(colony, session, had_session)

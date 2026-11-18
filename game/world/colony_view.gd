@@ -66,6 +66,8 @@ var _camera: Camera3D
 var _ground: GroundLayer
 ## Trees, stones, ice … on the surface (PropLayer).
 var _props: PropLayer
+## Lamp masts, radar, antennas and beacons around the base (PerimeterLayer).
+var _perimeter: PerimeterLayer
 var _hulls: Node3D
 var _modules: Node3D
 var _preview: Node3D
@@ -98,6 +100,9 @@ func _ready() -> void:
 	_props = PropLayer.new()
 	_props.name = "Props"
 	add_child(_props)
+	_perimeter = PerimeterLayer.new()
+	_perimeter.name = "Perimeter"
+	add_child(_perimeter)
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_preview = _child("Preview")
@@ -113,6 +118,7 @@ func _ready() -> void:
 
 	if model != null:
 		_props.setup(self)
+		_perimeter.setup(self)
 	_update_camera()
 
 
@@ -347,6 +353,7 @@ func _rebuild_structure() -> void:
 		child.queue_free()
 	for structure: ColonyModel in _structures():
 		_build_structure(structure)
+	_perimeter.rebuild()
 	_apply_highlight()
 
 
@@ -460,6 +467,11 @@ func _instance(key: String) -> Node3D:
 	var node := scene.instantiate() as Node3D
 	_collect_lamps(node)
 	return node
+
+
+## Strength of lamps and windows now (LAMP_DAY … LAMP_NIGHT).
+func lamp_energy() -> float:
+	return _lamp_energy
 
 
 ## Remembers the glowing materials of a model and gives them the current lamp strength. The
@@ -654,6 +666,8 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 	_lamp_energy = lerpf(LAMP_DAY, LAMP_NIGHT, SkyLight.lamp_level(light, density))
 	for material: StandardMaterial3D in _lamps.values():
 		material.emission_energy_multiplier = _lamp_energy
+	# Light cones of the floodlights around the base: only without sun.
+	_perimeter.set_darkness(SkyLight.darkness(light))
 	# Night: a moonlight fill keeps the colony readable; it fades in as sun and sky go.
 	var night := clampf(1.0 - (strength + sky_strength) * 1.5, 0.0, 1.0)
 	_night_fill.light_energy = NIGHT_FILL * night
@@ -672,6 +686,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
 	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
 	_props.apply_detail(tier)
+	_perimeter.apply_detail(tier)
 
 
 func _child(node_name: String) -> Node3D:

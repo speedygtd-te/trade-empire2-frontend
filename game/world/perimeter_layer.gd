@@ -1,0 +1,315 @@
+class_name PerimeterLayer
+extends Node3D
+## The decoration around every base on screen (Perimeter decides which free cell carries what):
+## lamp masts, radar, antennas and beacons, low-poly models (game/world/models/perimeter,
+## scripts/3d/models/perimeter.py). Purely cosmetic; the server knows nothing about it.
+##
+## One MultiMesh per model; the radar reflectors are nodes of their own and turn slowly. The
+## floodlights glow like the windows (ColonyView lamps); the red lights blink. At night every
+## floodlight throws a light cone away from the base and a pool of light on the ground: no real
+## lights (too dear on phones in the Compatibility renderer) but additive, unshaded meshes that
+## fade with distance (perimeter_cone.gdshader, perimeter_pool.gdshader), invisible by day. On a
+## slow device only the pools stay.
+##
+## Built around the view's origin; rebuilt with the structure (ColonyView._rebuild_structure),
+## which also runs when the origin moves.
+
+const MODELS := "res://game/world/models/perimeter/"
+const CONE_SHADER := preload("res://game/world/perimeter_cone.gdshader")
+const POOL_SHADER := preload("res://game/world/perimeter_pool.gdshader")
+## Model file per kind.
+const FILES := {
+	Perimeter.Kind.LAMP: "lamp_mast",
+	Perimeter.Kind.RADAR: "radar_base",
+	Perimeter.Kind.ANTENNA: "antenna",
+	Perimeter.Kind.BEACON: "beacon",
+}
+const DISH_FILE := "radar_dish"
+## Models whose glow is a red warning light: it blinks instead of following the lamps.
+const BLINKING := ["antenna", "beacon"]
+## Centre of the floodlight's lens in the mast model, front +Z (perimeter.py lens_centre()).
+const LENS := Vector3(0.0, 1.0765, 0.1156)
+## Where the cone's axis meets the ground (distance in front of the mast), its radius there, and
+## how far the cone runs on beyond (share of the axis; the part under the ground is hidden).
+const AIM_DISTANCE := 2.1
+const CONE_RADIUS := 0.5
+const CONE_OVERSHOOT := 1.25
+const CONE_SEGMENTS := 12
+## Radius of the cone at the lens.
+const CONE_START_RADIUS := 0.07
+## The pool of light on the ground: its centre in front of the mast and half its size (across,
+## along).
+const POOL_CENTRE := 2.5
+const POOL_HALF := Vector2(0.85, 1.35)
+const POOL_LIFT := 0.012
+## Height of the radar's turning axis (perimeter.py PIVOT) and its speed in turns per second.
+const RADAR_PIVOT := 0.46
+const RADAR_TURNS_PER_SECOND := 0.1
+## Red lights: one blink every BLINK_PERIOD seconds, lit for BLINK_ON of it; dim in between.
+const BLINK_PERIOD := 1.6
+const BLINK_ON := 0.35
+const BLINK_DIM := 0.15
+## Strength of cones and pools at full darkness, and the darkness below which they are hidden.
+const CONE_STRENGTH := 0.30
+const POOL_STRENGTH := 0.45
+const DARK_ENOUGH := 0.03
+
+var _view: ColonyView
+## Kind → MultiMeshInstance3D of the items now drawn.
+var _items: Dictionary = {}
+var _dishes: Array[MeshInstance3D] = []
+var _dish_phases: PackedFloat32Array = []
+var _cones: MultiMeshInstance3D
+var _pools: MultiMeshInstance3D
+var _cone_material: ShaderMaterial
+var _pool_material: ShaderMaterial
+var _cone_mesh: Mesh
+var _pool_mesh: Mesh
+## File → Mesh (null when missing), and the glow materials of the blinking models.
+var _meshes: Dictionary = {}
+var _blinkers: Array[StandardMaterial3D] = []
+var _darkness := 0.0
+var _tier := DetailGovernor.DEFAULT_TIER
+var _time := 0.0
+
+
+func setup(view: ColonyView) -> void:
+	_view = view
+	_cone_material = ShaderMaterial.new()
+	_cone_material.shader = CONE_SHADER
+	_pool_material = ShaderMaterial.new()
+	_pool_material.shader = POOL_SHADER
+	_cone_mesh = _build_cone()
+	_pool_mesh = _build_pool()
+
+
+## The decorated cells around every base of the colony on screen: the home structure when it is a
+## base (guests are ships and vehicles, never decorated). Every structure's cells, also the
+## underground ones, stay free.
+static func spots_for(model: ColonyModel) -> Array[Perimeter.Spot]:
+	var result: Array[Perimeter.Spot] = []
+	if model == null:
+		return result
+	var structures: Array[ColonyModel] = [model]
+	structures.append_array(model.guest_list())
+	var occupied: Array[Vector2i] = []
+	for structure: ColonyModel in structures:
+		for local: Vector3i in structure.layout.hull_cells():
+			var cell := structure.layout.to_absolute(local)
+			occupied.append(Vector2i(cell.x, cell.y))
+	for structure: ColonyModel in structures:
+		var layout := structure.layout
+		if structure.is_guest() or layout.kind != "base":
+			continue
+		var footprint: Array[Vector2i] = []
+		var docks: Array[Vector2i] = []
+		for local: Vector3i in layout.hull_cells():
+			var cell := layout.to_absolute(local)
+			if cell.z < 0:
+				continue
+			footprint.append(Vector2i(cell.x, cell.y))
+			if layout.hull_at(local) == DockRules.DOCK:
+				docks.append(Vector2i(cell.x, cell.y))
+		result.append_array(Perimeter.spots(footprint, occupied, model.size_x, docks))
+	return result
+
+
+## Places every item again around the view's origin.
+func rebuild() -> void:
+	if _view == null or _view.model == null:
+		return
+	for child: Node in get_children():
+		child.queue_free()
+	_items.clear()
+	_dishes.clear()
+	_dish_phases.clear()
+	var model := _view.model
+	var transforms: Dictionary = {}
+	for spot: Perimeter.Spot in spots_for(model):
+		var at := WorldGrid.to_scene(Vector3i(spot.cell.x, spot.cell.y, 0), _view.origin, model.size_x)
+		# The model's front (+Z) looks along the spot's direction (cell y is scene −Z).
+		var turn := Basis(Vector3.UP, atan2(spot.direction.x, -spot.direction.y))
+		if not transforms.has(spot.kind):
+			transforms[spot.kind] = []
+		var list: Array = transforms[spot.kind]
+		list.append(Transform3D(turn, at))
+		if spot.kind == Perimeter.Kind.RADAR:
+			_add_dish(at, spot.phase)
+	for kind: Perimeter.Kind in transforms.keys():
+		var list: Array = transforms[kind]
+		var file: String = FILES[kind]
+		var instance := _multimesh(_mesh(file), list)
+		if instance == null:
+			continue
+		instance.name = file
+		instance.set_meta("casts", kind != Perimeter.Kind.BEACON)
+		add_child(instance)
+		_items[kind] = instance
+	var lamps: Array = transforms.get(Perimeter.Kind.LAMP, [])
+	_cones = _multimesh(_cone_mesh, lamps)
+	_pools = _multimesh(_pool_mesh, lamps)
+	for glow: MultiMeshInstance3D in [_cones, _pools]:
+		if glow != null:
+			glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(glow)
+	_apply()
+
+
+## How dark it is (SkyLight.darkness): the cones and pools follow it.
+func set_darkness(level: float) -> void:
+	_darkness = clampf(level, 0.0, 1.0)
+	_apply()
+
+
+func apply_detail(tier: DetailGovernor.Tier) -> void:
+	_tier = tier
+	_apply()
+
+
+## Items per kind, lamps throwing cones, and how many cones and pools are drawn now (for
+## measuring).
+func stats() -> Dictionary:
+	var counts: Dictionary = {}
+	for kind: Perimeter.Kind in _items.keys():
+		counts[FILES[kind]] = (_items[kind] as MultiMeshInstance3D).multimesh.instance_count
+	counts["radar_dish"] = _dishes.size()
+	counts["cones_drawn"] = _cones.multimesh.instance_count if _cones != null and _cones.visible else 0
+	counts["pools_drawn"] = _pools.multimesh.instance_count if _pools != null and _pools.visible else 0
+	return counts
+
+
+func _process(delta: float) -> void:
+	_time += delta
+	for index: int in _dishes.size():
+		_dishes[index].rotation.y = TAU * fposmod(_dish_phases[index] + _time * RADAR_TURNS_PER_SECOND, 1.0)
+	if _blinkers.is_empty() or _view == null:
+		return
+	var lit := fposmod(_time, BLINK_PERIOD) < BLINK_PERIOD * BLINK_ON
+	var energy := _view.lamp_energy() * (1.0 if lit else BLINK_DIM)
+	for material: StandardMaterial3D in _blinkers:
+		material.emission_energy_multiplier = energy
+
+
+func _apply() -> void:
+	var dark := _darkness > DARK_ENOUGH
+	if _cones != null:
+		_cones.visible = dark and _tier != DetailGovernor.Tier.SLOW
+	if _pools != null:
+		_pools.visible = dark
+	if _cone_material != null:
+		_cone_material.set_shader_parameter("strength", CONE_STRENGTH * _darkness)
+		_pool_material.set_shader_parameter("strength", POOL_STRENGTH * _darkness)
+	var shadows := _tier != DetailGovernor.Tier.SLOW
+	for instance: MultiMeshInstance3D in _items.values():
+		var casts: bool = instance.get_meta("casts", false) and shadows
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if casts \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _add_dish(at: Vector3, phase: float) -> void:
+	var mesh := _mesh(DISH_FILE)
+	if mesh == null:
+		return
+	var dish := MeshInstance3D.new()
+	dish.name = "RadarDish"
+	dish.mesh = mesh
+	dish.position = at + Vector3(0.0, RADAR_PIVOT, 0.0)
+	dish.rotation.y = TAU * phase
+	add_child(dish)
+	_dishes.append(dish)
+	_dish_phases.append(phase)
+
+
+func _multimesh(mesh: Mesh, transforms: Array) -> MultiMeshInstance3D:
+	if mesh == null or transforms.is_empty():
+		return null
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.mesh = mesh
+	multimesh.instance_count = transforms.size()
+	for index: int in transforms.size():
+		var placed: Transform3D = transforms[index]
+		multimesh.set_instance_transform(index, placed)
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multimesh
+	return instance
+
+
+## The mesh of a model file, cached. Floodlights glow with the colony's lamps; red lights blink.
+func _mesh(file: String) -> Mesh:
+	if _meshes.has(file):
+		return _meshes[file] as Mesh
+	var mesh: Mesh = null
+	var path := MODELS + file + ".glb"
+	if ResourceLoader.exists(path):
+		var node := (load(path) as PackedScene).instantiate() as Node3D
+		var found := node.find_children("*", "MeshInstance3D", true, false)
+		if not found.is_empty():
+			mesh = (found[0] as MeshInstance3D).mesh
+			if file in BLINKING:
+				for surface: int in mesh.get_surface_count():
+					var material := mesh.surface_get_material(surface) as StandardMaterial3D
+					if material != null and material.emission_enabled and material not in _blinkers:
+						_blinkers.append(material)
+			else:
+				_view._collect_lamps(node)
+		node.free()
+	_meshes[file] = mesh
+	return mesh
+
+
+## The light cone in the lamp mast's space: an open cone from the lens towards the ground in
+## front of the mast. UV.y runs from the lens (0) to the cone's end (1).
+func _build_cone() -> Mesh:
+	var aim := Vector3(0.0, 0.0, AIM_DISTANCE)
+	var axis := aim - LENS
+	var length := axis.length() * CONE_OVERSHOOT
+	var forward := axis.normalized()
+	var side := Vector3.UP.cross(forward).normalized()
+	var up := forward.cross(side)
+	var end_radius := CONE_RADIUS * CONE_OVERSHOOT
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	# The cone's side leans outwards: its normal tilts back towards the lens.
+	var slope := (end_radius - CONE_START_RADIUS) / length
+	for index: int in CONE_SEGMENTS + 1:
+		var angle := TAU * index / CONE_SEGMENTS
+		var radial := side * cos(angle) + up * sin(angle)
+		var normal := (radial - forward * slope).normalized()
+		for ring: int in 2:
+			var radius := CONE_START_RADIUS if ring == 0 else end_radius
+			vertices.append(LENS + forward * (length * ring) + radial * radius)
+			normals.append(normal)
+			uvs.append(Vector2(float(index) / CONE_SEGMENTS, float(ring)))
+	for index: int in CONE_SEGMENTS:
+		var a := index * 2
+		indices.append_array(PackedInt32Array([a, a + 1, a + 3, a, a + 3, a + 2]))
+	return _array_mesh(vertices, normals, uvs, indices, _cone_material)
+
+
+## The pool of light on the ground in the lamp mast's space. UV.y runs from the mast's side (0)
+## to the far side (1).
+func _build_pool() -> Mesh:
+	var near := POOL_CENTRE - POOL_HALF.y
+	var far := POOL_CENTRE + POOL_HALF.y
+	var vertices := PackedVector3Array([Vector3(-POOL_HALF.x, POOL_LIFT, near), Vector3(POOL_HALF.x, POOL_LIFT, near),
+		Vector3(POOL_HALF.x, POOL_LIFT, far), Vector3(-POOL_HALF.x, POOL_LIFT, far)])
+	var normals := PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
+	var uvs := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+	return _array_mesh(vertices, normals, uvs, PackedInt32Array([0, 2, 1, 0, 3, 2]), _pool_material)
+
+
+static func _array_mesh(vertices: PackedVector3Array, normals: PackedVector3Array, uvs: PackedVector2Array,
+		indices: PackedInt32Array, material: Material) -> ArrayMesh:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, material)
+	return mesh

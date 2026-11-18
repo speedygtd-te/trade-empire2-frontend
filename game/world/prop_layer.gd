@@ -367,8 +367,8 @@ func _block_distance(block: Vector2i) -> int:
 	return maxi(absi(across), absi(block.y - _centre.y))
 
 
-## Which cells hulls cover (no props there) and which lie above an underground hull only (a vent
-## cover may stand there): the home structure and its guests.
+## Which cells hulls or the decoration around a base cover (no props there) and which lie above an
+## underground hull only (a vent cover may stand there): the home structure and its guests.
 func _read_structures() -> void:
 	var model := _view.model
 	_covered.clear()
@@ -384,6 +384,9 @@ func _read_structures() -> void:
 				_covered[key] = true
 			elif cell.z == -1:
 				below.append(key)
+	# Cells carrying a mast, radar or beacon around a base stay bare too (PerimeterLayer).
+	for spot: Perimeter.Spot in PerimeterLayer.spots_for(model):
+		_covered[spot.cell] = true
 	for key: Vector2i in below:
 		if not _covered.has(key):
 			_vented[key] = true
