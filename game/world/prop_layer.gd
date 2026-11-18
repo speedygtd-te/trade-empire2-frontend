@@ -1,9 +1,10 @@
 class_name PropLayer
 extends Node3D
 ## The props on the surface around a colony: trees, stones, ice, columns, reeds, puddles …
-## (PropRules decides which cell carries what). Big props are low-poly models
-## (game/world/models/props, scripts/3d/models/props.py), small and flat ones V1 sprites
-## (game/world/props): upright cutouts facing the fixed camera, or decals lying on the ground.
+## (PropRules decides which cell carries what). Stones, columns, ice and vents are low-poly models
+## (game/world/models/props, scripts/3d/models/props.py); trees, plants and flat props are V1
+## sprites (game/world/props): trees stand as cards on their foot and cast shadows, small plants
+## are cutouts facing the fixed camera, flat props decals lying on the ground.
 ##
 ## Per loaded surface block one MultiMesh per prop variant; cells under a hull stay bare, and a
 ## cell above an underground hull may get a vent cover. Blocks are built a few cells per frame
@@ -11,30 +12,50 @@ extends Node3D
 ## How many props are drawn follows the detail tier and the zoom (PropRules.visible_share): the
 ## instances of a MultiMesh are sorted by their rank, so drawing fewer drops a scattered share.
 
-enum Kind { MODEL, SPRITE, DECAL }
+enum Kind { MODEL, TREE, SPRITE, DECAL }
 
 const MODELS := "res://game/world/models/props/"
 const SPRITES := "res://game/world/props/"
 const SPRITE_SHADER := preload("res://game/world/prop_sprite.gdshader")
 const DECAL_SHADER := preload("res://game/world/prop_decal.gdshader")
+const TREE_SHADER := preload("res://game/world/prop_tree.gdshader")
 ## On-screen height of a sprite with the V1 height factor 1, in cells: as tall as a 3D tree of
 ## 0.45 cells seen under the camera's pitch (0.45 · cos 35°).
 const SPRITE_SCALE := 0.3686
+## Largest step of a sprite card towards the camera that keeps cards in one plane apart (cells).
+const CARD_STAGGER := 0.005
 ## Decals lie a hair above the ground.
 const DECAL_LIFT := 0.008
+## Where a tree sprite's trunk meets the ground, per sprite file (share of its width from the left,
+## share of its height from the top), set by eye on the V1 sprites: above it the card stands
+## upright, below it (roots, ash) it lies on the ground.
+const FEET := {
+	"tree_0": Vector2(0.488, 0.94), "tree_1": Vector2(0.531, 0.84), "tree_2": Vector2(0.496, 0.84),
+	"tree_3": Vector2(0.467, 0.83), "tree_4": Vector2(0.507, 0.88), "tree_5": Vector2(0.5, 0.77),
+	"tree_6": Vector2(0.506, 0.9), "tree_7": Vector2(0.494, 0.86),
+	"palm_0": Vector2(0.496, 0.98), "palm_1": Vector2(0.524, 0.905), "palm_2": Vector2(0.536, 0.985),
+	"palm_3": Vector2(0.477, 0.985), "palm_4": Vector2(0.549, 0.985), "palm_5": Vector2(0.497, 0.985),
+	"charred_tree_0": Vector2(0.482, 0.94), "charred_tree_1": Vector2(0.486, 0.95),
+	"charred_tree_2": Vector2(0.512, 0.94), "charred_tree_3": Vector2(0.453, 0.9),
+	"charred_tree_4": Vector2(0.3, 0.93),
+}
+## Burnt trees: three trunks at half a tree's height, two stumps at a tenth (V1
+## CHARRED_TREE_VARIANT_FACTORS, Rudi's sizes).
+const CHARRED_FACTORS := [0.5, 0.5, 0.5, 0.1, 0.1]
 ## Time per frame spent building blocks.
 const BUILD_BUDGET_MS := 3
 
 ## How each family is drawn. `big`: carries the look and is thinned out last (PropRules).
-## Sprites: `factor` is the V1 height factor (propThemes.ts PROP_HEIGHT_FACTORS); decals:
-## `factors` per variant. `models` names other models to use (tree_leafy is five of the trees,
-## as in V1). `glow`: lava pixels glow.
+## Trees and sprites: `factor` is the V1 height factor (propThemes.ts PROP_HEIGHT_FACTORS), or
+## `factors` per variant; decals: `factors` per variant. `files` names other sprites to use
+## (tree_leafy is five of the trees, as in V1), `feet` the family whose FEET a tree's sprites
+## share. `glow`: lava and ember pixels glow.
 const LOOKS := {
-	"tree": {"kind": Kind.MODEL, "big": true},
-	"tree_leafy": {"kind": Kind.MODEL, "big": true, "models": ["tree_1", "tree_2", "tree_3", "tree_5", "tree_7"]},
-	"palm": {"kind": Kind.MODEL, "big": true},
-	"charred_tree": {"kind": Kind.MODEL, "big": true},
-	"charred_tree_ember": {"kind": Kind.MODEL, "big": true},
+	"tree": {"kind": Kind.TREE, "big": true, "factor": 1.0},
+	"tree_leafy": {"kind": Kind.TREE, "big": true, "factor": 1.0, "files": ["tree_1", "tree_2", "tree_3", "tree_5", "tree_7"]},
+	"palm": {"kind": Kind.TREE, "big": true, "factor": 1.0},
+	"charred_tree": {"kind": Kind.TREE, "big": true, "factors": CHARRED_FACTORS},
+	"charred_tree_ember": {"kind": Kind.TREE, "big": true, "factors": CHARRED_FACTORS, "feet": "charred_tree", "glow": true},
 	"basalt_column": {"kind": Kind.MODEL, "big": true},
 	"ice_block": {"kind": Kind.MODEL, "big": true},
 	"sulfur_vent": {"kind": Kind.MODEL, "big": true},
@@ -93,6 +114,7 @@ var _tier := DetailGovernor.DEFAULT_TIER
 var _zoom := -1.0
 var _centre := Vector2i(0x7FFFFFFF, 0)
 var _billboard := Basis.IDENTITY
+var _upright := Basis.IDENTITY
 var _decal_turn := Basis.IDENTITY
 ## Time spent building blocks so far (for measuring).
 var _build_usec := 0
@@ -105,6 +127,8 @@ func setup(view: ColonyView) -> void:
 	var to_camera := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
 	# +Z of an upright sprite faces the camera; a decal's top edge points away from it.
 	_billboard = Basis.looking_at(-to_camera, Vector3.UP)
+	# A tree card stands upright, +Z towards the camera's side.
+	_upright = Basis(Vector3.UP, yaw)
 	_decal_turn = Basis(Vector3.UP, yaw)
 	var model := view.model
 	model.surface_loaded.connect(_on_surface_loaded)
@@ -251,10 +275,14 @@ func _place(job: Job, prop: PropRules.Prop, centre: Vector3) -> void:
 	match look["kind"]:
 		Kind.MODEL:
 			basis = Basis(Vector3.UP, prop.turn).scaled(Vector3.ONE * prop.scale)
-		Kind.SPRITE:
+		Kind.TREE, Kind.SPRITE:
 			# Half of the sprites are mirrored, for variety.
 			var flip := -1.0 if prop.turn >= PI else 1.0
-			basis = _billboard * Basis.from_scale(Vector3(flip * prop.scale, prop.scale, prop.scale))
+			var facing := _upright if look["kind"] == Kind.TREE else _billboard
+			basis = facing * Basis.from_scale(Vector3(flip * prop.scale, prop.scale, prop.scale))
+			# Cards of props side by side (as seen from the camera) lie in one plane and would
+			# flicker where they overlap: each moves a hair towards the camera, by its rank.
+			at += facing.z * CARD_STAGGER * prop.rank
 		_:
 			basis = _decal_turn * Basis.from_scale(Vector3(prop.scale, 1.0, prop.scale))
 			at.y = DECAL_LIFT
@@ -300,8 +328,8 @@ func _finish(job: Job) -> void:
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multimesh
 		instance.set_meta("big", look["big"])
-		# Only big models cast shadows; sprites are flat, stones too small.
-		instance.set_meta("casts", kind == Kind.MODEL and look["big"])
+		# Only big models and trees cast shadows; small sprites are flat, stones too small.
+		instance.set_meta("casts", (kind == Kind.MODEL or kind == Kind.TREE) and look["big"])
 		_share(instance)
 		holder.add_child(instance)
 	add_child(holder)
@@ -392,20 +420,27 @@ func _mesh(family: String, variant: int) -> Mesh:
 	var mesh: Mesh = null
 	match look["kind"]:
 		Kind.MODEL:
-			var models: Array = look.get("models", [])
-			var file := key
-			if variant < models.size():
-				file = models[variant]
-			mesh = _model_mesh(file)
+			mesh = _model_mesh(key)
+		Kind.TREE:
+			var files: Array = look.get("files", [])
+			var file: String = files[variant] if variant < files.size() else key
+			var feet: String = file if not look.has("feet") else "%s_%d" % [look["feet"], variant]
+			var foot: Vector2 = FEET.get(feet, Vector2(0.5, 1.0))
+			mesh = _tree_mesh(file, _factor(look, variant) * SPRITE_SCALE, foot, glow)
 		Kind.SPRITE:
-			var factor: float = look["factor"]
-			mesh = _sprite_mesh(key, factor * SPRITE_SCALE, glow, false)
+			mesh = _sprite_mesh(key, _factor(look, variant) * SPRITE_SCALE, glow, false)
 		Kind.DECAL:
-			var factors: Array = look["factors"]
-			var factor: float = factors[mini(variant, factors.size() - 1)]
-			mesh = _sprite_mesh(key, factor * SPRITE_SCALE, glow, true)
+			mesh = _sprite_mesh(key, _factor(look, variant) * SPRITE_SCALE, glow, true)
 	_meshes[key] = mesh
 	return mesh
+
+
+## The V1 height factor of a sprite variant: per variant (`factors`) or per family (`factor`).
+func _factor(look: Dictionary, variant: int) -> float:
+	if look.has("factors"):
+		var factors: Array = look["factors"]
+		return factors[mini(variant, factors.size() - 1)]
+	return look["factor"]
 
 
 func _model_mesh(file: String) -> Mesh:
@@ -454,5 +489,43 @@ func _sprite_mesh(key: String, height: float, glow: bool, flat: bool) -> Mesh:
 	material.shader = DECAL_SHADER if flat else SPRITE_SHADER
 	material.set_shader_parameter("sprite", texture)
 	material.set_shader_parameter("glow", 1.0 if glow else 0.0)
+	mesh.surface_set_material(0, material)
+	return mesh
+
+
+## A tree card carrying a sprite (prop_tree.gdshader). `height` is the sprite's height on screen;
+## `foot` is where its trunk meets the ground (FEET). Above the foot the card stands upright, made
+## taller by the camera's pitch so the sprite keeps its drawn proportions; below it the card lies
+## on the ground towards the camera, made deeper by the same rule. Facing +Z.
+func _tree_mesh(file: String, height: float, foot: Vector2, glow: bool) -> Mesh:
+	var path := SPRITES + file + ".webp"
+	if not ResourceLoader.exists(path):
+		return null
+	var texture := load(path) as Texture2D
+	var width := height * float(texture.get_width()) / maxf(texture.get_height(), 1.0)
+	var pitch := deg_to_rad(ColonyView.CAMERA_PITCH_DEGREES)
+	var top := foot.y * height / cos(pitch)
+	var front := (1.0 - foot.y) * height / sin(pitch)
+	var left := -foot.x * width
+	var right := (1.0 - foot.x) * width
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3(left, top, 0.0), Vector3(right, top, 0.0),
+		Vector3(left, 0.0, 0.0), Vector3(right, 0.0, 0.0), Vector3(left, 0.0, front), Vector3(right, 0.0, front)])
+	arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK,
+		Vector3.UP, Vector3.UP])
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(0, foot.y),
+		Vector2(1, foot.y), Vector2(0, 1), Vector2(1, 1)])
+	var white := Color.WHITE
+	arrays[Mesh.ARRAY_COLOR] = PackedColorArray([white, white, white, white, white, white])
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4])
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var material := ShaderMaterial.new()
+	material.shader = TREE_SHADER
+	material.set_shader_parameter("sprite", texture)
+	material.set_shader_parameter("glow", 1.0 if glow else 0.0)
+	material.set_shader_parameter("height", top)
+	material.set_shader_parameter("half_width", maxf(-left, right))
 	mesh.surface_set_material(0, material)
 	return mesh

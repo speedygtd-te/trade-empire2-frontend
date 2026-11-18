@@ -11,9 +11,11 @@ extends RefCounted
 ## Differences to V1, which drew sprites in an isometric 2D view:
 ## - The position is a point of the cell's ground square in cells (V1 projected the same point to
 ##   the screen); standing props keep inside SCATTER_SPAN of the cell.
-## - Two new streams: a turn around the up axis (3D models have a side) and a rank, the order in
-##   which a dense field is thinned out when the view drops detail.
-## - The size factors of the V1 sprites are not here: sizes belong to the models and sprites.
+## - Two new streams: a turn around the up axis (3D models have a side; sprites use it to mirror
+##   half of them) and a rank, the order in which a dense field is thinned out when the view
+##   drops detail.
+## - The size factors of the V1 sprites are not here: sizes belong to the models and sprites
+##   (PropLayer.LOOKS).
 
 ## Highest vegetation value the backend sends.
 const MAX_G := 6
@@ -77,9 +79,10 @@ const THEMES := {
 }
 
 ## Variants the client has of each family (models in game/world/models/props, sprites in
-## game/world/props). The variant stream is taken modulo this, so it never names a missing one.
+## game/world/props; the trees are V1's sprites, all of them). The variant stream is taken
+## modulo this, so it never names a missing one.
 const VARIANTS := {
-	"tree": 8, "tree_leafy": 5, "palm": 4, "charred_tree": 5, "charred_tree_ember": 5,
+	"tree": 8, "tree_leafy": 5, "palm": 6, "charred_tree": 5, "charred_tree_ember": 5,
 	"rock": 3, "rock_arid": 3, "rock_sand": 3, "rock_snow": 3, "rock_ash": 3, "sulfur_chunk": 3,
 	"lava_rock": 3, "basalt_column": 3, "ice_block": 3, "sulfur_vent": 3,
 	"vent_grate": 1, "vent_pipe": 1, "vent_stack": 1, "vent_fan": 1,

@@ -38,10 +38,12 @@ STAGE_SCENE = "Trade Empire"
 TEXTURE_FOLDER = os.environ.get("TE_TEXTURE_FOLDER") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "textures")
 
-# Colour name -> (sRGB colour, surface kind, finish). Kinds: "metal" (surface texture, rust),
-# "concrete" (surface texture), "plain" (flat: glass, openings, rubber). The finish is
-# (roughness, metalness), each 0..1: low roughness shines, high metalness mirrors the
-# surroundings in the colour of the surface.
+# Colour name -> (sRGB colour, surface kind, finish[, surface texture]). Kinds: "metal" (surface
+# texture, rust), "concrete" (surface texture), "plain" (flat: glass, openings, rubber). The
+# finish is (roughness, metalness), each 0..1: low roughness shines, high metalness mirrors the
+# surroundings in the colour of the surface. The surface texture is the file in TEXTURE_FOLDER
+# (without .jpg) that breaks up the colour; without one, metal.jpg or concrete.jpg after the
+# kind. A colour naming its own texture should be of kind "concrete" (no rust).
 _PAINT = (0.42, 0.35)
 _MATTE = (0.90, 0.0)
 PALETTE = {
@@ -83,26 +85,20 @@ PALETTE = {
     "black_metal": ((0.10, 0.10, 0.11), "metal", (0.50, 0.25)),
     "soil": ((0.36, 0.24, 0.16), "concrete", _MATTE),
     "plant": ((0.24, 0.62, 0.22), "plain", (0.85, 0.0)),
-    # Nature on the surface (props.py), after the V1 prop sprites: olive foliage, dark conifers,
-    # teal palms, grey and sand stones, black glossy lava rock, pale ice.
-    "bark": ((0.31, 0.22, 0.15), "concrete", _MATTE),
-    "bark_light": ((0.50, 0.42, 0.31), "concrete", _MATTE),
-    "leaf": ((0.30, 0.38, 0.15), "plain", (0.85, 0.0)),
-    "leaf_dark": ((0.16, 0.27, 0.13), "plain", (0.85, 0.0)),
-    "leaf_yellow": ((0.42, 0.43, 0.19), "plain", (0.85, 0.0)),
-    "leaf_palm": ((0.14, 0.38, 0.33), "plain", (0.80, 0.0)),
-    "charcoal": ((0.10, 0.09, 0.09), "concrete", (0.90, 0.0)),
-    "stone": ((0.40, 0.39, 0.36), "concrete", _MATTE),
-    "stone_dark": ((0.27, 0.26, 0.25), "concrete", _MATTE),
-    "moss": ((0.33, 0.39, 0.19), "concrete", _MATTE),
-    "sandstone": ((0.76, 0.64, 0.49), "concrete", _MATTE),
-    "ash_stone": ((0.22, 0.22, 0.23), "concrete", _MATTE),
-    "snow": ((0.88, 0.90, 0.93), "plain", (0.75, 0.0)),
-    "obsidian": ((0.06, 0.06, 0.07), "plain", (0.18, 0.0)),
-    "basalt": ((0.21, 0.22, 0.24), "concrete", _MATTE),
-    "ice": ((0.72, 0.82, 0.90), "plain", (0.20, 0.0)),
-    "ice_deep": ((0.45, 0.62, 0.78), "plain", (0.15, 0.0)),
-    "sulfur": ((0.72, 0.66, 0.30), "concrete", _MATTE),
+    # Nature on the surface (props.py), after the V1 prop sprites: grey and sand stones, black
+    # lava rock with glassy flakes, pale ice, each with a surface texture of its own (trees are
+    # sprites since 2026-11-18).
+    "stone": ((0.46, 0.45, 0.42), "concrete", _MATTE, "granite"),
+    "stone_dark": ((0.30, 0.29, 0.28), "concrete", _MATTE, "granite"),
+    "moss": ((0.36, 0.43, 0.20), "concrete", _MATTE, "moss"),
+    "sandstone": ((0.78, 0.62, 0.45), "concrete", _MATTE, "sandstone"),
+    "ash_stone": ((0.26, 0.26, 0.27), "concrete", _MATTE, "tuff"),
+    "snow": ((0.88, 0.90, 0.93), "concrete", (0.75, 0.0), "snow"),
+    "obsidian": ((0.09, 0.09, 0.10), "concrete", (0.55, 0.0), "scoria"),
+    "basalt": ((0.23, 0.24, 0.26), "concrete", _MATTE, "basalt"),
+    "ice": ((0.74, 0.84, 0.92), "concrete", (0.22, 0.0), "glacier_ice"),
+    "ice_deep": ((0.47, 0.64, 0.80), "concrete", (0.18, 0.0), "glacier_ice"),
+    "sulfur": ((0.78, 0.70, 0.30), "concrete", _MATTE, "sulfur"),
 }
 # Colours that give off light, and the sRGB colour of their light. Baked into a third texture
 # (the glow mask); the game turns it up at night and on airless worlds (ColonyView).
@@ -146,6 +142,9 @@ AGE_TINT = (0.80, 0.78, 0.74)
 EDGE_WIDTH = 0.008
 EDGE_AMOUNT = 0.5
 EDGE_COLOR = (0.80, 0.80, 0.77)
+# Share of the worn edges left on surfaces with a texture of their own (stone, ice: nature has
+# no paint to wear off; bright edges made stones look like cut gems).
+NATURAL_EDGES = 0.15
 # Finish of rust, of bare metal at worn edges, and how much dirt in corners roughens.
 RUST_ROUGHNESS = 0.95
 BARE_ROUGHNESS = 0.30
@@ -161,6 +160,8 @@ _TINT = "tint"
 _FINISH = "finish"
 _GLOW = "glow"
 _SURFACE_PIXELS = 512
+# How a face's surface texture is stored in the blue channel of its finish (see Builder).
+_SURFACE_STEP = 1.0 / 16.0
 _FACINGS = {
     "+x": (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))),
     "-x": (Vector((-1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))),
@@ -192,6 +193,9 @@ class Builder:
         self._glass = bmesh.new()
         self._mesh = self._solid
         self._glowing = False
+        # Surface textures named by the palette, in the order they were first painted; a face
+        # stores its texture's place in this list (1, 2 ...) or 0 for the texture of its kind.
+        self._surfaces = []
         self._frame = Matrix.Identity(4)
 
     @contextmanager
@@ -247,11 +251,14 @@ class Builder:
             face.smooth = abs(face.normal.dot(axis)) < 0.99
 
     def lump(self, center, size, color: str, seed: int = 0, rough: float = 0.2,
-             detail: int = 1) -> None:
+             detail: int = 1, smooth: float = 0.0) -> None:
         """A faceted lump (stone, crown, ice): an icosphere with diameters *size* (x, y, z) whose
         corners are pushed in and out by up to *rough* (share of the radius), the same way for
         the same *seed*. Corners that end up below the ground (z < 0) are pulled onto it, so a
-        lump sunk into the ground stands on a flat base. *detail* 1 has 20 triangles."""
+        lump sunk into the ground stands on a flat base; faces lying flat on the ground are
+        dropped (nobody sees them). *detail* 1 has 20 triangles, 2 has 80. *smooth* (degrees)
+        shades the lump round, keeping edges sharper than that angle crisp: a weathered stone
+        instead of a cut gem."""
         generator = random.Random(seed)
         matrix = (self._frame @ Matrix.Translation(Vector(center))
                   @ Matrix.Diagonal((size[0] / 2.0, size[1] / 2.0, size[2] / 2.0, 1.0)))
@@ -262,7 +269,19 @@ class Builder:
                 vert.co = matrix @ (vert.co * (1.0 + generator.uniform(-rough, rough)))
                 if vert.co.z < 0.0:
                     vert.co.z = 0.0
-            self._paint(self._faces(created), color)
+            faces = self._faces(created)
+            hidden = [face for face in faces if all(abs(vert.co.z) < 1e-9 for vert in face.verts)]
+            if hidden:
+                bmesh.ops.delete(self._mesh, geom=hidden, context="FACES_ONLY")
+                faces = {face for face in faces if face.is_valid}
+            self._paint(faces, color)
+            if smooth > 0.0:
+                limit = math.radians(smooth)
+                for face in faces:
+                    face.smooth = True
+                    for edge in face.edges:
+                        if edge.is_manifold and edge.calc_face_angle(0.0) > limit:
+                            edge.smooth = False
 
     def plate(self, center, size, facing: str, color: str) -> None:
         """A flat rectangle (markings, signs) with its centre at *center*, looking along
@@ -295,7 +314,7 @@ class Builder:
         target = bpy.data.objects.new(self.name, mesh)
         scene.collection.objects.link(target)
         if bpy.app.background:
-            _bake_look(target, self._glowing, self.wear)
+            _bake_look(target, self._glowing, self.wear, self._surfaces)
         else:
             mesh.color_attributes.active_color_name = _TINT
         if len(self._glass.faces) > 0:
@@ -309,7 +328,13 @@ class Builder:
     def _paint(self, faces: set, color: str) -> None:
         if color == PANE:
             return
-        srgb, kind, finish = PALETTE[color]
+        srgb, kind, finish = PALETTE[color][:3]
+        surface = 0
+        if len(PALETTE[color]) > 3:
+            texture = PALETTE[color][3]
+            if texture not in self._surfaces:
+                self._surfaces.append(texture)
+            surface = self._surfaces.index(texture) + 1
         # This kind of colour layer stores sRGB; Blender converts it for the shader itself.
         # Converting here as well made every colour far too dark (tried 2026-11-17).
         value = (*srgb, _KINDS[kind])
@@ -318,7 +343,8 @@ class Builder:
         for face in faces:
             for loop in face.loops:
                 loop[self._tint] = value
-                loop[self._finish] = (finish[0], finish[1], 0.0, 1.0)
+                # Blue carries the surface texture (_SURFACE_STEP per place in the list).
+                loop[self._finish] = (finish[0], finish[1], surface * _SURFACE_STEP, 1.0)
                 loop[self._glow] = light
 
 
@@ -373,11 +399,12 @@ def _seamless(values: numpy.ndarray, keep_contrast: bool) -> numpy.ndarray:
     return values
 
 
-def _surface_image(kind: str) -> bpy.types.Image:
-    """The surface texture of *kind* as the bake needs it: red = brightness relative to the
-    surroundings (0.5 = unchanged; uneven lighting removed), green = rust. Seamless. A missing
-    texture file gives a neutral image, so models still build with flat colours."""
-    name = "te_surface_" + kind
+def _surface_image(texture: str) -> bpy.types.Image:
+    """The surface texture *texture* (a kind, metal or concrete, or a name from the palette) as
+    the bake needs it: red = brightness relative to the surroundings (0.5 = unchanged; uneven
+    lighting removed), green = rust. Seamless. A missing texture file gives a neutral image, so
+    models still build with flat colours."""
+    name = "te_surface_" + texture
     existing = bpy.data.images.get(name)
     if existing is not None:
         bpy.data.images.remove(existing)
@@ -385,7 +412,7 @@ def _surface_image(kind: str) -> bpy.types.Image:
     pixels = numpy.zeros((size, size, 4), dtype=numpy.float32)
     pixels[:, :, 0] = 0.5
     pixels[:, :, 3] = 1.0
-    path = os.path.join(TEXTURE_FOLDER, kind + ".jpg")
+    path = os.path.join(TEXTURE_FOLDER, texture + ".jpg")
     if os.path.exists(path):
         source = bpy.data.images.load(path, check_existing=False)
         width, height = source.size
@@ -415,10 +442,11 @@ def _surface_image(kind: str) -> bpy.types.Image:
 
 # --- The baked look --------------------------------------------------------------------------
 
-def _look_material(wear: float = 1.0) -> tuple:
+def _look_material(wear: float = 1.0, textures=()) -> tuple:
     """The recipe as a node graph: palette colour x surface texture, rust on metal, dirt in
     corners, worn edges, and the finish (roughness, metalness); *wear* (0..1) scales the age
-    and dirt (Builder). Returns the material, the
+    and dirt (Builder); *textures* are the surface textures the palette names, in the order of
+    the faces' places (Builder._surfaces). Returns the material, the
     input of its glow, and the two results to feed into it one after the other: the colour
     and the finish. A glowing surface is baked without lighting."""
     material = bpy.data.materials.get("te_look") or bpy.data.materials.new("te_look")
@@ -474,8 +502,19 @@ def _look_material(wear: float = 1.0) -> tuple:
     is_metal = math_node("GREATER_THAN", kind, 0.75)
     textured = math_node("ADD", is_metal, math_node("LESS_THAN", kind, 0.25))
 
+    chosen = mix("MIX", is_metal, surfaces["concrete"], surfaces["metal"])
+    if textures:
+        # Faces whose colour names a texture of its own take that one instead of their kind's.
+        place = node("ShaderNodeSeparateColor")
+        link(node("ShaderNodeVertexColor", layer_name=_FINISH).outputs[0], place.inputs[0])
+        for index, name in enumerate(textures):
+            texture = node("ShaderNodeTexImage", image=_surface_image(name), projection="BOX",
+                           projection_blend=0.2)
+            link(mapping.outputs["Vector"], texture.inputs["Vector"])
+            picked = math_node("COMPARE", place.outputs[2], (index + 1) * _SURFACE_STEP, _SURFACE_STEP / 4.0)
+            chosen = mix("MIX", picked, chosen, texture.outputs["Color"])
     surface = node("ShaderNodeSeparateColor")
-    link(mix("MIX", is_metal, surfaces["concrete"], surfaces["metal"]), surface.inputs[0])
+    link(chosen, surface.inputs[0])
     detail, rust = surface.outputs[0], surface.outputs[1]
     # detail is stored halved: 1 + strength * (2 * detail - 1), kept within sane bounds;
     # plain surfaces keep their flat colour.
@@ -532,6 +571,9 @@ def _look_material(wear: float = 1.0) -> tuple:
     breakup = math_node("MULTIPLY_ADD", noise.outputs[0], 0.8, 0.2, clamp=True)
     worn = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup),
                      math_node("MULTIPLY_ADD", textured, 0.7 * edges, 0.3 * edges))
+    if textures:
+        natural = math_node("GREATER_THAN", place.outputs[2], _SURFACE_STEP / 2.0)
+        worn = math_node("MULTIPLY", worn, math_node("MULTIPLY_ADD", natural, NATURAL_EDGES - 1.0, 1.0))
     color = mix("MIX", worn, color, _linear(EDGE_COLOR))
 
     # The finish starts from the palette colour. Rust is rough and dull, worn edges of metal
@@ -569,13 +611,13 @@ def _look_material(wear: float = 1.0) -> tuple:
     return material, glow.inputs["Color"], color, packed.outputs[0]
 
 
-def _bake_look(target: bpy.types.Object, glowing: bool, wear: float = 1.0) -> None:
+def _bake_look(target: bpy.types.Object, glowing: bool, wear: float = 1.0, textures=()) -> None:
     """Unwraps the model, bakes the look into two textures (colour and finish), and a third
     one (the glow mask) when something on it glows, and leaves the model with a plain material
-    that shows them."""
+    that shows them. *textures*: the surface textures the palette names (Builder._surfaces)."""
     scene = target.users_scene[0]
     mesh = target.data
-    look, glow_input, color_result, finish_result = _look_material(wear)
+    look, glow_input, color_result, finish_result = _look_material(wear, textures)
     mesh.materials.append(look)
     if len(mesh.uv_layers) == 0:
         mesh.uv_layers.new(name="UVMap")
