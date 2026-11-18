@@ -282,3 +282,9 @@ ERROR_INSUFFICIENT_ROBOTS,There are not that many robots of this tier in the sto
 RESEARCH_NO_STAFF,"This lab has no staff: inspect it and assign workers with Staff."
 ERROR_STRUCTURE_MOVING,"This structure is travelling; building has to wait until it has arrived."
 ERROR_HOST_MOVING,"The structure this one is docked at is travelling; building has to wait."
+STORE_TRANSFER_TO,Move to {name}:
+STORE_TRANSFER_NEXT,Other guest
+STORE_TRANSFER_ALL,All
+STORE_TRANSFER_NOTHING,There is nothing of it to move.
+STORE_TRANSFER_NO_ROOM,There is not enough room in the store of {name}.
+STORE_TRANSFERRED,{count} {name} moved to {target}.

@@ -301,6 +301,33 @@ func robots_in_store() -> Array[int]:
 	return counts
 
 
+## The structures this one can move items to: its docked guests (host), or its host (guest).
+func counterparts() -> Array[ColonyModel]:
+	if host != null:
+		return [host]
+	return guest_list()
+
+
+## Moves `amount` micro-units of an item between this structure and `other` (its host or one of
+## its guests). The call always goes to the host; on success both stores are the ones the
+## server sends back.
+func transfer_to(other: ColonyModel, item: String, amount: int) -> ApiResult:
+	var to_guest := other.host == self
+	var host_model: ColonyModel = self if to_guest else other
+	var guest_model: ColonyModel = other if to_guest else self
+	var result := await Services.api.post_json("/v2/structures/%d/transfers" % host_model.structure_id,
+		TransferPlan.request(guest_model.structure_id, to_guest, item, amount))
+	if result.is_ok():
+		var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+		host_model.inventory = Inventory.from_wire(Wire.as_dict(result.data.get("host")), scale)
+		guest_model.inventory = Inventory.from_wire(Wire.as_dict(result.data.get("guest")), scale)
+		host_model.inventory_changed.emit()
+		guest_model.inventory_changed.emit()
+		host_model.reload_production()
+		guest_model.reload_production()
+	return result
+
+
 ## Destroys `amount` micro-units of an item for good (way out of a full store). On success the
 ## inventory is the one the server sends back.
 func discard(item: String, amount: int) -> ApiResult:

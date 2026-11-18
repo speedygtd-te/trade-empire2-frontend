@@ -202,6 +202,16 @@ func _dock_screens(colony: ColonyScreen) -> void:
 	await _capture("dock_guest_build_blocked")
 	colony._set_mode(ColonyScreen.Mode.STORE)
 	await _capture("dock_guest_store")
+	# Moving goods: give the guest some iron, choose it in its store (the move row shows the
+	# host), then send it back.
+	var given := await model.transfer_to(guest, "IRON", 5 * model.inventory.scale)
+	print("DOCK  iron to the guest: ", given.is_ok())
+	await get_tree().create_timer(1.0).timeout
+	colony._store._select("IRON")
+	await _capture("dock_guest_store_transfer")
+	await colony._store._on_transfer(0)
+	await _capture("dock_guest_store_transferred")
+	print("DOCK  iron back to the host: ", colony._store._discard_status.text)
 	colony._close_structure()
 	colony._select_structure(false)
 	await _capture("dock_guest_extended")

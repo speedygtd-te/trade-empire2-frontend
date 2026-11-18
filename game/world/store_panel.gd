@@ -1,13 +1,15 @@
 class_name StorePanel
 extends VBoxContainer
 ## The store of the colony: every item with its amount now and its rate per hour, plus how
-## full the store is. Amounts are extrapolated from the flows every second.
+## full the store is. Amounts are extrapolated from the flows every second. A chosen item can be
+## moved to a docked guest or to the host (transfer), or discarded (two-step).
 
 ## Most of the screen stays free for the colony; the list scrolls.
 const LIST_HEIGHT := 460
 
-## Amounts offered for discarding, in whole units; 0 stands for everything.
+## Amounts offered for discarding and moving, in whole units; 0 stands for everything.
 const DISCARD_AMOUNTS: Array[int] = [1, 10, 0]
+const TRANSFER_AMOUNTS: Array[int] = [1, 10, 0]
 
 var _model: ColonyModel
 var _summary: Label
@@ -26,10 +28,19 @@ var _busy := false
 var _discard_bar: HBoxContainer
 var _discard_buttons: Array[Button] = []
 var _discard_status: Label
+var _transfer_bar: VBoxContainer
+## Where items go, and (with several guests) a button that picks the next one.
+var _target_label: Label
+var _target_button: Button
+var _transfer_buttons: Array[Button] = []
+var _target_index := 0
+## A result line (moved, refused) stays until another item is chosen.
+var _keep_status := false
 
 
 func setup(model: ColonyModel) -> void:
 	_model = model
+	_target_index = 0
 
 
 func _ready() -> void:
@@ -57,6 +68,28 @@ func _ready() -> void:
 		button.pressed.connect(_on_discard.bind(amount))
 		_discard_bar.add_child(button)
 		_discard_buttons.append(button)
+	_transfer_bar = Ui.column(8)
+	_transfer_bar.visible = false
+	add_child(_transfer_bar)
+	move_child(_transfer_bar, _discard_bar.get_index())
+	_target_label = Ui.dynamic_label()
+	_target_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_target_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_transfer_bar.add_child(_target_label)
+	var amounts := HBoxContainer.new()
+	amounts.add_theme_constant_override("separation", 12)
+	_transfer_bar.add_child(amounts)
+	for amount: int in TRANSFER_AMOUNTS:
+		var button := Ui.secondary_button("")
+		button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(_on_transfer.bind(amount))
+		amounts.add_child(button)
+		_transfer_buttons.append(button)
+	_target_button = Ui.secondary_button("STORE_TRANSFER_NEXT")
+	_target_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_target_button.pressed.connect(_on_next_target)
+	amounts.add_child(_target_button)
 
 
 ## Shows the energy and life support balance and warnings of the colony.
@@ -155,7 +188,9 @@ func show_inventory(inventory: Inventory) -> void:
 func _select(item: String) -> void:
 	_selected = item
 	_armed = -1
+	_discard_status.remove_theme_color_override("font_color")
 	_discard_status.text = ""
+	_keep_status = false
 	_update_discard_bar()
 
 
@@ -169,8 +204,77 @@ func _update_discard_bar() -> void:
 		var label := tr("STORE_DISCARD_ALL") if amount == 0 else tr("STORE_DISCARD_N").format({"count": amount})
 		_discard_buttons[index].text = tr("STORE_DISCARD_CONFIRM") if amount == _armed else label
 		_discard_buttons[index].disabled = _busy
-	if _armed < 0:
+	if _armed < 0 and not _keep_status:
 		_discard_status.text = tr("STORE_DISCARD_HINT").format({"name": item_name})
+	_update_transfer_bar()
+
+
+## The move row: shown when this structure has a host or docked guests.
+func _update_transfer_bar() -> void:
+	var others: Array[ColonyModel] = []
+	if _model != null:
+		others = _model.counterparts()
+	_transfer_bar.visible = not _selected.is_empty() and not others.is_empty()
+	if not _transfer_bar.visible:
+		return
+	_target_index = posmod(_target_index, others.size())
+	var target := others[_target_index]
+	_target_label.text = tr("STORE_TRANSFER_TO").format({"name": target.structure_name})
+	_target_button.visible = others.size() > 1
+	_target_button.disabled = _busy
+	for index: int in TRANSFER_AMOUNTS.size():
+		var amount := TRANSFER_AMOUNTS[index]
+		_transfer_buttons[index].text = tr("STORE_TRANSFER_ALL") if amount == 0 else str(amount)
+		_transfer_buttons[index].disabled = _busy
+
+
+func _on_next_target() -> void:
+	_target_index += 1
+	_update_transfer_bar()
+
+
+func _on_transfer(amount: int) -> void:
+	if _busy or _selected.is_empty() or _model == null or _inventory == null:
+		return
+	var others := _model.counterparts()
+	if others.is_empty():
+		return
+	var target := others[posmod(_target_index, others.size())]
+	_armed = -1
+	var now := Services.clock.now_ms()
+	var units := TransferPlan.units_for(amount, _inventory.units(_selected, now))
+	if units <= 0:
+		_show_status(tr("STORE_TRANSFER_NOTHING"), AppTheme.COLOR_DANGER)
+		return
+	var micro := units * _inventory.scale
+	var room := target.inventory
+	if room != null and room.used != null and not TransferPlan.fits(micro, room.capacity, room.used.amount_at(now)):
+		_show_status(tr("STORE_TRANSFER_NO_ROOM").format({"name": target.structure_name}), AppTheme.COLOR_DANGER)
+		return
+	var item := _selected
+	_busy = true
+	_refresh_buttons()
+	var result := await _model.transfer_to(target, item, micro)
+	_busy = false
+	if result.is_ok():
+		_show_status(tr("STORE_TRANSFERRED").format({"count": AmountFormat.units(units),
+			"name": _item_name(item), "target": target.structure_name}), AppTheme.COLOR_OK)
+	else:
+		_show_status(ErrorText.describe(result.error, self), AppTheme.COLOR_DANGER)
+	_refresh_buttons()
+
+
+## Enables or disables the buttons while a request runs, without touching the status line.
+func _refresh_buttons() -> void:
+	for button: Button in _discard_buttons:
+		button.disabled = _busy
+	_update_transfer_bar()
+
+
+func _show_status(text: String, color: Color) -> void:
+	_discard_status.add_theme_color_override("font_color", color)
+	_discard_status.text = text
+	_keep_status = true
 
 
 func _on_discard(amount: int) -> void:
@@ -194,11 +298,9 @@ func _on_discard(amount: int) -> void:
 	var result := await _model.discard(_selected, units * _inventory.scale)
 	_busy = false
 	if result.is_ok():
-		_discard_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
-		_discard_status.text = tr("STORE_DISCARDED").format({"count": AmountFormat.units(units), "name": _item_name(_selected)})
+		_show_status(tr("STORE_DISCARDED").format({"count": AmountFormat.units(units), "name": _item_name(_selected)}), AppTheme.COLOR_OK)
 	else:
-		_discard_status.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
-		_discard_status.text = ErrorText.describe(result.error, self)
+		_show_status(ErrorText.describe(result.error, self), AppTheme.COLOR_DANGER)
 	_update_discard_bar()
 
 

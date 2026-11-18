@@ -181,9 +181,33 @@ func _run() -> void:
 	_check(module_gone.is_ok(), "remove the module -> ok (error: %s)" % _code(module_gone))
 	await _wait_until(func() -> bool: return _units(module_item) == modules_before, 8000)
 	_check(_units(module_item) == modules_before, "the module went back to the host's store")
+	if guest.inventory != null:
+		await _check_transfers(guest)
 
 	await _clean_up(first, second, docks_before, hulls_before)
 	_finish()
+
+
+## Moves two iron to the guest and back again: both stores come from the answer, and the
+## guest's store is empty again afterwards (it had nothing before).
+func _check_transfers(guest: ColonyModel) -> void:
+	var scale := _model.inventory.scale
+	var now := Services.clock.now_ms()
+	var host_before := _model.inventory.units("IRON", now)
+	var guest_before := guest.inventory.units("IRON", now)
+	_check(_model.counterparts().has(guest) and guest.counterparts() == [_model],
+		"host and guest are each other's counterparts")
+	var sent := await _model.transfer_to(guest, "IRON", 2 * scale)
+	_check(sent.is_ok(), "move 2 iron to the guest -> ok (error: %s)" % _code(sent))
+	now = Services.clock.now_ms()
+	_check(guest.inventory.units("IRON", now) == guest_before + 2, "the guest's store holds 2 iron more (%d)" % guest.inventory.units("IRON", now))
+	_check(_model.inventory.units("IRON", now) <= host_before - 2 + 1, "the host's store holds about 2 iron less")
+	var too_much := await guest.transfer_to(_model, "IRON", 1000 * scale)
+	_check(_code(too_much) == "INSUFFICIENT_STOCK", "moving more than the guest has -> INSUFFICIENT_STOCK (got %s)" % _code(too_much))
+	var back := await guest.transfer_to(_model, "IRON", 2 * scale)
+	_check(back.is_ok(), "move the 2 iron back to the host -> ok (error: %s)" % _code(back))
+	now = Services.clock.now_ms()
+	_check(guest.inventory.units("IRON", now) == guest_before, "the guest's store is as before (%d)" % guest.inventory.units("IRON", now))
 
 
 ## Removes the guest (its last hull deletes it) and the docks, and checks the store is whole.
