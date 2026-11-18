@@ -186,6 +186,9 @@ func replace_labs(structure_id: int, fresh: Array[Lab]) -> void:
 
 ## Applies the event `research.completed` until the next full load: the tech is researched and
 ## its recipes are usable.
+## `blueprints` lists the keys of the blueprints the research unlocks — research unlocks only
+## blueprints (building plans of modules), never modules themselves; modules can also come by
+## trade or theft (Rudi, 2026-11-18).
 func apply_completed(data: Dictionary) -> void:
 	var key := Wire.as_string(data.get("tech"))
 	if key.is_empty():

@@ -201,10 +201,10 @@ RESEARCH_SLOTS,Inputs: {slots}
 RESEARCH_SLOT_EMPTY,empty
 RESEARCH_RATE_ITEM,{rate} {name}
 RESEARCH_RATE_FACTOR,{factor}× input
-RESEARCH_TECH_TITLE,{name} · tier {tier} · {duration}
+RESEARCH_TECH_TITLE,{name} · research tier {tier} · {duration}
 RESEARCH_TECH_NEEDS,Needs at least: {inputs}
 RESEARCH_TECH_UNLOCKS,Unlocks: {things}
-RESEARCH_TECH_WORKERS,Needs workers of tier {tier} or higher.
+RESEARCH_TECH_WORKERS,"Lab staff must be population tier {tier} or higher."
 RESEARCH_STATUS_UNKNOWN,State unknown.
 RESEARCH_STATUS_INACTIVE,Under construction. Inputs can be set already.
 RESEARCH_STATUS_NO_SLOTS,Idle: no inputs set.
