@@ -58,6 +58,8 @@ verschärft, wenn es nötig wird.
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
 | 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 <ordner> build\model-preview -NoFit` (Übersicht: `all_45.png`) |
 | Bodenfarben aus den V1-Kacheln | `godot --headless -s tools/biome_colors.gd` → `game/world/biome_colors.gd` |
+| Bodentexturen (Atlas) aus den V1-Kacheln | `python -I tools/ground_atlas.py` → `game/world/ground/` (`--source <ordner>` nimmt quadratische `<biome>_<n>.png` vor) |
+| Boden ansehen (Zoom 3/9/40, weiche/harte Ränder) | `godot --path . --resolution 720x1280 res://smoke/ground_review.tscn -- --out=build/ground` |
 | Materialtextur erzeugen (kostet fal-Guthaben) | `node scripts\3d\make-texture.cjs --preset metal` → `scripts\3d\textures\` |
 | 3D-Modell aus Sprite (kostet fal-Guthaben) | `node scripts\3d\sprite-to-3d.cjs --model hunyuan-lowpoly --input assets\final\mine_0.png` |
 | Generiertes 3D-Modell spielfertig machen | `powershell -File tools\postprocess-models.ps1` → `assets\3d-test\processed\` |
