@@ -1,11 +1,16 @@
 # End-to-end check of building against the server (smoke/colony_build.tscn): places a hull and
-# a module next to the colony of the development account and removes both again.
+# a module next to the colony of the development account and removes both again. With
+# -Scene dock_build (smoke/dock_build.tscn): places docks, founds and extends a guest on them,
+# checks the dock rules and takes everything down again.
 #
-#   powershell -File tools\colony-smoke.ps1 [-TimeoutSeconds 120]
+#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build] [-TimeoutSeconds 120]
 #
 # Needs the development account (node tools/dev-account.cjs creates it). Runs without window.
 # Exit code: 0 = green, 1 = a check failed, 2 = no account, 3 = stopped after the timeout.
-param([int]$TimeoutSeconds = 120)
+param(
+    [ValidateSet('colony_build', 'dock_build')][string]$Scene = 'colony_build',
+    [int]$TimeoutSeconds = 120
+)
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
@@ -22,7 +27,7 @@ $errLog = Join-Path $env:TEMP 'te-colony-smoke.err.log'
 Push-Location -LiteralPath $root
 try {
     & $godot --headless --path . --import --quit *> $null
-    $process = Start-Process -FilePath $godot -ArgumentList @('--headless', '--path', '.', 'res://smoke/colony_build.tscn') `
+    $process = Start-Process -FilePath $godot -ArgumentList @('--headless', '--path', '.', "res://smoke/$Scene.tscn") `
         -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError $errLog
     $null = $process.Handle
     $finished = $process.WaitForExit($TimeoutSeconds * 1000)
@@ -34,7 +39,7 @@ try {
     foreach ($file in @($log, $errLog)) {
         if (Test-Path -LiteralPath $file) {
             Get-Content -LiteralPath $file | ForEach-Object { ([string]$_) -replace '[0-9a-f]{64}', '<token>' } |
-                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|server)|ERROR|SCRIPT' }
+                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|docks|server)|ERROR|SCRIPT' }
         }
     }
     if (-not $finished) { Write-Output "stopped after $TimeoutSeconds s"; exit 3 }

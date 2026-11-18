@@ -119,6 +119,7 @@ func _run() -> void:
 	await _capture_research(colony)
 
 	colony._close_structure()
+	await _dock_screens(colony)
 	colony._on_menu()
 	await get_tree().create_timer(1.0).timeout
 	await _capture("account")
@@ -126,6 +127,108 @@ func _run() -> void:
 	if not had_session:
 		await session.logout()
 	get_tree().quit()
+
+
+## Docks and a guest on the live server: two docks next to the colony, the founding preview, a
+## guest founded by the screen's own Build button, picked by a tap, selected, opened, built on —
+## then everything is taken down again, so the account is as before.
+func _dock_screens(colony: ColonyScreen) -> void:
+	var model := colony._model
+	var host := model.layout
+	if not model.guests.is_empty():
+		print("SKIP  dock screens (the colony already has guests)")
+		return
+	var row := DockBuild.free_pair(host)
+	var first := host.to_absolute(row[0])
+	var second := host.to_absolute(row[1])
+	var beyond := host.to_absolute(row[2])
+	var docks := await model.send_ops([
+		{"op": "placeHull", "hullType": "DOCK", "x": first.x, "y": first.y, "z": first.z},
+		{"op": "placeHull", "hullType": "DOCK", "x": second.x, "y": second.y, "z": second.z},
+	])
+	print("DOCK  place docks: ", "ok" if docks.is_ok() else docks.error.code)
+	if not docks.is_ok():
+		return
+	await _until(func() -> bool: return host.hull_at(row[1]) == "DOCK")
+	# The docks lie at the colony's edge: bring them into the middle of the view above the panel.
+	colony._view.look_at_cell(second)
+	colony._view.pan(Vector2(0.0, -colony._bottom.size.y * 0.5 * colony._scale()), Vector2(colony._viewport.size))
+
+	# On the open home structure a hull on a dock founds a guest.
+	colony._select_structure(true)
+	colony._open_structure(ColonyScreen.Mode.BUILD)
+	colony._choose_tool("hull:STARTER")
+	colony._select(first)
+	await _capture("dock_found_preview")
+	colony._on_primary()
+	await _until(func() -> bool: return model.guests.size() == 1 and model.guest_list()[0].layout.hull_count() == 1)
+	var guest: ColonyModel = model.guest_list()[0] if model.guests.size() == 1 else null
+	print("DOCK  guest founded: ", guest != null, "  status: ", colony._status.text)
+	if guest == null:
+		await _remove_docks(model, first, second)
+		return
+	await _until(func() -> bool: return not guest.structure_name.is_empty())
+	colony._close_structure()
+	colony._select_structure(false)
+	await _capture("dock_guest_closed")
+
+	# A tap on the guest's roof selects the guest, a tap on the home structure the home structure.
+	var view := colony._view
+	var roof := WorldGrid.to_scene(first + Vector3i(0, 0, 1), view.origin, model.size_x) \
+		+ Vector3(0.0, view.lift_of(guest) + ColonyView.HULL_CLOSED_HEIGHT, 0.0)
+	colony._on_tap(view._camera.unproject_position(roof) / colony._scale())
+	print("DOCK  tap on the guest selects it: ", colony._focus == guest and colony._structure_selected)
+	await _capture("dock_guest_selected")
+	var home_roof := WorldGrid.to_scene(model.centre_cell(), view.origin, model.size_x) + Vector3(0.0, ColonyView.HULL_CLOSED_HEIGHT, 0.0)
+	colony._on_tap(view._camera.unproject_position(home_roof) / colony._scale())
+	print("DOCK  tap on the home structure selects it: ", colony._focus == model and colony._structure_selected)
+	colony._focus = guest
+	colony._select_structure(true)
+
+	# The guest opened on its own: inspect its only hull, build next to it (from the host's
+	# store), then try to leave the docks.
+	colony._open_structure(ColonyScreen.Mode.VIEW)
+	colony._select(first)
+	await _capture("dock_guest_inspect")
+	colony._set_mode(ColonyScreen.Mode.BUILD)
+	colony._choose_tool("hull:STARTER")
+	colony._select(second)
+	await _capture("dock_guest_build")
+	colony._on_primary()
+	await _until(func() -> bool: return guest.layout.hull_count() == 2)
+	print("DOCK  guest extended: ", guest.layout.hull_count() == 2, "  status: ", colony._status.text)
+	colony._select(beyond)
+	await _capture("dock_guest_build_blocked")
+	colony._set_mode(ColonyScreen.Mode.STORE)
+	await _capture("dock_guest_store")
+	colony._close_structure()
+	colony._select_structure(false)
+	await _capture("dock_guest_extended")
+
+	# Clean up: the guest's last hull removes it, then the docks go.
+	if guest.layout.hull_count() > 1:
+		var side := await model.send_ops([{"op": "removeHull", "x": second.x, "y": second.y, "z": second.z + 1}])
+		print("DOCK  remove the guest's second hull: ", "ok" if side.is_ok() else side.error.code)
+		await _until(func() -> bool: return guest.layout.hull_count() == 1)
+	var removed := await model.send_ops([{"op": "removeHull", "x": first.x, "y": first.y, "z": first.z + 1}])
+	print("DOCK  remove the guest: ", "ok" if removed.is_ok() else removed.error.code)
+	await _until(func() -> bool: return model.guests.is_empty())
+	await _remove_docks(model, first, second)
+
+
+func _remove_docks(model: ColonyModel, first: Vector3i, second: Vector3i) -> void:
+	var removed := await model.send_ops([
+		{"op": "removeHull", "x": first.x, "y": first.y, "z": first.z},
+		{"op": "removeHull", "x": second.x, "y": second.y, "z": second.z},
+	])
+	print("DOCK  remove docks: ", "ok" if removed.is_ok() else removed.error.code)
+	await _until(func() -> bool: return model.layout.hull_at(model.layout.to_local(first)).is_empty())
+
+
+func _until(condition: Callable, timeout_ms: int = 8000) -> void:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline and not condition.call():
+		await get_tree().process_frame
 
 
 ## The research tab. With a real lab in the structure it aims the lab at the first research

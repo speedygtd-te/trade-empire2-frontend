@@ -77,7 +77,7 @@ SLOT_OUTDOOR,outdoor
 SLOT_UNDER_WATER,under water
 BUILD_VERDICT_OK,Ready to build.
 BUILD_VERDICT_OCCUPIED,This field already has a hull.
-BUILD_VERDICT_NOT_CONNECTED,A new hull has to touch the colony.
+BUILD_VERDICT_NOT_CONNECTED,A new hull has to touch the colony or stand on a dock.
 BUILD_VERDICT_WRONG_LEVEL,Only the ground level can be built on for now.
 BUILD_VERDICT_NO_HULL,A module needs a hull under every field it covers.
 BUILD_VERDICT_HULL_OCCUPIED,This hull already carries a module.
@@ -99,7 +99,7 @@ ERROR_HULL_Z_RESTRICTED,This hull cannot be built at this height.
 ERROR_INCOMPATIBLE_HULL,This hull cannot be built here.
 ERROR_OVERHANG_EXCEEDED,This would overhang too far.
 ERROR_NOT_BUILDABLE,This body cannot be built on.
-ERROR_FOUND_ONLY_ON_DOCK,New buildings must touch the colony.
+ERROR_FOUND_ONLY_ON_DOCK,A new hull has to touch the colony or stand on a dock.
 ERROR_STRUCTURE_NOT_EMPTY,Empty the store before removing the last hull.
 ERROR_LAST_STRUCTURE,You cannot remove your last colony.
 ERROR_TIER_NOT_UNLOCKED,This needs a higher housing tier first.
@@ -246,3 +246,17 @@ ERROR_RESEARCH_IN_PROGRESS,This lab has progress on its research. Confirm to dis
 ERROR_INVALID_SLOT_RATE,Every input needs a rate above zero.
 ERROR_UNKNOWN_TECH,This research does not exist.
 ERROR_NOT_STRUCTURE_OWNER,This structure belongs to someone else.
+BUILD_VERDICT_DOCK_AREA_TOO_SMALL,The vessel has to stay on the docks: the dock area is too small for this.
+BUILD_VERDICT_DOCK_SPACE_BLOCKED,Another vessel is in the way on these docks.
+BUILD_VERDICT_HULL_HAS_GUEST,A vessel stands on this dock. Remove the vessel first.
+BUILD_VERDICT_NOT_ON_DOCK,The vessel needs at least one hull on the dock.
+ERROR_NOT_ON_DOCK,The vessel needs at least one hull on the dock.
+ERROR_DOCK_AREA_TOO_SMALL,The vessel has to stay on the docks: the dock area is too small for this.
+ERROR_DOCK_SPACE_BLOCKED,Another vessel is in the way on these docks.
+ERROR_HULL_HAS_GUEST,A vessel stands on this dock. Remove the vessel first.
+ERROR_NOT_DOCKED_HERE,This vessel is not docked here.
+COLONY_DOCKED_AT,Docked at {host}
+COLONY_FOUNDS_GUEST,{name} – founds a new vessel on the dock.
+COLONY_SUPPLY_FROM_HOST,Hulls and modules come from the store of {host}.
+COLONY_REMOVES_GUEST,This is the vessel's last hull: removing it removes the vessel.
+STORE_EMPTY,The store is empty.

@@ -99,7 +99,12 @@ func show_inventory(inventory: Inventory) -> void:
 		child.queue_free()
 	_rows.clear()
 	if inventory == null:
+		_summary.text = tr("COMMON_LOADING")
 		return
+	_summary.text = ""
+	if inventory.item_keys().is_empty():
+		var empty := Ui.label("STORE_EMPTY", AppTheme.VARIATION_MUTED)
+		_list.add_child(empty)
 	var definitions := Services.definitions
 	var entries: Array[Array] = []
 	for key: String in inventory.item_keys():

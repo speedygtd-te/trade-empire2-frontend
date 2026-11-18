@@ -25,6 +25,12 @@ static func wrap_x(x: int, size: int) -> int:
 	return posmod(x, size) if size > 0 else x
 
 
+## The copy of x (x ± k·size) nearest to `reference`: brings a wrapped cell back next to the
+## absolute cells of a structure, which do not wrap.
+static func unwrap_x(x: int, reference: int, size: int) -> int:
+	return reference + wrapped_delta(reference, x, size)
+
+
 ## Scene position of the centre of a cell's floor.
 static func to_scene(cell: Vector3i, origin: Vector3i, size_x: int = 0) -> Vector3:
 	var dx := wrapped_delta(origin.x, cell.x, size_x)

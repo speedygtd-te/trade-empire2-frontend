@@ -3,6 +3,12 @@ extends Node
 ## The data of the colony on screen: the structure's layout and inventory, the body's grid and
 ## the surface around the camera. Loads them, keeps them current from the event channel and
 ## sends build batches.
+##
+## The home structure keeps its guests (structures docked on its dock hulls, DockRules) as
+## child models of the same class: each has its own layout, store and production, while the
+## body, the surface and sending build batches stay with the home structure. A guest's
+## layout loads at once; its store and production once it is selected (`activate`). Signals of
+## a guest are repeated by the home structure, so listeners connect once.
 
 signal layout_changed
 signal inventory_changed
@@ -14,6 +20,8 @@ signal surface_loaded(request: SurfaceBlocks.Request, patch: SurfacePatch)
 signal load_failed(error: ApiError)
 ## Everything needed to draw the colony is there.
 signal ready_to_show
+## A guest was founded or removed, or its name arrived.
+signal guests_changed
 ## Research, labs or their progress changed (also when loading research failed).
 signal research_changed
 ## A research of the player is done: the tech key.
@@ -21,9 +29,18 @@ signal research_completed(tech: String)
 
 ## How many surface blocks around the camera are kept loaded.
 const SURFACE_RADIUS := 2
+## Page size when listing the player's structures.
+const LIST_PAGE := 200
 
 var structure_id := 0
 var structure_name := ""
+## The structure this one is docked on; null for the home structure.
+var host: ColonyModel = null
+## Guests docked on this structure: structure id → ColonyModel (home structure only).
+var guests: Dictionary = {}
+## Whether store and production are kept loaded: always for the home structure, for a guest
+## once it was selected.
+var active := true
 var body_id := ""
 var body_name := ""
 var body_type := ""
@@ -58,6 +75,7 @@ var _layout_loading := false
 var _layout_again := false
 var _inventory_loading := false
 var _production_due := false
+var _naming := false
 
 
 func _ready() -> void:
@@ -65,15 +83,16 @@ func _ready() -> void:
 	Services.events.resync_requested.connect(_on_resync)
 
 
-## Loads the player's home colony (the structure on the home body; otherwise the first one).
+## Loads the player's home colony (the structure on the home body; otherwise the first one)
+## and the guests docked on it.
 func load_home() -> void:
 	var account := Services.session.account
-	var list := await Services.api.get_json("/v2/structures")
+	var list := await _list_structures()
 	if not list.is_ok():
 		load_failed.emit(list.error)
 		return
 	var chosen := {}
-	var items: Array = list.data.get("items") if typeof(list.data.get("items")) == TYPE_ARRAY else []
+	var items: Array = list.data.get("items")
 	for entry: Variant in items:
 		var summary := Wire.as_dict(entry)
 		var anchor := Wire.as_dict(summary.get("anchor"))
@@ -121,14 +140,67 @@ func load_home() -> void:
 	if layout_error != null:
 		load_failed.emit(layout_error)
 		return
+	_name_guests(items)
 	await reload_inventory()
 	ready_to_show.emit()
 	reload_research()
 	reload_production()
 
 
+func is_guest() -> bool:
+	return host != null
+
+
+## The structure whose store builds this one: the host for a guest (contract: hulls and modules
+## of a guest come from the host's inventory), otherwise itself.
+func supply() -> ColonyModel:
+	return host if host != null else self
+
+
+## The home structure (itself, or the host of a guest).
+func home() -> ColonyModel:
+	return host if host != null else self
+
+
+## Guest models in id order.
+func guest_list() -> Array[ColonyModel]:
+	var ids: Array = guests.keys()
+	ids.sort()
+	var result: Array[ColonyModel] = []
+	for id: int in ids:
+		result.append(guests[id] as ColonyModel)
+	return result
+
+
+## Layouts of the guests, for DockRules.
+func guest_layouts() -> Array[StructureLayout]:
+	var result: Array[StructureLayout] = []
+	for guest: ColonyModel in guest_list():
+		result.append(guest.layout)
+	return result
+
+
+## The home structure or one of its guests by id; null when unknown.
+func structure(id: int) -> ColonyModel:
+	if id == structure_id:
+		return self
+	return guests.get(id) as ColonyModel
+
+
+## Keeps store and production of a guest loaded from now on (it was selected).
+func activate() -> void:
+	if active:
+		return
+	active = true
+	reload_inventory()
+	reload_production()
+
+
 ## Loads the player's research: researched techs, usable recipes, labs. Returns why it failed.
+## Research belongs to the player: the home structure keeps it, a guest shares its recipes.
 func reload_research() -> ApiError:
+	if is_guest():
+		return null
 	var answer := await Services.api.get_json("/v2/research")
 	if not answer.is_ok():
 		research_error = answer.error
@@ -173,7 +245,7 @@ func set_lab_slots(module_id: int, slots: Array, confirm_loss: bool) -> ApiResul
 
 ## Loads the rate solution soon; several requests within a short time become one.
 func reload_production() -> void:
-	if _production_due or structure_id == 0:
+	if _production_due or structure_id == 0 or not active:
 		return
 	_production_due = true
 	await get_tree().create_timer(0.5).timeout
@@ -240,8 +312,11 @@ func ensure_surface(cell: Vector3i) -> void:
 		_load_surface(request)
 
 
-## Sends a build batch (atomic). Returns the result; on success layout and inventory reload.
+## Sends a build batch (atomic) to the body; ops on a guest go the same way. Returns the result;
+## on success the home structure (store, guest list) and every changed guest reload.
 func send_ops(ops: Array[Dictionary]) -> ApiResult:
+	if is_guest():
+		return await host.send_ops(ops)
 	var result := await Services.api.post_json("/v2/bodies/%s/ops" % body_id.uri_encode(), {
 		"mode": "atomic",
 		"ops": ops,
@@ -249,6 +324,12 @@ func send_ops(ops: Array[Dictionary]) -> ApiResult:
 	if result.is_ok():
 		reload_layout()
 		reload_inventory()
+		var changed: Array = result.data.get("structures") if typeof(result.data.get("structures")) == TYPE_ARRAY else []
+		for entry: Variant in changed:
+			var guest := guests.get(Wire.as_int(entry)) as ColonyModel
+			if guest != null:
+				guest.reload_layout()
+				guest.reload_inventory()
 	return result
 
 
@@ -261,7 +342,7 @@ func reload_layout() -> void:
 
 
 func reload_inventory() -> void:
-	if _inventory_loading or structure_id == 0:
+	if _inventory_loading or structure_id == 0 or not active:
 		return
 	_inventory_loading = true
 	var answer := await Services.api.get_json("/v2/structures/%d/inventory" % structure_id)
@@ -282,6 +363,8 @@ func _load_layout(full: bool) -> ApiError:
 	var failure: ApiError = answer.error
 	if answer.is_ok():
 		if layout.apply(answer.stream):
+			if not is_guest():
+				_sync_guests()
 			layout_changed.emit()
 		else:
 			failure = ApiError.new()
@@ -290,6 +373,98 @@ func _load_layout(full: bool) -> ApiError:
 		_layout_again = false
 		reload_layout()
 	return failure
+
+
+## Follows the guest list of the last layout header: new guests get a model (their layout
+## loads), vanished ones go. Names come from the structure list.
+func _sync_guests() -> void:
+	var listed: Dictionary = {}
+	var unnamed := false
+	for entry: StructureLayout.Guest in layout.guests:
+		listed[entry.structure_id] = true
+		var guest := guests.get(entry.structure_id) as ColonyModel
+		if guest == null:
+			guest = _add_guest(entry.structure_id)
+			unnamed = true
+		guest.layout.base = layout.offset
+	var changed := unnamed
+	for id: int in guests.keys():
+		if not listed.has(id):
+			var gone := guests[id] as ColonyModel
+			guests.erase(id)
+			gone.queue_free()
+			changed = true
+	if changed:
+		guests_changed.emit()
+	if unnamed and structure_id != 0 and not _naming:
+		_naming = true
+		var list := await _list_structures()
+		_naming = false
+		if list.is_ok():
+			var found: Array = list.data.get("items")
+			_name_guests(found)
+
+
+func _add_guest(id: int) -> ColonyModel:
+	var guest := ColonyModel.new()
+	guest.name = "Guest%d" % id
+	guest.host = self
+	guest.active = false
+	guest.structure_id = id
+	guest.body_id = body_id
+	guest.body_name = body_name
+	guest.body_type = body_type
+	guest.size_x = size_x
+	guest.star_kelvin = star_kelvin
+	guest.atmosphere_density = atmosphere_density
+	guest.atmosphere = atmosphere
+	guest.sun = sun
+	guest.surface = surface
+	# The same dictionary: a research reload of the home structure reaches the guest too.
+	guest.usable_blueprints = usable_blueprints
+	guest.layout.base = layout.offset
+	guests[id] = guest
+	add_child(guest)
+	guest.layout_changed.connect(layout_changed.emit)
+	guest.inventory_changed.connect(inventory_changed.emit)
+	guest.production_changed.connect(production_changed.emit)
+	guest.reload_layout()
+	return guest
+
+
+## Gives the guests their names from a structure list (`StructureSummary` entries).
+func _name_guests(items: Array) -> void:
+	var named := false
+	for entry: Variant in items:
+		var summary := Wire.as_dict(entry)
+		var guest := guests.get(Wire.as_int(summary.get("structureId"))) as ColonyModel
+		if guest != null:
+			guest.structure_name = Wire.as_string(summary.get("name"))
+			named = true
+	if named:
+		guests_changed.emit()
+
+
+## Every structure of the player, all pages in one answer (`data.items`).
+func _list_structures() -> ApiResult:
+	var items: Array = []
+	var cursor := ""
+	while true:
+		var path := "/v2/structures?limit=%d" % LIST_PAGE
+		if not cursor.is_empty():
+			path += "&cursor=" + cursor.uri_encode()
+		var page := await Services.api.get_json(path)
+		if not page.is_ok():
+			return page
+		if typeof(page.data.get("items")) == TYPE_ARRAY:
+			var some: Array = page.data.get("items")
+			items.append_array(some)
+		cursor = Wire.as_string(page.data.get("nextCursor"))
+		if cursor.is_empty():
+			break
+	var all := ApiResult.new()
+	all.data = {"items": items}
+	return all
 
 
 func _load_surface(request: SurfaceBlocks.Request) -> void:
@@ -328,6 +503,8 @@ func _on_event(event: SseEvent) -> void:
 				lab.hint_at = Wire.as_int(data.get("gameTime"), -1)
 				research_changed.emit()
 			return
+	if is_queued_for_deletion():
+		return
 	if Wire.as_int(data.get("structureId")) != structure_id or structure_id == 0:
 		return
 	match event.type:

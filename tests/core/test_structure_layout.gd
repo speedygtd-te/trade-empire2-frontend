@@ -137,3 +137,78 @@ func test_converts_between_local_and_absolute_cells() -> void:
 
 	assert_that(layout.to_absolute(Vector3i(1, 2, 0))).is_equal(Vector3i(101, 202, 0))
 	assert_that(layout.to_local(Vector3i(101, 202, 0))).is_equal(Vector3i(1, 2, 0))
+
+
+## A guest on its host's docks: anchor `docked`, hulls on two levels.
+func _guest() -> StructureLayout:
+	var layout := StructureLayout.new()
+	layout.apply(Ndjson.parse(
+		'{"line":"header","structureId":25,"anchor":{"type":"docked","hostId":9,"offset":{"x":4,"y":0,"z":1}},'
+		+ '"kind":"station","rev":7,"chunks":1}\n'
+		+ '{"line":"chunk","chunk":[0,0,0],"version":7,"hullTypes":["STARTER"],'
+		+ '"hulls":[[0,0,0,0],[0,0,1,0],[0,1,0,0]],"modules":[]}\n'
+		+ '{"line":"end","rev":7}'
+	))
+	return layout
+
+
+func test_header_lists_the_guests_on_the_docks() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(Ndjson.parse(
+		'{"line":"header","structureId":9,"anchor":{"type":"surface","bodyId":"planet-a","offset":{"x":0,"y":0,"z":0}},'
+		+ '"rev":5,"chunks":0,"guests":[{"structureId":25,"offset":{"x":4,"y":0,"z":1},'
+		+ '"rect":{"minX":4,"minY":0,"maxX":5,"maxY":1,"z":0}},{"structureId":26,"offset":{"x":8,"y":0,"z":1}}]}\n'
+		+ '{"line":"end","rev":5}'
+	))
+
+	assert_int(layout.guests.size()).is_equal(2)
+	assert_int(layout.guests[0].structure_id).is_equal(25)
+	assert_that(layout.guests[0].offset).is_equal(Vector3i(4, 0, 1))
+	assert_that(layout.guests[0].rect).is_equal(Rect2i(4, 0, 2, 2))
+	assert_int(layout.guests[0].dock_z).is_equal(0)
+	# Without hulls a guest has no rectangle.
+	assert_bool(layout.guests[1].rect.has_area()).is_false()
+
+
+func test_a_header_without_guests_clears_them() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(Ndjson.parse(
+		'{"line":"header","structureId":9,"anchor":{"type":"surface"},"rev":5,"chunks":0,'
+		+ '"guests":[{"structureId":25,"offset":{"x":4,"y":0,"z":1}}]}\n{"line":"end","rev":5}'
+	))
+
+	layout.apply(Ndjson.parse(
+		'{"line":"header","structureId":9,"anchor":{"type":"surface"},"rev":6,"since":5,"chunks":0}\n{"line":"end","rev":6}'
+	))
+
+	assert_array(layout.guests).is_empty()
+
+
+func test_docked_layout_knows_its_host_and_adds_the_host_offset() -> void:
+	var guest := _guest()
+	guest.base = Vector3i(100, 200, 0)
+
+	assert_bool(guest.is_docked()).is_true()
+	assert_int(guest.host_id).is_equal(9)
+	assert_that(guest.to_absolute(Vector3i(0, 1, 0))).is_equal(Vector3i(104, 201, 1))
+	assert_that(guest.to_local(Vector3i(104, 201, 1))).is_equal(Vector3i(0, 1, 0))
+
+
+func test_surface_layout_is_not_docked() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(_full(5, _starter()))
+
+	assert_bool(layout.is_docked()).is_false()
+	assert_int(layout.host_id).is_equal(0)
+
+
+func test_levels_lists_every_level_with_a_hull() -> void:
+	assert_array(_guest().levels()).contains_exactly([0, 1])
+
+
+func test_top_in_column_finds_the_highest_hull() -> void:
+	var guest := _guest()
+
+	assert_int(guest.top_in_column(0, 0)).is_equal(1)
+	assert_int(guest.top_in_column(0, 1)).is_equal(0)
+	assert_int(guest.top_in_column(3, 3)).is_equal(StructureLayout.NO_LEVEL)
