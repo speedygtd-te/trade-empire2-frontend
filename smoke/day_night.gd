@@ -1,7 +1,8 @@
 extends Node
-## Review tool for the lighting: shows the colony of the development account at morning, noon,
-## evening and night (SunPosition on an equator spot, ColonyView.set_sun) and saves a picture of
-## each. Root script of smoke/day_night.tscn.
+## Review tool for the lighting (SkyLight, ColonyView.set_sun): shows the colony of the
+## development account under different suns and skies and saves a picture of each — the sun
+## high and low over an Earth-like world, low over the colony's own world (its star and air),
+## low over an airless moon, and at dusk. Root script of smoke/day_night.tscn.
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 
@@ -30,22 +31,28 @@ func _run() -> void:
 	while colony._model.structure_id == 0 and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 	await get_tree().create_timer(4.0).timeout
+	var own_kelvin := colony._model.star_kelvin
+	var own_air := colony._model.atmosphere_density
+	print("COLONY  star %.0f K, atmosphere %.2f" % [own_kelvin, own_air])
 
-	var sun := SunPosition.new()
-	sun.rotation_period_s = 600.0
-	sun.orbit_period_s = 1.0e12
-	sun.axial_tilt = deg_to_rad(20.0)
-	sun.tilt_azimuth = PI
-	var lat := deg_to_rad(25.0)
-	# Noon at longitude PI is near t = 0; morning is a quarter turn earlier.
-	for moment: Array in [["morning", -120.0], ["noon", 0.0], ["evening", 130.0], ["night", 300.0]]:
-		var at: float = moment[1]
-		var label: String = moment[0]
-		var sky := sun.sky_at(lat, PI, at)
-		colony._view.set_sun(sky.elevation, sky.azimuth, Color(1.0, 0.96, 0.9))
+	var scenes: Array[Array] = [
+		["earth_noon", 60.0, 5800.0, 1.0],
+		["earth_sunset", 4.0, 5800.0, 1.0],
+		["earth_dusk", -3.0, 5800.0, 1.0],
+		["colony_noon", 50.0, own_kelvin, own_air],
+		["colony_sunset", 4.0, own_kelvin, own_air],
+		["airless_sunset", 4.0, 5800.0, 0.0],
+		["thick_air_sunset", 8.0, 5800.0, 2.5],
+	]
+	for scene: Array in scenes:
+		var label: String = scene[0]
+		var elevation: float = scene[1]
+		var kelvin: float = scene[2]
+		var air: float = scene[3]
+		colony._view.set_sun(deg_to_rad(elevation), deg_to_rad(250.0), kelvin, air)
 		await get_tree().create_timer(0.5).timeout
 		await RenderingServer.frame_post_draw
 		var path := "%s/%s.png" % [_out_dir, label]
 		get_viewport().get_texture().get_image().save_png(path)
-		print("SAVED  %s (sun %.0f°)" % [path, rad_to_deg(sky.elevation)])
+		print("SAVED  %s" % path)
 	get_tree().quit()

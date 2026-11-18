@@ -23,6 +23,9 @@ var structure_name := ""
 var body_id := ""
 var body_name := ""
 var body_type := ""
+## Light of this place: the star's surface temperature (Kelvin) and the air's density.
+var star_kelvin := 5800.0
+var atmosphere_density := 1.0
 ## Width of the body in cells; the surface wraps around in x.
 var size_x := 0
 var layout := StructureLayout.new()
@@ -82,6 +85,14 @@ func load_home() -> void:
 	body_type = Wire.as_string(body.data.get("type"))
 	size_x = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeX"))
 	surface = SurfaceBlocks.new(size_x)
+	var air: Variant = Wire.as_dict(body.data.get("environment")).get("atmosphereDensity")
+	if typeof(air) == TYPE_FLOAT:
+		atmosphere_density = air
+	var system := await Services.api.get_json("/v2/systems/" + Wire.as_string(body.data.get("systemId")).uri_encode())
+	if system.is_ok():
+		var kelvin: Variant = Wire.as_dict(system.data.get("star")).get("temperature")
+		if typeof(kelvin) == TYPE_FLOAT:
+			star_kelvin = kelvin
 
 	var layout_error := await _load_layout(true)
 	if layout_error != null:

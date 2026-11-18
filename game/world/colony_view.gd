@@ -19,8 +19,12 @@ const ZOOM_MAX := 40.0
 const REBASE_DISTANCE := 512
 ## The V1 tile colours are graded dark for 2D; lit in 3D they need lifting.
 const GROUND_BRIGHTNESS := 1.9
-## Ambient light that stays at night, so the colony is still readable.
+## Ambient light that stays at night, so the colony is still readable, and its colour.
 const NIGHT_AMBIENT := 0.28
+const NIGHT_COLOR := Color(0.45, 0.55, 0.85)
+## Light strengths at full sun and full skylight (SkyLight gives 0..1).
+const SUN_ENERGY := 1.25
+const SKY_ENERGY := 0.6
 
 const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
@@ -444,21 +448,28 @@ func _add_environment() -> void:
 	add_child(_sun)
 
 
-## Sets the sun from its height and direction (radians, SunPosition) and the star's colour.
-## Low sun turns the light warm; at night a dim bluish light stays, so the colony remains
-## readable on a phone.
-func set_sun(elevation: float, azimuth: float, star_color: Color = Color.WHITE) -> void:
+## Sets the sun from its height and direction (radians, SunPosition), the star's surface
+## temperature (Kelvin) and the atmosphere's density (SkyLight): low sun through air turns red,
+## thick air dims, airless bodies keep white light under a black sky. At night a dim bluish
+## light stays, so the colony remains readable on a phone.
+func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, density: float = 1.0) -> void:
 	var to_sun := Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
 	var up := Vector3.UP if absf(to_sun.y) < 0.999 else Vector3.FORWARD
 	_sun.basis = Basis.looking_at(-to_sun, up)
-	var day := clampf(sin(elevation) * 4.0, 0.0, 1.0)
-	var warm := clampf(1.0 - sin(maxf(elevation, 0.0)) * 3.0, 0.0, 1.0)
-	_sun.light_color = star_color.lerp(Color(1.0, 0.62, 0.38), warm * 0.7)
-	_sun.light_energy = 1.15 * day
-	_sun.visible = day > 0.0
+	var light := SkyLight.at(elevation, star_kelvin, density)
+	var strength := maxf(light.sun.r, maxf(light.sun.g, light.sun.b))
+	_sun.visible = strength > 0.001
+	if _sun.visible:
+		_sun.light_color = Color(light.sun.r / strength, light.sun.g / strength, light.sun.b / strength)
+		_sun.light_energy = SUN_ENERGY * strength
 	var environment := _world.environment
-	environment.ambient_light_energy = lerpf(NIGHT_AMBIENT, 0.55, day)
-	environment.ambient_light_color = Color(0.45, 0.55, 0.85).lerp(Color(0.82, 0.86, 0.95), day)
+	var sky_strength := maxf(light.sky.r, maxf(light.sky.g, light.sky.b))
+	if sky_strength > 0.001:
+		environment.ambient_light_color = Color(light.sky.r / sky_strength, light.sky.g / sky_strength, light.sky.b / sky_strength)
+	else:
+		environment.ambient_light_color = NIGHT_COLOR
+	# The floor keeps a dark scene readable; without air only the sun lights the ground.
+	environment.ambient_light_energy = maxf(NIGHT_AMBIENT, SKY_ENERGY * sky_strength)
 
 
 ## Applies a detail tier: shadows, edge smoothing and render resolution (DetailGovernor).

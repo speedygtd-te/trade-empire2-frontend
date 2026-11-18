@@ -12,6 +12,10 @@ enum Mode { VIEW, BUILD, STORE, LOG }
 const TAP_SLOP := 18.0
 ## How often the panel text is refreshed (construction countdowns).
 const REFRESH_SECONDS := 1.0
+## Fixed sun (radians) until the backend sends orbits: high in the south-west, so the shadows
+## fall towards the camera's upper right as before.
+const FIXED_SUN_ELEVATION := 0.87
+const FIXED_SUN_AZIMUTH := 3.67
 ## Where the detail tier of this device is kept between starts.
 const DETAIL_PATH := "user://detail.json"
 
@@ -247,6 +251,9 @@ func _on_ready_to_show() -> void:
 	_title.text = _model.structure_name
 	_subtitle.text = _model.body_name
 	_view.look_at_cell(_model.centre_cell())
+	# The sun stands still until the backend sends orbit and rotation; its light already has the
+	# colour of this star and this air.
+	_view.set_sun(FIXED_SUN_ELEVATION, FIXED_SUN_AZIMUTH, _model.star_kelvin, _model.atmosphere_density)
 	# The bottom panel covers the lower part of the view: shift the colony into the part above.
 	await get_tree().process_frame
 	_view.pan(Vector2(0.0, -_bottom.size.y * 0.5 * _scale()), Vector2(_viewport.size))
