@@ -22,6 +22,7 @@ The model scripts in this folder (pump.py) use it and run two ways:
 import argparse
 import math
 import os
+import random
 import sys
 from contextlib import contextmanager
 
@@ -82,6 +83,26 @@ PALETTE = {
     "black_metal": ((0.10, 0.10, 0.11), "metal", (0.50, 0.25)),
     "soil": ((0.36, 0.24, 0.16), "concrete", _MATTE),
     "plant": ((0.24, 0.62, 0.22), "plain", (0.85, 0.0)),
+    # Nature on the surface (props.py), after the V1 prop sprites: olive foliage, dark conifers,
+    # teal palms, grey and sand stones, black glossy lava rock, pale ice.
+    "bark": ((0.31, 0.22, 0.15), "concrete", _MATTE),
+    "bark_light": ((0.50, 0.42, 0.31), "concrete", _MATTE),
+    "leaf": ((0.30, 0.38, 0.15), "plain", (0.85, 0.0)),
+    "leaf_dark": ((0.16, 0.27, 0.13), "plain", (0.85, 0.0)),
+    "leaf_yellow": ((0.42, 0.43, 0.19), "plain", (0.85, 0.0)),
+    "leaf_palm": ((0.14, 0.38, 0.33), "plain", (0.80, 0.0)),
+    "charcoal": ((0.10, 0.09, 0.09), "concrete", (0.90, 0.0)),
+    "stone": ((0.40, 0.39, 0.36), "concrete", _MATTE),
+    "stone_dark": ((0.27, 0.26, 0.25), "concrete", _MATTE),
+    "moss": ((0.33, 0.39, 0.19), "concrete", _MATTE),
+    "sandstone": ((0.76, 0.64, 0.49), "concrete", _MATTE),
+    "ash_stone": ((0.22, 0.22, 0.23), "concrete", _MATTE),
+    "snow": ((0.88, 0.90, 0.93), "plain", (0.75, 0.0)),
+    "obsidian": ((0.06, 0.06, 0.07), "plain", (0.18, 0.0)),
+    "basalt": ((0.21, 0.22, 0.24), "concrete", _MATTE),
+    "ice": ((0.72, 0.82, 0.90), "plain", (0.20, 0.0)),
+    "ice_deep": ((0.45, 0.62, 0.78), "plain", (0.15, 0.0)),
+    "sulfur": ((0.72, 0.66, 0.30), "concrete", _MATTE),
 }
 # Colours that give off light, and the sRGB colour of their light. Baked into a third texture
 # (the glow mask); the game turns it up at night and on airless worlds (ColonyView).
@@ -224,6 +245,24 @@ class Builder:
             face.normal_update()
             # Round sides are shaded smooth, the two end caps stay flat.
             face.smooth = abs(face.normal.dot(axis)) < 0.99
+
+    def lump(self, center, size, color: str, seed: int = 0, rough: float = 0.2,
+             detail: int = 1) -> None:
+        """A faceted lump (stone, crown, ice): an icosphere with diameters *size* (x, y, z) whose
+        corners are pushed in and out by up to *rough* (share of the radius), the same way for
+        the same *seed*. Corners that end up below the ground (z < 0) are pulled onto it, so a
+        lump sunk into the ground stands on a flat base. *detail* 1 has 20 triangles."""
+        generator = random.Random(seed)
+        matrix = (self._frame @ Matrix.Translation(Vector(center))
+                  @ Matrix.Diagonal((size[0] / 2.0, size[1] / 2.0, size[2] / 2.0, 1.0)))
+        with self._into(color):
+            created = bmesh.ops.create_icosphere(self._mesh, subdivisions=detail, radius=1.0,
+                                                 matrix=Matrix.Identity(4))
+            for vert in created["verts"]:
+                vert.co = matrix @ (vert.co * (1.0 + generator.uniform(-rough, rough)))
+                if vert.co.z < 0.0:
+                    vert.co.z = 0.0
+            self._paint(self._faces(created), color)
 
     def plate(self, center, size, facing: str, color: str) -> None:
         """A flat rectangle (markings, signs) with its centre at *center*, looking along

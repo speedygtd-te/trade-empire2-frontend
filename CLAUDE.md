@@ -56,6 +56,7 @@ verschärft, wenn es nötig wird.
 | Android-Debug-APK | `powershell -File tools\android-debug.ps1` (`-Live` für den echten Server) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
+| Requisiten (Bäume, Steine …) ansehen und messen | `F:\Tools\Godot\godot.exe --path . --resolution 720x1280 res://smoke/prop_view.tscn -- --out=build/props` (Entwicklerkonto; Modelle: `build-models.ps1 -Only props`) |
 | 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 <ordner> build\model-preview -NoFit` (Übersicht: `all_45.png`) |
 | Bodenfarben aus den V1-Kacheln | `godot --headless -s tools/biome_colors.gd` → `game/world/biome_colors.gd` |
 | Bodentexturen (Atlas) aus den V1-Kacheln | `python -I tools/ground_atlas.py` → `game/world/ground/` (`--source <ordner>` nimmt quadratische `<biome>_<n>.png` vor) |

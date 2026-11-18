@@ -59,6 +59,8 @@ var open_id := 0
 
 var _camera: Camera3D
 var _ground: GroundLayer
+## Trees, stones, ice … on the surface (PropLayer).
+var _props: PropLayer
 var _hulls: Node3D
 var _modules: Node3D
 var _preview: Node3D
@@ -87,6 +89,9 @@ func _ready() -> void:
 	_ground = GroundLayer.new()
 	_ground.name = "Ground"
 	add_child(_ground)
+	_props = PropLayer.new()
+	_props.name = "Props"
+	add_child(_props)
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_preview = _child("Preview")
@@ -100,6 +105,8 @@ func _ready() -> void:
 	_camera.far = 400.0
 	add_child(_camera)
 
+	if model != null:
+		_props.setup(self)
 	_update_camera()
 
 
@@ -321,6 +328,7 @@ func _update_camera() -> void:
 func _rebuild_all() -> void:
 	_ground.clear()
 	_redraw_ground()
+	_props.rebuild()
 	_rebuild_structure()
 
 
@@ -640,6 +648,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	_ground.set_soft(tier != DetailGovernor.Tier.SLOW)
 	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
 	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
+	_props.apply_detail(tier)
 
 
 func _child(node_name: String) -> Node3D:
