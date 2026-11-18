@@ -202,6 +202,12 @@ func _dock_screens(colony: ColonyScreen) -> void:
 	colony._close_structure()
 	colony._select_structure(false)
 	await _capture("dock_guest_closed")
+	# The fleet: the colony and its new guest, the structure on screen marked.
+	await _until(func() -> bool: return colony._fleet.fleet.find(guest.structure_id) != null, 10000)
+	print("FLEET  button shown with two structures: ", colony._fleet_button.visible)
+	colony._open_fleet()
+	await _capture("fleet")
+	colony._close_fleet()
 
 	# A tap on the guest's roof selects the guest, a tap on the home structure the home structure.
 	var view := colony._view

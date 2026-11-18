@@ -440,3 +440,23 @@ LOG_INTENT_FALLBACK,"Without cargo space nothing can be captured; the structure 
 ERROR_NO_CARGO_SPACE,"Capturing needs cargo space: set a storage module to cargo first."
 GALAXY_SUBTITLE_SPIRAL,"Spiral galaxy · {arms} arms · {across} ly across"
 GALAXY_SUBTITLE,"{across} ly across"
+FLEET_OPEN,Fleet
+FLEET_TITLE,Your structures
+FLEET_LOADING,Loading your structures…
+FLEET_EMPTY,You have no structures.
+FLEET_LOAD_FAILED,Your structures could not be loaded.
+FLEET_KIND_BASE,Base
+FLEET_KIND_SHIP,Ship
+FLEET_KIND_VEHICLE,Vehicle
+FLEET_KIND_STATION,Station
+FLEET_ON_BODY,On {body}
+FLEET_IN_ORBIT,In orbit of {body}
+FLEET_DOCKED,Docked at {host}
+FLEET_IN_TRANSIT,Under way
+FLEET_TAKING_OFF,Taking off for {target} · arrives in {duration}
+FLEET_UNDER_WAY,On the way to {target} · arrives in {duration}
+FLEET_TARGET_ORBIT,the orbit of {body}
+FLEET_UNKNOWN_PLACE,somewhere
+FLEET_ON_ROUTE,on a route
+COLONY_NEIGHBOUR,Another of your structures on this body.
+COLONY_GO_THERE,Go there

@@ -28,6 +28,19 @@ class ModuleDef:
 	## Habitats only: the tier of their inhabitants and how many live in one; 0 otherwise.
 	var housing_tier := 0
 	var max_inhabitants := 0
+	## Mass of one module (micro-units).
+	var mass := 0
+	## A storage module: it adds `storage_capacity` (micro-units) to self-use or to the cargo
+	## area (layout `storageMode`).
+	var storage := false
+	var storage_capacity := 0
+	## Drives: thrust and lift limit (micro-units), fuel per light-year of `fuel_type`, warp level
+	## (space drives 1–4; 0 for ground drives and everything else).
+	var thrust := 0
+	var max_mass := 0
+	var fuel_type := ""
+	var fuel_rate := 0
+	var warp_level := 0
 
 
 ## What unlocks a housing tier (2–5): enough inhabitants of the tier below, and enough of
@@ -222,6 +235,14 @@ static func _read_module(data: Dictionary) -> ModuleDef:
 	var housing := Wire.as_dict(data.get("housing"))
 	module.housing_tier = Wire.as_int(housing.get("housingTier"))
 	module.max_inhabitants = Wire.as_int(housing.get("maxInhabitants"))
+	module.mass = Wire.as_int(data.get("mass"))
+	module.storage = data.get("storage") == true
+	module.storage_capacity = Wire.as_int(data.get("storageCapacity"))
+	module.thrust = Wire.as_int(data.get("thrust"))
+	module.max_mass = Wire.as_int(data.get("maxMass"))
+	module.fuel_type = Wire.as_string(data.get("fuelType"))
+	module.fuel_rate = Wire.as_int(data.get("fuelRate"))
+	module.warp_level = Wire.as_int(data.get("warpLevel"))
 	return module
 
 

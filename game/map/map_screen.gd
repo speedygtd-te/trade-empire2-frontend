@@ -14,8 +14,6 @@ signal closed
 
 ## Game seconds per real second while time-lapse is on.
 const TIME_LAPSE := 86400.0
-## Page size when listing the player's structures.
-const LIST_PAGE := 200
 
 var _system_id := ""
 var _home_body := ""
@@ -221,7 +219,7 @@ func _load() -> void:
 	if not system.is_ok():
 		_show_state("MAP_LOAD_FAILED", system.error)
 		return
-	var structures := await list_structures()
+	var structures := await FleetModel.list_structures()
 	if not structures.is_ok():
 		_show_state("MAP_LOAD_FAILED", structures.error)
 		return
@@ -245,28 +243,6 @@ func _load() -> void:
 	await get_tree().process_frame
 	_update_free_area()
 	_view.show_map(_map)
-
-
-## All of the player's structures, page by page, as one result with `items`.
-static func list_structures() -> ApiResult:
-	var items: Array = []
-	var cursor := ""
-	while true:
-		var path := "/v2/structures?limit=%d" % LIST_PAGE
-		if not cursor.is_empty():
-			path += "&cursor=" + cursor.uri_encode()
-		var page := await Services.api.get_json(path)
-		if not page.is_ok():
-			return page
-		if typeof(page.data.get("items")) == TYPE_ARRAY:
-			var some: Array = page.data.get("items")
-			items.append_array(some)
-		cursor = Wire.as_string(page.data.get("nextCursor"))
-		if cursor.is_empty():
-			break
-	var all := ApiResult.new()
-	all.data = {"items": items}
-	return all
 
 
 # --- selection and time ---------------------------------------------------------------------

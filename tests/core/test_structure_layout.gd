@@ -48,6 +48,21 @@ func test_full_load_reads_anchor_hulls_and_modules() -> void:
 	assert_object(layout.module_at(Vector3i(15, 3, 0))).is_null()
 
 
+func test_storage_modules_carry_their_mode() -> void:
+	var layout := StructureLayout.new()
+	var lines: Array[String] = [
+		'{"line":"chunk","chunk":[0,0,0],"version":2,"hullTypes":["STARTER"],"hulls":[[0,0,0,0],[1,0,0,0]],'
+		+ '"modules":[{"moduleId":20,"moduleType":"BASIC_STORAGE","x":0,"y":0,"z":0,"size":{"x":1,"y":1,"z":1},'
+		+ '"rotation":0,"status":"active","completesAt":0,"storageMode":"transport"},'
+		+ '{"moduleId":21,"moduleType":"PUMP","x":1,"y":0,"z":0,"size":{"x":1,"y":1,"z":1},'
+		+ '"rotation":0,"status":"active","completesAt":0}]}',
+	]
+	layout.apply(_full(2, lines))
+
+	assert_str(layout.module(20).storage_mode).is_equal("transport")
+	assert_str(layout.module(21).storage_mode).is_empty()
+
+
 func test_delta_replaces_a_changed_chunk_and_keeps_the_others() -> void:
 	var layout := StructureLayout.new()
 	layout.apply(_full(5, _starter()))

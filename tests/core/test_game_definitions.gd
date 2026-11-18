@@ -29,6 +29,17 @@ const BUNDLE := {
 			"size": {"x": 1.0, "y": 1.0, "z": 1.0}, "positioning": ["INDOOR"], "workforceExempt": true,
 			"housing": {"housingTier": 1.0, "maxInhabitants": 50.0, "satisfactionBase": 250000.0},
 		},
+		{
+			"key": "CHEMICAL_THRUSTER", "displayName": "Chemical Thruster", "category": "TRANSPORT",
+			"size": {"x": 1.0, "y": 1.0, "z": 1.0}, "positioning": ["OUTDOOR"], "mass": 4000000.0,
+			"thrust": 100000000.0, "maxMass": 500000000.0, "fuelType": "HYDROGEN", "fuelRate": 10000000.0,
+			"warpLevel": 1.0,
+		},
+		{
+			"key": "BASIC_STORAGE", "displayName": "Basic Storage", "category": "LOGISTICS",
+			"size": {"x": 1.0, "y": 1.0, "z": 1.0}, "positioning": ["INDOOR"], "storage": true,
+			"storageCapacity": 500000000.0,
+		},
 	],
 	"housingTiers": [
 		{"tier": 2.0, "requiredTier": 1.0, "minPopulation": 500.0,
@@ -64,6 +75,22 @@ const BUNDLE := {
 		},
 	],
 }
+
+
+func test_reads_drives_and_storage() -> void:
+	var definitions := GameDefinitions.from_bundle(BUNDLE)
+	var drive := definitions.module("CHEMICAL_THRUSTER")
+	var store := definitions.module("BASIC_STORAGE")
+
+	assert_int(drive.thrust).is_equal(100000000)
+	assert_int(drive.max_mass).is_equal(500000000)
+	assert_str(drive.fuel_type).is_equal("HYDROGEN")
+	assert_int(drive.fuel_rate).is_equal(10000000)
+	assert_int(drive.warp_level).is_equal(1)
+	assert_int(drive.mass).is_equal(4000000)
+	assert_bool(drive.storage).is_false()
+	assert_bool(store.storage).is_true()
+	assert_int(store.storage_capacity).is_equal(500000000)
 
 
 func test_reads_blueprints_with_flows() -> void:
@@ -115,7 +142,7 @@ func test_reads_modules_with_size_and_positioning() -> void:
 	assert_str(pump.category).is_equal("PRODUCTION")
 	assert_that(pump.size).is_equal(Vector3i(2, 2, 1))
 	assert_array(Array(pump.positioning)).contains_exactly(["OUTDOOR"])
-	assert_int(definitions.module_count()).is_equal(4)
+	assert_int(definitions.module_count()).is_equal(6)
 
 
 func test_reads_hulls_and_a_hull_without_module_slot() -> void:

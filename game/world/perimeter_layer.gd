@@ -83,15 +83,14 @@ func setup(view: ColonyView) -> void:
 	_pool_mesh = _build_pool()
 
 
-## The decorated cells around every base of the colony on screen: the home structure when it is a
-## base (guests are ships and vehicles, never decorated). Every structure's cells, also the
+## The decorated cells around every base on screen: the loaded structure and its neighbours when
+## they are bases (guests are ships and vehicles, never decorated). Every structure's cells, also the
 ## underground ones, stay free.
 static func spots_for(model: ColonyModel) -> Array[Perimeter.Spot]:
 	var result: Array[Perimeter.Spot] = []
 	if model == null:
 		return result
-	var structures: Array[ColonyModel] = [model]
-	structures.append_array(model.guest_list())
+	var structures := model.drawn_structures()
 	var occupied: Array[Vector2i] = []
 	for structure: ColonyModel in structures:
 		for local: Vector3i in structure.layout.hull_cells():

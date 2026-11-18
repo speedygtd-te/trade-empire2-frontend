@@ -29,8 +29,6 @@ signal research_completed(tech: String)
 
 ## How many surface blocks around the camera are kept loaded.
 const SURFACE_RADIUS := 2
-## Page size when listing the player's structures.
-const LIST_PAGE := 200
 
 var structure_id := 0
 var structure_name := ""
@@ -77,6 +75,14 @@ var food_shortage := false
 var storage_full := false
 ## Inhabitants per tier and who works where (from production, structure and PUT workforce).
 var workforce := Workforce.new()
+## The structure rests in orbit or is under way: no ground to show (the screen shows panels).
+var detached := false
+## When a guest was asked for (load_structure), its id: the screen selects it; 0 otherwise.
+var asked_guest := 0
+## Other own structures on the same body's surface (load_structure): id → ColonyModel.
+var neighbours: Dictionary = {}
+## For a neighbour: the structure it was loaded next to; null otherwise.
+var neighbour_of: ColonyModel = null
 
 var _layout_loading := false
 var _layout_again := false
@@ -98,20 +104,41 @@ func _ready() -> void:
 ## Loads the player's home colony (the structure on the home body; otherwise the first one)
 ## and the guests docked on it.
 func load_home() -> void:
+	await load_structure(0)
+
+
+## Loads one own structure with its guests and, on a surface, the other own structures standing
+## on the same body (`neighbours`, drawn closed). A guest is loaded through its host and named in
+## `asked_guest`. A structure in orbit or under way has no ground to show: it loads `detached`.
+## `preferred` 0, or one that is gone: the home colony.
+func load_structure(preferred: int) -> void:
 	var account := Services.session.account
-	var list := await _list_structures()
+	var list := await FleetModel.list_structures()
 	if not list.is_ok():
 		load_failed.emit(list.error)
 		return
-	var chosen := {}
 	var items: Array = list.data.get("items")
+	var by_id: Dictionary = {}
 	for entry: Variant in items:
 		var summary := Wire.as_dict(entry)
-		var anchor := Wire.as_dict(summary.get("anchor"))
-		if Wire.as_string(anchor.get("type")) != "surface":
-			continue
-		if chosen.is_empty() or Wire.as_string(anchor.get("bodyId")) == account.home_body_id:
-			chosen = summary
+		by_id[Wire.as_int(summary.get("structureId"))] = summary
+	var chosen: Dictionary = by_id.get(preferred, {})
+	for _step: int in 8:
+		var anchor := Wire.as_dict(chosen.get("anchor"))
+		if Wire.as_string(anchor.get("type")) != "docked":
+			break
+		if asked_guest == 0:
+			asked_guest = Wire.as_int(chosen.get("structureId"))
+		chosen = by_id.get(Wire.as_int(anchor.get("hostId")), {})
+	if chosen.is_empty():
+		asked_guest = 0
+		for entry: Variant in items:
+			var summary := Wire.as_dict(entry)
+			var anchor := Wire.as_dict(summary.get("anchor"))
+			if Wire.as_string(anchor.get("type")) != "surface":
+				continue
+			if chosen.is_empty() or Wire.as_string(anchor.get("bodyId")) == account.home_body_id:
+				chosen = summary
 	if chosen.is_empty():
 		var none := ApiError.new()
 		none.code = "STRUCTURE_NOT_FOUND"
@@ -119,12 +146,33 @@ func load_home() -> void:
 		return
 	structure_id = Wire.as_int(chosen.get("structureId"))
 	structure_name = Wire.as_string(chosen.get("name"))
-	body_id = Wire.as_string(Wire.as_dict(chosen.get("anchor")).get("bodyId"))
+	var where := Wire.as_dict(chosen.get("anchor"))
+	detached = Wire.as_string(where.get("type")) == "free"
+	body_id = Wire.as_string(where.get("bodyId"))
+	if not body_id.is_empty():
+		var body_error := await _load_body()
+		if body_error != null:
+			load_failed.emit(body_error)
+			return
 
+	var layout_error := await _load_layout(true)
+	if layout_error != null:
+		load_failed.emit(layout_error)
+		return
+	_name_guests(items)
+	if not detached:
+		_add_neighbours(items)
+	await reload_inventory()
+	ready_to_show.emit()
+	reload_research()
+	reload_production()
+
+
+## The body the structure is at: grid, air, sun and star. Returns why it failed.
+func _load_body() -> ApiError:
 	var body := await Services.api.get_json("/v2/bodies/" + body_id.uri_encode())
 	if not body.is_ok():
-		load_failed.emit(body.error)
-		return
+		return body.error
 	body_name = Wire.as_string(body.data.get("name"))
 	system_id = Wire.as_string(body.data.get("systemId"))
 	body_type = Wire.as_string(body.data.get("type"))
@@ -156,16 +204,72 @@ func load_home() -> void:
 		var luminosity: Variant = star.get("luminosity")
 		if typeof(luminosity) == TYPE_FLOAT:
 			star_luminosity = luminosity
+	return null
 
-	var layout_error := await _load_layout(true)
-	if layout_error != null:
-		load_failed.emit(layout_error)
-		return
-	_name_guests(items)
-	await reload_inventory()
-	ready_to_show.emit()
-	reload_research()
-	reload_production()
+
+## The other own structures standing on this body's surface: models with their layout (and
+## their guests), drawn closed next to this one.
+func _add_neighbours(items: Array) -> void:
+	for entry: Variant in items:
+		var summary := Wire.as_dict(entry)
+		var id := Wire.as_int(summary.get("structureId"))
+		var anchor := Wire.as_dict(summary.get("anchor"))
+		if id == structure_id or neighbours.has(id) or Wire.as_string(anchor.get("type")) != "surface" \
+				or Wire.as_string(anchor.get("bodyId")) != body_id:
+			continue
+		var neighbour := _make_sibling(id)
+		neighbour.name = "Neighbour%d" % id
+		neighbour.neighbour_of = self
+		neighbour.structure_name = Wire.as_string(summary.get("name"))
+		neighbours[id] = neighbour
+		add_child(neighbour)
+		neighbour.layout_changed.connect(layout_changed.emit)
+		neighbour.guests_changed.connect(guests_changed.emit)
+		neighbour.reload_layout()
+	if not neighbours.is_empty():
+		guests_changed.emit()
+
+
+## A model of another structure at the same place: the body, its light and the surface are
+## shared; store and production stay unloaded (not active).
+func _make_sibling(id: int) -> ColonyModel:
+	var other := ColonyModel.new()
+	other.active = false
+	other.structure_id = id
+	other.body_id = body_id
+	other.body_name = body_name
+	other.body_type = body_type
+	other.system_id = system_id
+	other.size_x = size_x
+	other.star_kelvin = star_kelvin
+	other.star_luminosity = star_luminosity
+	other.star_distance_au = star_distance_au
+	other.atmosphere_density = atmosphere_density
+	other.atmosphere = atmosphere
+	other.sun = sun
+	other.surface = surface
+	# The same dictionary: a research reload of the home structure reaches the other one too.
+	other.usable_blueprints = usable_blueprints
+	return other
+
+
+## Every structure the view draws: this one, its guests, the neighbours and their guests.
+func drawn_structures() -> Array[ColonyModel]:
+	var result: Array[ColonyModel] = [self]
+	result.append_array(guest_list())
+	var ids: Array = neighbours.keys()
+	ids.sort()
+	for id: int in ids:
+		var neighbour := neighbours[id] as ColonyModel
+		result.append(neighbour)
+		result.append_array(neighbour.guest_list())
+	return result
+
+
+## Whether this is a neighbour (another own structure next to the loaded one) or one of its
+## guests: shown, but not edited from here.
+func is_neighbour() -> bool:
+	return neighbour_of != null or (host != null and host.neighbour_of != null)
 
 
 ## Brightness of the starlight here (SkyLight.brightness): dim around a red dwarf, bright close
@@ -212,11 +316,18 @@ func guest_layouts() -> Array[StructureLayout]:
 	return result
 
 
-## The home structure or one of its guests by id; null when unknown.
+## The home structure, one of its guests, a neighbour or a neighbour's guest by id; null when
+## unknown.
 func structure(id: int) -> ColonyModel:
 	if id == structure_id:
 		return self
-	return guests.get(id) as ColonyModel
+	if guests.has(id):
+		return guests.get(id) as ColonyModel
+	for neighbour: ColonyModel in neighbours.values():
+		var found := neighbour.structure(id)
+		if found != null:
+			return found
+	return null
 
 
 ## Keeps store and production of a guest loaded from now on (it was selected).
@@ -504,7 +615,7 @@ func _sync_guests() -> void:
 		guests_changed.emit()
 	if unnamed and structure_id != 0 and not _naming:
 		_naming = true
-		var list := await _list_structures()
+		var list := await FleetModel.list_structures()
 		_naming = false
 		if list.is_ok():
 			var found: Array = list.data.get("items")
@@ -512,24 +623,9 @@ func _sync_guests() -> void:
 
 
 func _add_guest(id: int) -> ColonyModel:
-	var guest := ColonyModel.new()
+	var guest := _make_sibling(id)
 	guest.name = "Guest%d" % id
 	guest.host = self
-	guest.active = false
-	guest.structure_id = id
-	guest.body_id = body_id
-	guest.body_name = body_name
-	guest.body_type = body_type
-	guest.size_x = size_x
-	guest.star_kelvin = star_kelvin
-	guest.star_luminosity = star_luminosity
-	guest.star_distance_au = star_distance_au
-	guest.atmosphere_density = atmosphere_density
-	guest.atmosphere = atmosphere
-	guest.sun = sun
-	guest.surface = surface
-	# The same dictionary: a research reload of the home structure reaches the guest too.
-	guest.usable_blueprints = usable_blueprints
 	guest.layout.base = layout.offset
 	guests[id] = guest
 	add_child(guest)
@@ -551,28 +647,6 @@ func _name_guests(items: Array) -> void:
 			named = true
 	if named:
 		guests_changed.emit()
-
-
-## Every structure of the player, all pages in one answer (`data.items`).
-func _list_structures() -> ApiResult:
-	var items: Array = []
-	var cursor := ""
-	while true:
-		var path := "/v2/structures?limit=%d" % LIST_PAGE
-		if not cursor.is_empty():
-			path += "&cursor=" + cursor.uri_encode()
-		var page := await Services.api.get_json(path)
-		if not page.is_ok():
-			return page
-		if typeof(page.data.get("items")) == TYPE_ARRAY:
-			var some: Array = page.data.get("items")
-			items.append_array(some)
-		cursor = Wire.as_string(page.data.get("nextCursor"))
-		if cursor.is_empty():
-			break
-	var all := ApiResult.new()
-	all.data = {"items": items}
-	return all
 
 
 func _load_surface(request: SurfaceBlocks.Request) -> void:

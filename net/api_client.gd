@@ -55,6 +55,16 @@ func put_json(path: String, body: Dictionary, authorised: bool = true) -> ApiRes
 	return await _send(HTTPClient.METHOD_PUT, path, JSON.stringify(body), authorised)
 
 
+## PATCH with a JSON body: fields left out stay as they are (routes, storage modes).
+func patch_json(path: String, body: Dictionary, authorised: bool = true) -> ApiResult:
+	return await _send(HTTPClient.METHOD_PATCH, path, JSON.stringify(body), authorised)
+
+
+## DELETE without a body (routes).
+func delete_json(path: String, authorised: bool = true) -> ApiResult:
+	return await _send(HTTPClient.METHOD_DELETE, path, "", authorised)
+
+
 func _send(method: HTTPClient.Method, path: String, body: String, authorised: bool,
 		extra_headers: PackedStringArray = [], keep_body: bool = false, ndjson: bool = false,
 		raw: bool = false) -> ApiResult:

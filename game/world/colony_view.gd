@@ -261,13 +261,12 @@ func _apply_highlight() -> void:
 					geometry.material_overlay = overlay
 
 
-## The home structure and its guests.
+## Every structure drawn: the loaded one, its guests, the neighbours and their guests.
 func _structures() -> Array[ColonyModel]:
 	var result: Array[ColonyModel] = []
 	if model == null:
 		return result
-	result.append(model)
-	result.append_array(model.guest_list())
+	result.append_array(model.drawn_structures())
 	return result
 
 

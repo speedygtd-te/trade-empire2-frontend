@@ -368,14 +368,13 @@ func _block_distance(block: Vector2i) -> int:
 
 
 ## Which cells hulls or the decoration around a base cover (no props there) and which lie above an
-## underground hull only (a vent cover may stand there): the home structure and its guests.
+## underground hull only (a vent cover may stand there): every structure the view draws.
 func _read_structures() -> void:
 	var model := _view.model
 	_covered.clear()
 	_vented.clear()
 	var below: Array[Vector2i] = []
-	var structures: Array[ColonyModel] = [model]
-	structures.append_array(model.guest_list())
+	var structures := model.drawn_structures()
 	for structure: ColonyModel in structures:
 		for local: Vector3i in structure.layout.hull_cells():
 			var cell := structure.layout.to_absolute(local)

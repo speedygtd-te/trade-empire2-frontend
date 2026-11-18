@@ -38,6 +38,8 @@ class Module:
 	## Game time (ms) when a module under construction is finished.
 	var completes_at: int = 0
 	var blueprint: String = ""
+	## Storage modules only: "selfUse" or "transport" (cargo area); "" for any other module.
+	var storage_mode: String = ""
 
 	## Size of the footprint after rotation: 90 and 270 swap x and y.
 	func extent() -> Vector3i:
@@ -277,6 +279,7 @@ static func _read_module(data: Dictionary) -> Module:
 	entry.status = Wire.as_string(data.get("status"))
 	entry.completes_at = Wire.as_int(data.get("completesAt"))
 	entry.blueprint = Wire.as_string(data.get("blueprint"))
+	entry.storage_mode = Wire.as_string(data.get("storageMode"))
 	return entry
 
 

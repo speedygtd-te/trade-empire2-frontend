@@ -247,7 +247,7 @@ func _load() -> void:
 		malformed.code = ApiResult.CODE_MALFORMED_RESPONSE
 		_show_state("GALAXY_LOAD_FAILED", malformed)
 		return
-	var structures := await MapScreen.list_structures()
+	var structures := await FleetModel.list_structures()
 	if not structures.is_ok():
 		_show_state("GALAXY_LOAD_FAILED", structures.error)
 		return
