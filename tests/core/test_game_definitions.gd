@@ -38,6 +38,16 @@ const BUNDLE := {
 			"inputs": [], "outputs": [{"resource": "IRON", "ratePerHour": 5000000.0}],
 			"requiredTileResource": "IRON", "basis": false,
 		},
+		{
+			"key": "OXYGEN_COLLECTION", "displayName": "Collect Oxygen", "host": "COLLECTOR",
+			"category": "EXTRACTION", "inputs": [], "outputs": [{"resource": "OXYGEN", "ratePerHour": 1000000.0}],
+			"requiredAtmosphereGas": "OXYGEN", "basis": true,
+		},
+		{
+			"key": "ORBITAL_HYDROGEN", "displayName": "Orbital Hydrogen", "host": "ORBITAL_COLLECTOR",
+			"category": "EXTRACTION", "inputs": [], "outputs": [{"resource": "HYDROGEN", "ratePerHour": 1000000.0}],
+			"requiredAtmosphereGas": "HYDROGEN", "orbitOnly": true, "basis": true,
+		},
 	],
 }
 
@@ -52,6 +62,17 @@ func test_reads_blueprints_with_flows() -> void:
 	assert_array(smelt.inputs).is_equal([["IRON", 2000000]])
 	assert_array(smelt.outputs).is_equal([["IRON_PLATE", 1000000]])
 	assert_str(definitions.blueprint("MINE_IRON").required_tile_resource).is_equal("IRON")
+
+
+func test_reads_gas_collectors_and_orbit_only_recipes() -> void:
+	var definitions := GameDefinitions.from_bundle(BUNDLE)
+
+	var oxygen := definitions.blueprint("OXYGEN_COLLECTION")
+	assert_str(oxygen.required_atmosphere_gas).is_equal("OXYGEN")
+	assert_str(oxygen.required_tile_resource).is_empty()
+	assert_bool(oxygen.orbit_only).is_false()
+	assert_bool(definitions.blueprint("ORBITAL_HYDROGEN").orbit_only).is_true()
+	assert_str(definitions.blueprint("SMELT_IRON").required_atmosphere_gas).is_empty()
 
 
 func test_blueprints_of_a_module_type() -> void:

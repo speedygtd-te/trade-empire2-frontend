@@ -35,6 +35,10 @@ class BlueprintDef:
 	var outputs: Array[Array] = []
 	## Extraction only: the deposit the tile needs; "" otherwise.
 	var required_tile_resource: String = ""
+	## Gas collectors only: the gas the body's air must hold (at least 1 %); "" otherwise.
+	var required_atmosphere_gas: String = ""
+	## Works only in orbit (ORBITAL_*).
+	var orbit_only := false
 	## Usable from the start; otherwise it needs research.
 	var basis := false
 
@@ -192,6 +196,8 @@ static func _read_blueprint(data: Dictionary) -> BlueprintDef:
 	blueprint.inputs = _flows(data.get("inputs"))
 	blueprint.outputs = _flows(data.get("outputs"))
 	blueprint.required_tile_resource = Wire.as_string(data.get("requiredTileResource"))
+	blueprint.required_atmosphere_gas = Wire.as_string(data.get("requiredAtmosphereGas"))
+	blueprint.orbit_only = data.get("orbitOnly") == true
 	blueprint.basis = data.get("basis") == true
 	return blueprint
 

@@ -16,12 +16,14 @@ enum Mode { VIEW, BUILD, STORE, LOG, RESEARCH }
 const TAP_SLOP := 18.0
 ## How often the panel text is refreshed (construction countdowns).
 const REFRESH_SECONDS := 1.0
-## Fixed sun (radians) until the backend sends orbits: high in the south-west, so the shadows
-## fall towards the camera's upper right as before.
+## Fixed sun (radians) while the body has no orbit data: high in the south-west, so the shadows
+## fall towards the camera's upper right.
 const FIXED_SUN_ELEVATION := 0.87
 const FIXED_SUN_AZIMUTH := 3.67
 ## Where the detail tier of this device is kept between starts.
 const DETAIL_PATH := "user://detail.json"
+## How often the sun is moved along its path (seconds); it crawls, so this is plenty.
+const SUN_SECONDS := 1.0
 
 var _model: ColonyModel
 var _view: ColonyView
@@ -66,6 +68,7 @@ var _busy := false
 ## The removal that waits for its second tap: "module" or "hull"; "" when none.
 var _armed := ""
 var _refresh_left := 0.0
+var _sun_left := 0.0
 var _detail := DetailGovernor.new()
 
 var _touches: Dictionary = {}
@@ -99,6 +102,10 @@ func _process(delta: float) -> void:
 		if _detail.evaluate(Time.get_ticks_msec()):
 			_view.apply_detail(_detail.tier)
 			_save_detail()
+	_sun_left -= delta
+	if _sun_left <= 0.0 and _model.structure_id != 0:
+		_sun_left = SUN_SECONDS
+		_update_sun()
 	_refresh_left -= delta
 	if _refresh_left <= 0.0:
 		_refresh_left = REFRESH_SECONDS
@@ -279,13 +286,24 @@ func _on_ready_to_show() -> void:
 	_title.text = _model.structure_name
 	_subtitle.text = _model.body_name
 	_view.look_at_cell(_model.centre_cell())
-	# The sun stands still until the backend sends orbit and rotation; its light already has the
-	# colour of this star and this air.
-	_view.set_sun(FIXED_SUN_ELEVATION, FIXED_SUN_AZIMUTH, _model.star_kelvin, _model.atmosphere_density)
+	_update_sun()
 	# The bottom panel covers the lower part of the view: shift the colony into the part above.
 	await get_tree().process_frame
 	_view.pan(Vector2(0.0, -_bottom.size.y * 0.5 * _scale()), Vector2(_viewport.size))
 	_refresh()
+
+
+## Sets the sun over the cell in the middle of the view from the body's orbit and rotation at
+## the current game time; without orbit data it stands still. Its light has the colour of this
+## star and this air.
+func _update_sun() -> void:
+	if _model.sun == null:
+		_view.set_sun(FIXED_SUN_ELEVATION, FIXED_SUN_AZIMUTH, _model.star_kelvin, _model.atmosphere_density)
+		return
+	var cell := _view.focus_cell()
+	var angles := SunPosition.cell_angles(cell.x, cell.y, _model.size_x)
+	var sky := _model.sun.sky_at(angles.x, angles.y, Services.clock.now_ms() / 1000.0)
+	_view.set_sun(sky.elevation, sky.azimuth, _model.star_kelvin, _model.atmosphere_density)
 
 
 func _on_load_failed(error: ApiError) -> void:
@@ -674,7 +692,7 @@ func _open_recipes(placed: StructureLayout.Module) -> void:
 	_info.visible = false
 	_status.visible = false
 	_actions.visible = false
-	_recipes.show_recipes(placed.module_type, placed.blueprint, _model.usable_blueprints)
+	_recipes.show_recipes(placed.module_type, placed.blueprint, _model.usable_blueprints, _model.atmosphere)
 
 
 func _close_recipes() -> void:
