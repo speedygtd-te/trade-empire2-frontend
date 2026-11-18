@@ -5,6 +5,7 @@ extends Control
 ## (not a `-s` script): the screens use the `Services` autoload, which only exists in a normal
 ## run. The signed-in screens use the development account of tools/dev-account.cjs
 ## (.local/dev-account.json, created by `node tools/dev-account.cjs`); without it they are skipped.
+## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map.
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 
@@ -79,6 +80,10 @@ func _run() -> void:
 	# Ground blocks stream in after the colony.
 	await get_tree().create_timer(4.0).timeout
 	await _capture("colony")
+	if OS.get_cmdline_user_args().has("--only=map"):
+		await _capture_map(colony)
+		await _finish(colony, session, had_session)
+		return
 	colony._select_structure(true)
 	await _capture("colony_structure")
 	colony._open_structure(ColonyScreen.Mode.VIEW)
@@ -121,9 +126,14 @@ func _run() -> void:
 
 	colony._close_structure()
 	await _dock_screens(colony)
+	await _capture_map(colony)
 	colony._on_menu()
 	await get_tree().create_timer(1.0).timeout
 	await _capture("account")
+	await _finish(colony, session, had_session)
+
+
+func _finish(colony: ColonyScreen, session: SessionController, had_session: bool) -> void:
 	colony.queue_free()
 	if not had_session:
 		await session.logout()
@@ -321,6 +331,58 @@ func _capture_staff(colony: ColonyScreen) -> void:
 	print("STAFF  %s: %s" % [chosen.module_type, colony._workforce_panel._verdict.text])
 	colony._close_workforce()
 	colony._select(null)
+
+
+## The system map: the whole system, the home planet up close and selected, a giant with its
+## moons, a moon, time-lapse; then Back twice returns to the colony.
+func _capture_map(colony: ColonyScreen) -> void:
+	colony._select_structure(false)
+	colony._open_map()
+	var screen := colony._map
+	await _capture("map_loading")
+	await _until(func() -> bool: return screen._map != null or screen._state.visible and screen._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
+	await get_tree().create_timer(1.0).timeout
+	await _capture("map_overview")
+	var map := screen._map
+	if map == null:
+		print("MAP  not loaded")
+		colony._close_map()
+		return
+	print("MAP  %s: %d bodies, extent %.0f, fit zoom %.3f" % [map.star_name, map.bodies.size(), map.extent, screen._view.zoom()])
+	for body: SystemMap.Body in map.star_orbits():
+		print("MAP    %-24s %6.2f AU -> ring %6.1f, reach %5.1f, marker %4.1f" % [body.name, body.orbit_au, body.ring, body.reach(), body.marker])
+	var home := Services.session.account.home_body_id
+	screen._view.focus_body(home)
+	await _capture("map_zoomed")
+	screen._select(home)
+	await _capture("map_selected")
+	for body: SystemMap.Body in map.bodies:
+		if body.type == "GAS_GIANT" or body.type == "ICE_GIANT":
+			screen._view.focus_body(body.id)
+			screen._select(body.id)
+			await _capture("map_giant")
+			if not body.moons.is_empty():
+				screen._select(body.moons[body.moons.size() - 1])
+				await _capture("map_moon")
+			break
+	screen._select("")
+	screen._view.fit()
+	screen._lapse_button.button_pressed = true
+	await get_tree().create_timer(3.0).timeout
+	await _capture("map_time_lapse")
+	screen._lapse_button.button_pressed = false
+	colony.handle_back()
+	colony.handle_back()
+	await get_tree().process_frame
+	print("MAP  Back twice returns to the colony: ", colony._map == null)
+
+	# The error state: a system the server does not know.
+	var broken := MapScreen.new()
+	broken.setup("sys-0_0_0-999999", home)
+	add_child(broken)
+	await _until(func() -> bool: return broken._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
+	await _capture("map_error")
+	broken.queue_free()
 
 
 ## A free cell next to the structure, for the build preview.

@@ -42,6 +42,8 @@ var guests: Dictionary = {}
 ## once it was selected.
 var active := true
 var body_id := ""
+## The star system of the body (`Body.systemId`), for the system map.
+var system_id := ""
 var body_name := ""
 var body_type := ""
 ## Light of this place: the star's surface temperature (Kelvin) and the air's density.
@@ -116,6 +118,7 @@ func load_home() -> void:
 		load_failed.emit(body.error)
 		return
 	body_name = Wire.as_string(body.data.get("name"))
+	system_id = Wire.as_string(body.data.get("systemId"))
 	body_type = Wire.as_string(body.data.get("type"))
 	size_x = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeX"))
 	surface = SurfaceBlocks.new(size_x)
@@ -132,7 +135,7 @@ func load_home() -> void:
 		if planet.is_ok():
 			parent = planet.data
 	sun = SunPosition.from_body(body.data, parent)
-	var system := await Services.api.get_json("/v2/systems/" + Wire.as_string(body.data.get("systemId")).uri_encode())
+	var system := await Services.api.get_json("/v2/systems/" + system_id.uri_encode())
 	if system.is_ok():
 		var kelvin: Variant = Wire.as_dict(system.data.get("star")).get("temperature")
 		if typeof(kelvin) == TYPE_FLOAT:

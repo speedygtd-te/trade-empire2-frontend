@@ -1,13 +1,15 @@
 # Saves a PNG of each screen for review. Opens a game window for a few seconds.
 #
 #   powershell -File tools\screenshots.ps1 [output folder]
+#   powershell -File tools\screenshots.ps1 -Only map   # signed in, straight to the system map
 #
 # Default output: build\screenshots (ignored by git). The signed-in screen needs the local dev
 # backend (tools\dev-backend.ps1 start). The run is stopped after -TimeoutSeconds, so a stuck
 # window never stays open. Exit code: 0 = ok, 3 = stopped after the timeout.
 param(
     [string]$Out = '',
-    [int]$TimeoutSeconds = 60
+    [int]$TimeoutSeconds = 60,
+    [string]$Only = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -28,6 +30,7 @@ Push-Location -LiteralPath $root
 try {
     & $godot --headless --path . --import --quit *> $null
     $arguments = @('--path', '.', 'res://smoke/screenshots.tscn', '--', "`"--out=$outForGodot`"")
+    if ($Only) { $arguments += "--only=$Only" }
     $process = Start-Process -FilePath $godot -ArgumentList $arguments -PassThru -NoNewWindow `
         -RedirectStandardOutput $log -RedirectStandardError $errLog
     # Reading the handle now makes ExitCode available after the process has ended.

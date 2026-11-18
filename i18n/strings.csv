@@ -288,3 +288,57 @@ STORE_TRANSFER_ALL,All
 STORE_TRANSFER_NOTHING,There is nothing of it to move.
 STORE_TRANSFER_NO_ROOM,There is not enough room in the store of {name}.
 STORE_TRANSFERRED,{count} {name} moved to {target}.
+MAP_OPEN,Map
+MAP_TITLE,Star system
+MAP_LOADING,Loading the star system…
+MAP_LOAD_FAILED,The star system could not be loaded.
+MAP_NO_SYSTEM,You have no home system yet.
+MAP_EMPTY,No planets circle this star.
+MAP_STAR_LINE,{type} · {kelvin} K · {count} bodies
+MAP_HINT,"Tap a planet, moon or belt for details. Drag to move, pinch to zoom: moons appear up close."
+MAP_LIVE,Live: every body stands where it is now.
+MAP_TIME_LAPSE,Time-lapse
+MAP_TIME_LAPSE_ON,Time-lapse: one game day per second. Switch it off to return to now.
+MAP_SHOW_ALL,Show all
+MAP_MOON_OF,{type} of {planet}
+MAP_HOME_HERE,Your home colony is here.
+MAP_STRUCTURES_HERE,Your structures here: {names}
+MAP_SIZE,Radius {radius} km · gravity {gravity} g · {temperature} °C
+MAP_ORBIT_STAR,{au} AU from the star · one orbit takes {period}
+MAP_ORBIT_PLANET,Circles {planet} once every {period}
+MAP_SURFACE_BUILDABLE,Solid surface: you can build on the ground.
+MAP_SURFACE_NONE,No solid surface: structures can only circle it in orbit.
+MAP_ATMOSPHERE,Atmosphere (density {density}): {gases}
+MAP_ATMOSPHERE_NONE,No atmosphere
+MAP_GAS_SHARE,{name} {share} %
+MAP_DEPOSITS,Deposits (abundance and quality out of 100)
+MAP_DEPOSIT,"{name}: abundance {abundance}, quality {quality}"
+MAP_DEPOSITS_NONE,No known deposits
+MAP_UNKNOWN_RESOURCE,Unknown resource
+MAP_BODY_TYPE_EARTH_LIKE,Earth-like planet
+MAP_BODY_TYPE_DESERT,Desert planet
+MAP_BODY_TYPE_OCEAN,Ocean planet
+MAP_BODY_TYPE_ICE,Ice planet
+MAP_BODY_TYPE_VOLCANIC,Volcanic planet
+MAP_BODY_TYPE_BARREN,Barren planet
+MAP_BODY_TYPE_TOXIC,Toxic planet
+MAP_BODY_TYPE_GAS_GIANT,Gas giant
+MAP_BODY_TYPE_ICE_GIANT,Ice giant
+MAP_BODY_TYPE_ASTEROID_M,Metallic asteroid belt
+MAP_BODY_TYPE_ASTEROID_C,Carbon-rich asteroid belt
+MAP_BODY_TYPE_ASTEROID_S,Stony asteroid belt
+MAP_BODY_TYPE_MOON_ROCKY,Rocky moon
+MAP_BODY_TYPE_MOON_ICY,Icy moon
+MAP_BODY_TYPE_MOON_VOLCANIC,Volcanic moon
+MAP_BODY_TYPE_UNKNOWN,Unknown body
+MAP_STAR_TYPE_O,Blue star (class O)
+MAP_STAR_TYPE_B,Blue-white star (class B)
+MAP_STAR_TYPE_A,White star (class A)
+MAP_STAR_TYPE_F,Yellow-white star (class F)
+MAP_STAR_TYPE_G,Yellow star (class G)
+MAP_STAR_TYPE_K,Orange star (class K)
+MAP_STAR_TYPE_M,Red dwarf (class M)
+MAP_STAR_TYPE_WHITE_DWARF,White dwarf
+MAP_STAR_TYPE_RED_GIANT,Red giant
+MAP_STAR_TYPE_NEUTRON,Neutron star
+MAP_STAR_TYPE_UNKNOWN,Star

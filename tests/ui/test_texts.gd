@@ -3,7 +3,7 @@ extends GdUnitTestSuite
 
 const TRANSLATION_PATH := "res://i18n/strings.en.translation"
 const SOURCE_DIRS: PackedStringArray = ["res://game", "res://core", "res://net"]
-const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH|WORKFORCE)_[A-Z0-9_]*[A-Z0-9])"'
+const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH|WORKFORCE|MAP)_[A-Z0-9_]*[A-Z0-9])"'
 ## Game-data keys that look like text keys (a lab type); error codes are skipped as well.
 const NOT_TEXT_KEYS: PackedStringArray = ["RESEARCH_LAB"]
 
@@ -81,6 +81,18 @@ func test_every_lab_status_and_research_field_has_a_text() -> void:
 	for category: String in ResearchPanel.CATEGORIES:
 		assert_bool(_has_text("RESEARCH_CATEGORY_" + category)).override_failure_message(
 			"no translation for RESEARCH_CATEGORY_" + category
+		).is_true()
+
+
+func test_every_body_and_star_type_has_a_text() -> void:
+	# The system map builds these keys from the server's values.
+	for type: String in BodyPanel.BODY_TYPES:
+		assert_bool(_has_text("MAP_BODY_TYPE_" + type)).override_failure_message(
+			"no translation for MAP_BODY_TYPE_" + type
+		).is_true()
+	for type: String in BodyPanel.STAR_TYPES:
+		assert_bool(_has_text("MAP_STAR_TYPE_" + type)).override_failure_message(
+			"no translation for MAP_STAR_TYPE_" + type
 		).is_true()
 
 
