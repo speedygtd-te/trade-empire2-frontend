@@ -2,9 +2,25 @@ class_name StructureLayout
 extends RefCounted
 ## The hulls and modules of one structure (`GET /v2/structures/{id}/layout`), kept up to date
 ## with delta loads (`since`). Cells are local to the structure's grid; `offset` turns them
-## into absolute cells of the body (surface anchor).
+## into absolute cells of the body (surface anchor). A docked guest's `offset` lies in its
+## host's grid; `base` (the host's offset) completes the way to absolute cells.
 
 const CHUNK := 16
+## "No level": what top_in_column answers for an empty column.
+const NO_LEVEL := -(1 << 30)
+
+
+## A guest docked on this structure (header `guests`).
+class Guest:
+	extends RefCounted
+	var structure_id: int = 0
+	## Local cell of this structure that holds the guest's local origin.
+	var offset: Vector3i = Vector3i.ZERO
+	## X-Y bounding rectangle in this structure's grid (inclusive bounds as Rect2i: position =
+	## smallest corner, end = largest corner + 1); empty for a guest without hulls.
+	var rect: Rect2i = Rect2i()
+	## Level of the dock hulls under the guest (offset.z − 1).
+	var dock_z: int = 0
 
 
 class Module:
@@ -47,11 +63,17 @@ var structure_id: int = 0
 ## "surface", "free" or "docked".
 var anchor_type: String = ""
 var body_id: String = ""
-## Absolute cell = offset + local cell.
+## Absolute cell = base + offset + local cell.
 var offset: Vector3i = Vector3i.ZERO
+## Docked guest: the host's offset (set by whoever knows the host); 0 for any other anchor.
+var base: Vector3i = Vector3i.ZERO
+## Docked guest: the structure it stands on; 0 otherwise.
+var host_id: int = 0
 var kind: String = ""
 ## The state the layout is valid for; the next delta load asks `since` this.
 var rev: int = -1
+## Guests docked on this structure, by id (from the last header).
+var guests: Array[Guest] = []
 
 ## Local cell → hull type.
 var _hulls: Dictionary = {}
@@ -86,7 +108,9 @@ func apply(stream: Ndjson) -> bool:
 	anchor_type = Wire.as_string(anchor.get("type"))
 	body_id = Wire.as_string(anchor.get("bodyId"))
 	offset = _position(Wire.as_dict(anchor.get("offset")))
+	host_id = Wire.as_int(anchor.get("hostId")) if anchor_type == "docked" else 0
 	kind = Wire.as_string(header.get("kind"))
+	guests = _read_guests(header.get("guests"))
 	if not header.has("since"):
 		_clear()
 	for chunk: Dictionary in chunks:
@@ -135,11 +159,37 @@ func module_count() -> int:
 
 ## Local cell of an absolute cell of the body.
 func to_local(absolute: Vector3i) -> Vector3i:
-	return absolute - offset
+	return absolute - offset - base
 
 
 func to_absolute(local: Vector3i) -> Vector3i:
-	return local + offset
+	return local + offset + base
+
+
+func is_docked() -> bool:
+	return anchor_type == "docked"
+
+
+## Levels (local z) that carry at least one hull, lowest first.
+func levels() -> Array[int]:
+	var found: Dictionary = {}
+	for cell: Vector3i in _hulls.keys():
+		found[cell.z] = true
+	var result: Array[int] = []
+	for z: int in found.keys():
+		result.append(z)
+	result.sort()
+	return result
+
+
+## Highest level (local z) with a hull in the column at local x, y; NO_LEVEL when the column
+## is empty.
+func top_in_column(x: int, y: int) -> int:
+	var top := NO_LEVEL
+	for cell: Vector3i in _hulls.keys():
+		if cell.x == x and cell.y == y and cell.z > top:
+			top = cell.z
+	return top
 
 
 ## Marks a module as finished (SSE `module.completed`) without a reload.
@@ -224,6 +274,29 @@ static func _read_module(data: Dictionary) -> Module:
 	entry.completes_at = Wire.as_int(data.get("completesAt"))
 	entry.blueprint = Wire.as_string(data.get("blueprint"))
 	return entry
+
+
+static func _read_guests(value: Variant) -> Array[Guest]:
+	var result: Array[Guest] = []
+	if typeof(value) != TYPE_ARRAY:
+		return result
+	var entries: Array = value
+	for entry: Variant in entries:
+		var data := Wire.as_dict(entry)
+		var guest := Guest.new()
+		guest.structure_id = Wire.as_int(data.get("structureId"))
+		if guest.structure_id == 0:
+			continue
+		guest.offset = _position(Wire.as_dict(data.get("offset")))
+		guest.dock_z = guest.offset.z - 1
+		var rect := Wire.as_dict(data.get("rect"))
+		if not rect.is_empty():
+			var low := Vector2i(Wire.as_int(rect.get("minX")), Wire.as_int(rect.get("minY")))
+			var high := Vector2i(Wire.as_int(rect.get("maxX")), Wire.as_int(rect.get("maxY")))
+			guest.rect = Rect2i(low, high - low + Vector2i.ONE)
+			guest.dock_z = Wire.as_int(rect.get("z"), guest.dock_z)
+		result.append(guest)
+	return result
 
 
 static func _position(data: Dictionary) -> Vector3i:

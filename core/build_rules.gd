@@ -25,6 +25,14 @@ enum Verdict {
 	HULL_HAS_MODULE,
 	## The game data does not know the type.
 	UNKNOWN_TYPE,
+	## A guest's X-Y bounding rectangle would leave the dock hulls of its host (DockRules).
+	DOCK_AREA_TOO_SMALL,
+	## The rectangle would overlap another guest, or the hull would touch two guests.
+	DOCK_SPACE_BLOCKED,
+	## A guest stands on this dock hull.
+	HULL_HAS_GUEST,
+	## A guest has to keep a hull on its lowest level, directly on the dock.
+	NOT_ON_DOCK,
 }
 
 const _NEIGHBOURS: Array[Vector3i] = [

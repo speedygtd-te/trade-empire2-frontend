@@ -10,6 +10,10 @@ extends Node3D
 const HULL_FLOOR_HEIGHT := 0.06
 ## Roof height of a shut hull on a closed structure (scripts/3d/models/hulls.py).
 const HULL_CLOSED_HEIGHT := 0.72
+## A guest's lowest level lies one level above its docks in the grid; drawn that high it would
+## float. It is drawn this much lower, so its floor plates rest on the dock pads (which are a
+## floor plate high, hull_dock.py).
+const GUEST_DROP := 1.0 - HULL_FLOOR_HEIGHT
 const MODELS := "res://game/world/models/"
 const CAMERA_PITCH_DEGREES := 35.0
 const CAMERA_YAW_DEGREES := 45.0
@@ -50,9 +54,10 @@ var origin := Vector3i.ZERO
 ## Camera focus on the ground, scene coordinates.
 var focus := Vector3.ZERO
 var zoom := ZOOM_DEFAULT
-## Whether the structure is open (every module on its floor) or closed (shut hulls, only the
-## outdoor modules; StructureLook).
+## Whether a structure is open (every module on its floor) or all are closed (shut hulls, only
+## the outdoor modules; StructureLook). Only `open_id` is open: the home structure or a guest.
 var opened := false
+var open_id := 0
 
 var _camera: Camera3D
 var _ground: Node3D
@@ -69,13 +74,15 @@ var _tile_mesh: PlaneMesh
 ## Materials of the loaded models that glow (instance id → material), and their strength now.
 var _lamps: Dictionary = {}
 var _lamp_energy := LAMP_DAY
-var _highlighted := false
+## The structure under the highlight tint; 0 for none.
+var _highlight_id := 0
 var _highlight_material: StandardMaterial3D
 
 
 func setup(colony: ColonyModel) -> void:
 	model = colony
 	model.layout_changed.connect(_rebuild_structure)
+	model.guests_changed.connect(_rebuild_structure)
 	model.surface_loaded.connect(_on_surface_loaded)
 
 
@@ -143,21 +150,79 @@ func cell_at(screen_point: Vector2, height: float = 0.0) -> Variant:
 		return null
 	var hit := from + direction * distance
 	hit.y = 0.0
-	return WorldGrid.to_cell(hit, origin, model.size_x)
+	var cell := WorldGrid.to_cell(hit, origin, model.size_x)
+	# Structures keep their absolute cells next to the origin; the grid wraps.
+	cell.x = WorldGrid.unwrap_x(cell.x, origin.x, model.size_x)
+	return cell
 
 
-## Opens the structure (every module on its floor) or closes it (shut hulls).
+## Height at which cell_at meets the floor of a structure's lowest level (for taps on it).
+func floor_height(structure: ColonyModel) -> float:
+	var levels := structure.layout.levels()
+	return _level_y(structure, levels[0] if not levels.is_empty() else 0) + HULL_FLOOR_HEIGHT
+
+
+## The structure (id) whose hull a point of the view shows: a shut roof or a floor of the home
+## structure or of a guest, whichever is nearest to the camera; 0 when none.
+func pick_structure(screen_point: Vector2) -> int:
+	var from := _camera.project_ray_origin(screen_point)
+	var direction := _camera.project_ray_normal(screen_point)
+	if absf(direction.y) < 0.0001:
+		return 0
+	var definitions := Services.definitions
+	var best := 0
+	var best_distance := INF
+	for structure: ColonyModel in _structures():
+		var layout := structure.layout
+		var shut := structure.structure_id != open_id
+		for level: int in layout.levels():
+			var level_z := layout.to_absolute(Vector3i(0, 0, level)).z
+			for height: float in [HULL_CLOSED_HEIGHT, HULL_FLOOR_HEIGHT]:
+				var distance := (_level_y(structure, level) + height - from.y) / direction.y
+				if distance < 0.0 or distance >= best_distance:
+					continue
+				var hit := from + direction * distance
+				hit.y = 0.0
+				var cell := WorldGrid.to_cell(hit, origin, model.size_x)
+				cell.x = WorldGrid.unwrap_x(cell.x, origin.x, model.size_x)
+				var local := layout.to_local(Vector3i(cell.x, cell.y, level_z))
+				if layout.hull_at(local).is_empty():
+					continue
+				if height == HULL_CLOSED_HEIGHT and not (shut and StructureLook.cell_closed(layout, definitions, local)):
+					continue
+				best = structure.structure_id
+				best_distance = distance
+	return best
+
+
+## Opens the home structure (every module on its floor) or closes everything (shut hulls).
 func set_opened(value: bool) -> void:
-	if opened == value:
+	open_structure(model.structure_id if value else 0)
+
+
+## Opens one structure (the home structure or a guest; the others stay shut); 0 closes all.
+func open_structure(structure_id: int) -> void:
+	if open_id == structure_id:
 		return
-	opened = value
+	open_id = structure_id
+	opened = structure_id != 0
 	_rebuild_structure()
 
 
-## Lays a light tint over the whole structure (it is selected) or takes it away.
+## Lays a light tint over the home structure (it is selected) or takes it away.
 func highlight_structure(on: bool) -> void:
-	_highlighted = on
+	highlight(model.structure_id if on else 0)
+
+
+## Lays a light tint over one structure (selected); 0 takes it away.
+func highlight(structure_id: int) -> void:
+	_highlight_id = structure_id
 	_apply_highlight()
+
+
+## How much lower than its grid level a structure is drawn: guests stand on their docks.
+func lift_of(structure: ColonyModel) -> float:
+	return -GUEST_DROP if structure.is_guest() else 0.0
 
 
 func _apply_highlight() -> void:
@@ -166,13 +231,31 @@ func _apply_highlight() -> void:
 		_highlight_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_highlight_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_highlight_material.albedo_color = COLOR_STRUCTURE
-	var overlay: Material = _highlight_material if _highlighted else null
 	for holder: Node3D in [_hulls, _modules]:
-		for found: Node in holder.find_children("*", "GeometryInstance3D", true, false):
-			var geometry := found as GeometryInstance3D
-			# Modules under construction keep their own tint.
-			if geometry.material_overlay == null or geometry.material_overlay == _highlight_material:
-				geometry.material_overlay = overlay
+		for group: Node in holder.get_children():
+			var tagged: int = group.get_meta("structure", 0)
+			var on := _highlight_id != 0 and tagged == _highlight_id
+			var overlay: Material = _highlight_material if on else null
+			for found: Node in group.find_children("*", "GeometryInstance3D", true, false):
+				var geometry := found as GeometryInstance3D
+				# Modules under construction keep their own tint.
+				if geometry.material_overlay == null or geometry.material_overlay == _highlight_material:
+					geometry.material_overlay = overlay
+
+
+## The home structure and its guests.
+func _structures() -> Array[ColonyModel]:
+	var result: Array[ColonyModel] = []
+	if model == null:
+		return result
+	result.append(model)
+	result.append_array(model.guest_list())
+	return result
+
+
+## Scene height of a structure's local level (its floor plate's underside).
+func _level_y(structure: ColonyModel, level: int) -> float:
+	return float(structure.layout.to_absolute(Vector3i(0, 0, level)).z - origin.z) + lift_of(structure)
 
 
 ## Absolute cell under the camera focus.
@@ -180,26 +263,32 @@ func focus_cell() -> Vector3i:
 	return WorldGrid.to_cell(focus, origin, model.size_x)
 
 
-## Marks a cell (absolute) as selected; null hides the mark.
-func select_cell(cell: Variant) -> void:
+## Marks a cell (absolute) as selected; null hides the mark. `guest`: the cell belongs to a
+## guest (or would found one), which is drawn standing on its docks.
+func select_cell(cell: Variant, guest: bool = false) -> void:
 	if cell == null:
 		_selection.visible = false
 		return
 	var at: Vector3i = cell
 	_selection.visible = true
-	_selection.position = WorldGrid.to_scene(at, origin, model.size_x) + Vector3(0.0, HULL_FLOOR_HEIGHT + 0.01, 0.0)
+	var drop := GUEST_DROP if guest else 0.0
+	_selection.position = WorldGrid.to_scene(at, origin, model.size_x) + Vector3(0.0, HULL_FLOOR_HEIGHT + 0.01 - drop, 0.0)
 
 
 ## Shows what a build would look like: `cells` (absolute) tinted by whether it can work, and
-## optionally a model standing on them. An empty list hides the preview.
-func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rotation: int = 0) -> void:
+## optionally a model standing on them. An empty list hides the preview. `guest` as in
+## select_cell.
+func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rotation: int = 0, guest: bool = false) -> void:
 	for child: Node in _preview.get_children():
 		child.queue_free()
 	if cells.is_empty():
 		return
+	var drop := GUEST_DROP if guest else 0.0
 	for cell: Vector3i in cells:
 		var mark := _outline(COLOR_OK if ok else COLOR_BAD, true)
-		mark.position = WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, 0.004, 0.0)
+		# A mark above the ground lies on the floor below it (a dock or a lower level).
+		var floor_lift := 0.004 if cell.z == origin.z else HULL_FLOOR_HEIGHT + 0.004
+		mark.position = WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift - drop, 0.0)
 		_preview.add_child(mark)
 	if scene_key.is_empty():
 		return
@@ -209,7 +298,7 @@ func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rota
 	_tint(ghost, COLOR_OK if ok else COLOR_BAD)
 	# Modules stand on a hull; a hull itself lies on the ground.
 	var lift := 0.0 if scene_key.begins_with("hull_") else HULL_FLOOR_HEIGHT
-	ghost.position = _footprint_centre(cells) + Vector3(0.0, lift, 0.0)
+	ghost.position = _footprint_centre(cells) + Vector3(0.0, lift - drop, 0.0)
 	ghost.rotation.y = -deg_to_rad(rotation)
 	_preview.add_child(ghost)
 
@@ -252,7 +341,23 @@ func _rebuild_structure() -> void:
 		child.queue_free()
 	for child: Node in _modules.get_children():
 		child.queue_free()
-	var layout := model.layout
+	for structure: ColonyModel in _structures():
+		_build_structure(structure)
+	_apply_highlight()
+
+
+## Hulls and modules of one structure, each in a group tagged with the structure's id (for the
+## highlight).
+func _build_structure(structure: ColonyModel) -> void:
+	var layout := structure.layout
+	var shut := structure.structure_id != open_id
+	var lift := Vector3(0.0, lift_of(structure), 0.0)
+	var hull_group := Node3D.new()
+	hull_group.set_meta("structure", structure.structure_id)
+	_hulls.add_child(hull_group)
+	var module_group := Node3D.new()
+	module_group.set_meta("structure", structure.structure_id)
+	_modules.add_child(module_group)
 
 	var definitions := Services.definitions
 	# Hulls: one MultiMesh per model; a closed structure shows its indoor hulls shut.
@@ -260,7 +365,7 @@ func _rebuild_structure() -> void:
 	for cell: Vector3i in layout.hull_cells():
 		var hull_type := layout.hull_at(cell).to_lower()
 		var key := "hull_" + hull_type
-		if not opened and StructureLook.cell_closed(layout, definitions, cell):
+		if shut and StructureLook.cell_closed(layout, definitions, cell):
 			key += "_closed"
 		if not by_model.has(key):
 			by_model[key] = []
@@ -276,7 +381,7 @@ func _rebuild_structure() -> void:
 		for index: int in cells.size():
 			var local: Vector3i = cells[index]
 			var absolute := layout.to_absolute(local)
-			var at := WorldGrid.to_scene(absolute, origin, model.size_x)
+			var at := WorldGrid.to_scene(absolute, origin, model.size_x) + lift
 			# Shut containers turn by a quarter now and then, so the roofs do not repeat.
 			var turn := Basis.IDENTITY
 			if key.ends_with("_closed"):
@@ -284,11 +389,11 @@ func _rebuild_structure() -> void:
 			multimesh.set_instance_transform(index, Transform3D(turn, at))
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multimesh
-		_hulls.add_child(instance)
+		hull_group.add_child(instance)
 
 	# Modules: one scene each.
 	for placed: StructureLayout.Module in layout.modules():
-		if not opened and not StructureLook.module_visible_closed(layout, definitions, placed):
+		if shut and not StructureLook.module_visible_closed(layout, definitions, placed):
 			continue
 		var node := _instance(placed.module_type.to_lower())
 		if node == null:
@@ -297,12 +402,12 @@ func _rebuild_structure() -> void:
 		for local: Vector3i in placed.cells():
 			if local.z == placed.origin.z:
 				cells.append(layout.to_absolute(local))
-		node.position = _footprint_centre(cells) + Vector3(0.0, HULL_FLOOR_HEIGHT + placed.origin.z, 0.0)
+		# The footprint centre already stands on the module's level.
+		node.position = _footprint_centre(cells) + Vector3(0.0, HULL_FLOOR_HEIGHT, 0.0) + lift
 		node.rotation.y = -deg_to_rad(placed.rotation)
 		if placed.is_building():
 			_tint(node, COLOR_BUILDING)
-		_modules.add_child(node)
-	_apply_highlight()
+		module_group.add_child(node)
 
 
 ## Draws every loaded ground block near the camera (after the origin moved).

@@ -7,6 +7,11 @@ extends Control
 ## shows its details. Edit or Build opens it in place — the shut hulls give way to the modules
 ## on their floors — and the tabs Inspect, Build, Store and Log appear. Close or Back shuts it.
 ##
+## Guests (vessels docked on the home structure's dock hulls) are structures of their own: a tap
+## on one selects it with its own details, Edit or Build opens only it. On the home structure a
+## new hull on a dock founds a guest; on an open guest a hull goes next to or on top of it.
+## A guest is built from the home structure's store (contract), which the palette shows.
+##
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects a field. Building is two
 ## taps — choose the field, then confirm — and removing is two-step as well.
 
@@ -23,7 +28,10 @@ const FIXED_SUN_AZIMUTH := 3.67
 ## Where the detail tier of this device is kept between starts.
 const DETAIL_PATH := "user://detail.json"
 
+## The home structure; its guests hang below it.
 var _model: ColonyModel
+## The structure selected or open: the home structure or one of its guests.
+var _focus: ColonyModel
 var _view: ColonyView
 var _container: SubViewportContainer
 var _viewport: SubViewport
@@ -55,7 +63,8 @@ var _opened := false
 ## Whether the closed structure is selected (its details show in the panel).
 var _structure_selected := false
 var _mode: Mode = Mode.VIEW
-## Absolute cell the player tapped; null when none.
+## Absolute cell the player tapped; null when none. Only its column counts: which level is
+## meant follows from the open structure and the tool (_target).
 var _cell: Variant = null
 ## What the build tool places: "hull:STARTER" or "module:PUMP"; "" when nothing is chosen.
 var _tool := ""
@@ -77,9 +86,11 @@ func _ready() -> void:
 	_model = ColonyModel.new()
 	_model.name = "ColonyModel"
 	add_child(_model)
+	_focus = _model
 	_build_world()
 	_build_overlay()
 	_model.layout_changed.connect(_refresh)
+	_model.guests_changed.connect(_on_guests_changed)
 	_model.inventory_changed.connect(_on_inventory_changed)
 	_model.production_changed.connect(_on_production_changed)
 	_model.ready_to_show.connect(_on_ready_to_show)
@@ -302,15 +313,33 @@ func _on_retry_load() -> void:
 
 func _on_production_changed() -> void:
 	if _mode == Mode.STORE:
-		_store.show_balance(_model)
+		_store.show_balance(_focus)
 	_refresh()
 
 
 func _on_inventory_changed() -> void:
 	_fill_palette()
 	if _mode == Mode.STORE:
-		_store.show_inventory(_model.inventory)
+		_store.show_inventory(_focus.inventory)
 	_refresh()
+
+
+## A guest was founded, removed or named. When the guest on screen is gone (its last hull was
+## removed), the home structure takes its place.
+func _on_guests_changed() -> void:
+	if _focus != _model and not _model.guests.has(_focus.structure_id):
+		var was_open := _opened
+		_focus = _model
+		if was_open:
+			_opened = false
+			_view.open_structure(0)
+			_view.show_preview([], false)
+			_menu_button.text = tr("COLONY_MENU")
+			_select(null)
+			_set_mode(Mode.VIEW)
+		_select_structure(false)
+		return
+	_show_names()
 
 
 # --- modes, tools, selection ----------------------------------------------------------------
@@ -337,8 +366,8 @@ func _set_mode(mode: Mode) -> void:
 	if _opened and mode == Mode.LOG:
 		_log.reload()
 	if _opened and mode == Mode.STORE:
-		_store.show_inventory(_model.inventory)
-		_store.show_balance(_model)
+		_store.show_inventory(_focus.inventory)
+		_store.show_balance(_focus)
 		_view.show_preview([], false)
 	_tool = ""
 	_armed = ""
@@ -347,22 +376,25 @@ func _set_mode(mode: Mode) -> void:
 	_refresh()
 
 
+## The palette offers what the store that builds the open structure holds: its own, or the
+## host's for a guest.
 func _fill_palette() -> void:
 	for child: Node in _palette.get_children():
 		child.queue_free()
 	var definitions := Services.definitions
-	if _model.inventory == null or definitions == null:
+	var supply := _focus.supply().inventory
+	if supply == null or definitions == null:
 		return
 	var now := Services.clock.now_ms()
 	var group := ButtonGroup.new()
 	for key: String in definitions.hull_keys():
 		var hull := definitions.hull(key)
-		var count := _model.inventory.units(hull.item, now)
+		var count := supply.units(hull.item, now)
 		if count > 0:
 			_palette.add_child(_tool_button("hull:" + key, hull.display_name, count, group))
 	for key: String in definitions.module_keys():
 		var module_def := definitions.module(key)
-		var count := _model.inventory.units(module_def.item, now)
+		var count := supply.units(module_def.item, now)
 		if count > 0:
 			_palette.add_child(_tool_button("module:" + key, module_def.display_name, count, group))
 	if _palette.get_child_count() == 0:
@@ -396,31 +428,54 @@ func _select(cell: Variant) -> void:
 	_cell = cell
 	_armed = ""
 	_status.text = ""
-	_view.select_cell(cell)
+	if cell == null:
+		_view.select_cell(null)
 	_refresh()
 
 
-## Selects the closed structure (shows its details) or clears that selection.
+## Selects the closed structure in focus (shows its details) or clears the selection; then the
+## home structure is in focus again.
 func _select_structure(on: bool) -> void:
 	_structure_selected = on
-	_view.highlight_structure(on)
+	if on:
+		_focus.activate()
+	else:
+		_focus = _model
+	_view.highlight(_focus.structure_id if on else 0)
+	_show_names()
 	_refresh()
 
 
-## Opens the structure in place and switches to a tab: the shut hulls give way to the modules.
+## Opens the structure in focus in place and switches to a tab: its shut hulls give way to the
+## modules. The other structures stay shut.
 func _open_structure(mode: Mode) -> void:
 	_opened = true
 	_structure_selected = false
-	_view.highlight_structure(false)
-	_view.set_opened(true)
+	_focus.activate()
+	_view.highlight(0)
+	_view.open_structure(_focus.structure_id)
+	_store.setup(_focus)
+	_log.setup(_focus)
 	_menu_button.text = tr("COLONY_CLOSE_STRUCTURE")
+	_show_names()
 	_set_mode(mode)
+
+
+## Name and place in the top bar: the guest in focus with its host, otherwise the home structure
+## with its body.
+func _show_names() -> void:
+	if _focus.is_guest():
+		_title.text = _focus.structure_name
+		_subtitle.text = tr("COLONY_DOCKED_AT").format({"host": _model.structure_name})
+	else:
+		_title.text = _model.structure_name
+		_subtitle.text = _model.body_name
 
 
 ## Shuts the open structure again; it stays selected, so its details show.
 func _close_structure() -> void:
 	_opened = false
-	_view.set_opened(false)
+	_view.open_structure(0)
 	_view.show_preview([], false)
 	_menu_button.text = tr("COLONY_MENU")
 	_select(null)
@@ -435,6 +490,8 @@ func _refresh() -> void:
 	if not _opened:
 		_refresh_closed()
 		return
+	if _cell != null:
+		_view.select_cell(_target(), _target_on_guest())
 	if _mode == Mode.STORE or _mode == Mode.LOG:
 		return
 	_primary.disabled = _busy
@@ -456,15 +513,15 @@ func _refresh_closed() -> void:
 		_actions.visible = false
 		return
 	_actions.visible = true
-	var layout := _model.layout
+	var layout := _focus.layout
 	var lines := PackedStringArray([tr("COLONY_STRUCTURE_SUMMARY").format({
 		"hulls": layout.hull_count(), "modules": layout.module_count()})])
 	var building := StructureLook.modules_building(layout)
 	if building > 0:
 		lines.append(tr("COLONY_STRUCTURE_BUILDING").format({"count": building}))
-	lines.append(StorePanel.balance_text(_model))
+	lines.append(StorePanel.balance_text(_focus))
 	_info.text = "\n".join(lines)
-	if StorePanel.is_short(_model):
+	if StorePanel.is_short(_focus):
 		_info.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	else:
 		_info.remove_theme_color_override("font_color")
@@ -484,9 +541,11 @@ func _refresh_view() -> void:
 		_info.text = tr("COLONY_HINT_VIEW")
 		_primary.visible = false
 		return
-	var local := _model.layout.to_local(_cell as Vector3i)
-	var hull_type := _model.layout.hull_at(local)
-	var placed := _model.layout.module_at(local)
+	var target: Vector3i = _target()
+	var layout := _focus.layout
+	var local := layout.to_local(target)
+	var hull_type := layout.hull_at(local)
+	var placed := layout.module_at(local)
 	var definitions := Services.definitions
 	if hull_type.is_empty():
 		_info.text = tr("COLONY_FREE_GROUND")
@@ -497,6 +556,13 @@ func _refresh_view() -> void:
 		_info.text = tr("COLONY_CELL_HULL").format({"hull": hull_name})
 		_primary.visible = true
 		_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "hull" else tr("COLONY_REMOVE_HULL")
+		var host_cell := _model.layout.to_local(target)
+		var verdict := DockRules.check_remove_hull(_model.layout, _model.guest_layouts(), layout, host_cell)
+		if verdict != BuildRules.Verdict.OK:
+			_info.text += "\n" + _verdict_text(verdict)
+			_primary.disabled = true
+		elif DockRules.removes_guest(layout, host_cell):
+			_info.text += "\n" + tr("COLONY_REMOVES_GUEST")
 		return
 	var module_name := definitions.module(placed.module_type).display_name \
 		if definitions.module(placed.module_type) != null else ""
@@ -517,7 +583,7 @@ func _refresh_view() -> void:
 
 ## What the module makes, or why it stands still.
 func _recipe_line(placed: StructureLayout.Module) -> String:
-	var reason := Wire.as_string(_model.idle_reasons.get(placed.module_id))
+	var reason := Wire.as_string(_focus.idle_reasons.get(placed.module_id))
 	if reason == "LOCATION":
 		return tr("RECIPE_IDLE_LOCATION")
 	var module_def := Services.definitions.module(placed.module_type)
@@ -536,14 +602,18 @@ func _refresh_build() -> void:
 	_secondary.text = tr("COLONY_CANCEL")
 	_primary.visible = true
 	_primary.text = tr("COLONY_BUILD_HERE")
+	# A guest is built from its host's store: say so under every build hint.
+	var supply_line := ""
+	if _focus.is_guest():
+		supply_line = "\n" + tr("COLONY_SUPPLY_FROM_HOST").format({"host": _model.structure_name})
 	if _tool.is_empty():
-		_info.text = tr("COLONY_HINT_BUILD")
+		_info.text = tr("COLONY_HINT_BUILD") + supply_line
 		_primary.disabled = true
 		_view.show_preview([], false)
 		return
 	var tool_name := _tool_name()
 	if _cell == null:
-		_info.text = tr("COLONY_HINT_PLACE").format({"name": tool_name})
+		_info.text = tr("COLONY_HINT_PLACE").format({"name": tool_name}) + supply_line
 		_primary.disabled = true
 		_view.show_preview([], false)
 		return
@@ -552,8 +622,12 @@ func _refresh_build() -> void:
 	var scene_key := _tool.get_slice(":", 1).to_lower()
 	if _tool.begins_with("hull:"):
 		scene_key = "hull_" + scene_key
-	_view.show_preview(cells, verdict == BuildRules.Verdict.OK, scene_key, _rotation)
+	_view.show_preview(cells, verdict == BuildRules.Verdict.OK, scene_key, _rotation, _target_on_guest())
 	_info.text = tool_name if verdict == BuildRules.Verdict.OK else _verdict_text(verdict)
+	if verdict == BuildRules.Verdict.OK and _tool.begins_with("hull:") and DockRules.placement(
+			_model.layout, _model.guest_layouts(), _model.layout.to_local(_target() as Vector3i)) == DockRules.Placement.FOUND:
+		_info.text = tr("COLONY_FOUNDS_GUEST").format({"name": tool_name})
+	_info.text += supply_line
 	_primary.disabled = _busy or verdict != BuildRules.Verdict.OK
 	if _is_multi_cell():
 		_secondary.text = tr("COLONY_ROTATE")
@@ -574,9 +648,31 @@ func _is_multi_cell() -> bool:
 	return module_def != null and module_def.size.x != module_def.size.y
 
 
+## The absolute cell the selected column aims at: the topmost hull of the open structure there,
+## or — for a new hull — the cell on top (on a dock, on a guest) or next to it (DockRules).
+func _target() -> Variant:
+	if _cell == null:
+		return null
+	var host := _model.layout
+	var tapped := host.to_local(_cell as Vector3i)
+	var new_hull := _mode == Mode.BUILD and _tool.begins_with("hull:")
+	return host.to_absolute(DockRules.target_cell(host, _focus.layout, Vector2i(tapped.x, tapped.y), new_hull))
+
+
+## Whether the target cell is drawn as part of a guest (on a guest, or a hull that would found
+## or extend one).
+func _target_on_guest() -> bool:
+	if _focus.is_guest():
+		return true
+	if _cell == null or not (_mode == Mode.BUILD and _tool.begins_with("hull:")):
+		return false
+	var host_cell := _model.layout.to_local(_target() as Vector3i)
+	return DockRules.placement(_model.layout, _model.guest_layouts(), host_cell) != DockRules.Placement.HOST
+
+
 ## Absolute cells the current tool would cover at the selected cell.
 func _tool_cells() -> Array[Vector3i]:
-	var at: Vector3i = _cell
+	var at: Vector3i = _target()
 	if _tool.begins_with("hull:"):
 		return [at]
 	var module_def := Services.definitions.module(_tool.get_slice(":", 1))
@@ -586,16 +682,17 @@ func _tool_cells() -> Array[Vector3i]:
 
 
 func _verdict() -> BuildRules.Verdict:
-	var local := _model.layout.to_local(_cell as Vector3i)
+	var target: Vector3i = _target()
 	var key := _tool.get_slice(":", 1)
 	var now := Services.clock.now_ms()
+	var supply := _focus.supply().inventory
 	if _tool.begins_with("hull:"):
-		if _model.inventory.units(Services.definitions.hull(key).item, now) <= 0:
+		if supply == null or supply.units(Services.definitions.hull(key).item, now) <= 0:
 			return BuildRules.Verdict.NO_ITEM
-		return BuildRules.check_place_hull(_model.layout, local)
-	if _model.inventory.units(Services.definitions.module(key).item, now) <= 0:
+		return DockRules.check_place_hull(_model.layout, _model.guest_layouts(), _model.layout.to_local(target))
+	if supply == null or supply.units(Services.definitions.module(key).item, now) <= 0:
 		return BuildRules.Verdict.NO_ITEM
-	return BuildRules.check_place_module(_model.layout, Services.definitions, key, local, _rotation)
+	return BuildRules.check_place_module(_focus.layout, Services.definitions, key, _focus.layout.to_local(target), _rotation)
 
 
 func _verdict_text(verdict: BuildRules.Verdict) -> String:
@@ -621,17 +718,16 @@ func _on_primary() -> void:
 	if _mode == Mode.BUILD:
 		_build()
 		return
-	var local := _model.layout.to_local(_cell as Vector3i)
-	var placed := _model.layout.module_at(local)
+	var at: Vector3i = _target()
+	var placed := _focus.layout.module_at(_focus.layout.to_local(at))
 	var target := "module" if placed != null else "hull"
 	if _armed != target:
 		_armed = target
 		_refresh()
 		return
 	_armed = ""
-	var at: Vector3i = _cell
 	if placed != null:
-		at = _model.layout.to_absolute(placed.origin)
+		at = _focus.layout.to_absolute(placed.origin)
 	_send([{"op": "removeModule" if target == "module" else "removeHull", "x": at.x, "y": at.y, "z": at.z}])
 
 
@@ -645,7 +741,7 @@ func _on_secondary() -> void:
 		_refresh()
 		return
 	if _mode == Mode.VIEW and _cell != null:
-		var placed := _model.layout.module_at(_model.layout.to_local(_cell as Vector3i))
+		var placed := _focus.layout.module_at(_focus.layout.to_local(_target() as Vector3i))
 		if placed != null:
 			_open_recipes(placed)
 		return
@@ -657,7 +753,7 @@ func _open_recipes(placed: StructureLayout.Module) -> void:
 	_info.visible = false
 	_status.visible = false
 	_actions.visible = false
-	_recipes.show_recipes(placed.module_type, placed.blueprint, _model.usable_blueprints)
+	_recipes.show_recipes(placed.module_type, placed.blueprint, _focus.usable_blueprints)
 
 
 func _close_recipes() -> void:
@@ -671,7 +767,8 @@ func _close_recipes() -> void:
 func _on_recipe_chosen(blueprint: String) -> void:
 	if _busy or _cell == null:
 		return
-	var placed := _model.layout.module_at(_model.layout.to_local(_cell as Vector3i))
+	var structure := _focus
+	var placed := structure.layout.module_at(structure.layout.to_local(_target() as Vector3i))
 	if placed == null:
 		_close_recipes()
 		return
@@ -680,7 +777,7 @@ func _on_recipe_chosen(blueprint: String) -> void:
 	_status.remove_theme_color_override("font_color")
 	_status.text = tr("COLONY_SENDING")
 	_refresh()
-	var result := await _model.set_blueprint(_model.layout.to_absolute(placed.origin), blueprint)
+	var result := await structure.set_blueprint(structure.layout.to_absolute(placed.origin), blueprint)
 	_busy = false
 	if result.is_ok():
 		_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
@@ -692,7 +789,7 @@ func _on_recipe_chosen(blueprint: String) -> void:
 
 
 func _build() -> void:
-	var at: Vector3i = _cell
+	var at: Vector3i = _target()
 	var key := _tool.get_slice(":", 1)
 	var op: Dictionary
 	if _tool.begins_with("hull:"):
@@ -812,29 +909,25 @@ func _on_world_input(event: InputEvent) -> void:
 		_view.zoom_by(1.0 / (event as InputEventMagnifyGesture).factor)
 
 
-## Whether a point of the view lies on the closed structure: on the roof of a shut hull, or on
-## a cell of the structure at ground level (platforms, docks).
-func _hits_structure(point: Vector2) -> bool:
-	var layout := _model.layout
-	var roof: Variant = _view.cell_at(point, ColonyView.HULL_CLOSED_HEIGHT)
-	if roof != null and StructureLook.cell_closed(layout, Services.definitions, layout.to_local(roof as Vector3i)):
-		return true
-	var ground: Variant = _view.cell_at(point)
-	return ground != null and not layout.hull_at(layout.to_local(ground as Vector3i)).is_empty()
-
-
 ## Canvas pixels → viewport pixels (the viewport follows the container's size).
 func _scale() -> float:
 	return float(_viewport.size.y) / maxf(_container.size.y, 1.0)
 
 
+## Closed: a tap on a guest selects the guest, on the rest the home structure, beside them
+## nothing. Open: a tap chooses a column of the open structure.
 func _on_tap(position_in_container: Vector2) -> void:
 	if _model.structure_id == 0:
 		return
 	if not _opened:
-		_select_structure(_hits_structure(position_in_container * _scale()))
+		var picked := _model.structure(_view.pick_structure(position_in_container * _scale()))
+		if picked == null:
+			_select_structure(false)
+			return
+		_focus = picked
+		_select_structure(true)
 		return
-	var cell: Variant = _view.cell_at(position_in_container * _scale())
+	var cell: Variant = _view.cell_at(position_in_container * _scale(), _view.floor_height(_focus))
 	if cell != null and _cell != null and (cell as Vector3i) == (_cell as Vector3i) and _mode == Mode.VIEW:
 		_select(null)
 		return

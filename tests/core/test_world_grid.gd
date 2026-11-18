@@ -39,3 +39,12 @@ func test_wrap_x() -> void:
 	assert_int(WorldGrid.wrap_x(-1, 16)).is_equal(15)
 	assert_int(WorldGrid.wrap_x(16, 16)).is_equal(0)
 	assert_int(WorldGrid.wrap_x(-1, 0)).is_equal(-1)
+
+
+func test_unwrap_x_takes_the_copy_next_to_the_reference() -> void:
+	# A tap wrapped into 0..size-1 lands next to a structure at negative x again.
+	assert_int(WorldGrid.unwrap_x(996, -4, 1000)).is_equal(-4)
+	assert_int(WorldGrid.unwrap_x(3, 998, 1000)).is_equal(1003)
+	assert_int(WorldGrid.unwrap_x(7, 5, 1000)).is_equal(7)
+	# Without wrapping nothing changes.
+	assert_int(WorldGrid.unwrap_x(-12, 40, 0)).is_equal(-12)
