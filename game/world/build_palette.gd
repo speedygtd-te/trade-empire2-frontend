@@ -1,0 +1,133 @@
+class_name BuildPalette
+extends VBoxContainer
+## The build palette: category buttons (hulls, production, colony …) and below them the items of
+## the chosen category in a list that scrolls up and down. Choosing an item folds the palette into
+## one line ("Starter Hull ×15 · Change"), so the colony stays in view while placing it.
+
+## The player chose what to build: "hull:STARTER" or "module:PUMP".
+signal chosen(tool: String)
+
+const CATEGORY_COLUMNS := 3
+## About three rows of items; the list scrolls.
+const LIST_HEIGHT := 280
+
+var _entries: Array[BuildCatalog.Entry] = []
+var _category := ""
+var _tool := ""
+var _browsing := true
+
+var _grid: GridContainer
+var _scroll: ScrollContainer
+var _list: VBoxContainer
+var _empty: Label
+var _compact: HBoxContainer
+var _compact_label: Label
+
+
+func _ready() -> void:
+	add_theme_constant_override("separation", 10)
+	_grid = GridContainer.new()
+	_grid.columns = CATEGORY_COLUMNS
+	_grid.add_theme_constant_override("h_separation", 8)
+	_grid.add_theme_constant_override("v_separation", 8)
+	add_child(_grid)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.custom_minimum_size = Vector2(0, LIST_HEIGHT)
+	add_child(_scroll)
+	_list = Ui.column(8)
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(_list)
+	_empty = Ui.label("COLONY_NOTHING_TO_BUILD", AppTheme.VARIATION_MUTED)
+	add_child(_empty)
+	_compact = HBoxContainer.new()
+	_compact.add_theme_constant_override("separation", 16)
+	add_child(_compact)
+	_compact_label = Ui.dynamic_label()
+	_compact_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_compact_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_compact_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_compact_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_compact.add_child(_compact_label)
+	var change := Ui.secondary_button("COLONY_BUILD_CHANGE")
+	change.pressed.connect(_on_change)
+	_compact.add_child(change)
+	_rebuild()
+
+
+## Shows what the store offers; `tool` is the item chosen now ("" when none).
+func show_entries(entries: Array[BuildCatalog.Entry], tool: String) -> void:
+	_entries = entries
+	_tool = tool
+	var present := BuildCatalog.categories(entries)
+	var of_tool := BuildCatalog.category_of(entries, tool)
+	if not of_tool.is_empty():
+		_category = of_tool
+	elif not present.has(_category):
+		_category = present[0] if not present.is_empty() else ""
+	# Fold away while something is chosen; open again when it ran out or nothing is chosen.
+	_browsing = of_tool.is_empty()
+	if is_inside_tree():
+		_rebuild()
+
+
+func _rebuild() -> void:
+	for child: Node in _grid.get_children():
+		child.queue_free()
+	for child: Node in _list.get_children():
+		child.queue_free()
+	var categories := BuildCatalog.categories(_entries)
+	_empty.visible = _entries.is_empty()
+	_grid.visible = _browsing and not _entries.is_empty()
+	_scroll.visible = _grid.visible
+	_compact.visible = not _browsing and not _entries.is_empty()
+	if _compact.visible:
+		for entry: BuildCatalog.Entry in _entries:
+			if entry.tool == _tool:
+				_compact_label.text = tr("COLONY_ITEM_COUNT").format({"name": entry.display_name, "count": entry.count})
+		return
+	var group := ButtonGroup.new()
+	for category: String in categories:
+		var button := Button.new()
+		button.toggle_mode = true
+		button.button_group = group
+		button.text = tr("COLONY_CATEGORY_" + category)
+		button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		button.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.button_pressed = category == _category
+		button.pressed.connect(_on_category.bind(category))
+		_grid.add_child(button)
+	var items := ButtonGroup.new()
+	for entry: BuildCatalog.Entry in BuildCatalog.in_category(_entries, _category):
+		var row := Button.new()
+		row.toggle_mode = true
+		row.button_group = items
+		row.text = tr("COLONY_ITEM_COUNT").format({"name": entry.display_name, "count": entry.count})
+		row.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.button_pressed = entry.tool == _tool
+		# Let a swipe that starts on a row scroll the list (touch screens).
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.pressed.connect(_on_item.bind(entry.tool))
+		_list.add_child(row)
+	_scroll.scroll_vertical = 0
+
+
+func _on_category(category: String) -> void:
+	_category = category
+	_rebuild()
+
+
+func _on_item(tool: String) -> void:
+	_tool = tool
+	_browsing = false
+	_rebuild()
+	chosen.emit(tool)
+
+
+func _on_change() -> void:
+	_browsing = true
+	_rebuild()

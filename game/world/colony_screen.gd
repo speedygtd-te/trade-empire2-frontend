@@ -44,8 +44,7 @@ var _info: Label
 var _status: Label
 var _primary: Button
 var _secondary: Button
-var _palette_scroll: ScrollContainer
-var _palette: HBoxContainer
+var _palette: BuildPalette
 var _view_tab: Button
 var _build_tab: Button
 var _store_tab: Button
@@ -276,13 +275,9 @@ func _build_overlay() -> void:
 	_workforce_panel.closed.connect(_close_workforce)
 	rows.add_child(_workforce_panel)
 
-	_palette_scroll = ScrollContainer.new()
-	_palette_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_palette_scroll.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN + 8)
-	rows.add_child(_palette_scroll)
-	_palette = HBoxContainer.new()
-	_palette.add_theme_constant_override("separation", 12)
-	_palette_scroll.add_child(_palette)
+	_palette = BuildPalette.new()
+	_palette.chosen.connect(_choose_tool)
+	rows.add_child(_palette)
 
 	_info = Ui.dynamic_label()
 	rows.add_child(_info)
@@ -421,7 +416,7 @@ func _set_mode(mode: Mode) -> void:
 	# The research tab shows the labs of the home structure; a guest does not offer it (yet).
 	_research_tab.visible = not _focus.is_guest()
 	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG or mode == Mode.RESEARCH)
-	_palette_scroll.visible = _opened and mode == Mode.BUILD
+	_palette.visible = _opened and mode == Mode.BUILD
 	_store.visible = _opened and mode == Mode.STORE
 	_log.visible = _opened and mode == Mode.LOG
 	_research.visible = _opened and mode == Mode.RESEARCH
@@ -448,46 +443,29 @@ func _set_mode(mode: Mode) -> void:
 ## The palette offers what the store that builds the open structure holds: its own, or the
 ## host's for a guest.
 func _fill_palette() -> void:
-	for child: Node in _palette.get_children():
-		child.queue_free()
 	var definitions := Services.definitions
-	var supply := _focus.supply().inventory
+	var supply := _focus.supply().inventory if _focus != null else null
 	if supply == null or definitions == null:
+		var none: Array[BuildCatalog.Entry] = []
+		_palette.show_entries(none, _tool)
 		return
+	# Whole units of every hull and module item in the store that builds here.
 	var now := Services.clock.now_ms()
-	var group := ButtonGroup.new()
+	var units := {}
 	for key: String in definitions.hull_keys():
-		var hull := definitions.hull(key)
-		var count := supply.units(hull.item, now)
-		if count > 0:
-			_palette.add_child(_tool_button("hull:" + key, hull.display_name, count, group))
+		var item := definitions.hull(key).item
+		units[item] = supply.units(item, now)
 	for key: String in definitions.module_keys():
-		var module_def := definitions.module(key)
-		var count := supply.units(module_def.item, now)
-		if count > 0:
-			_palette.add_child(_tool_button("module:" + key, module_def.display_name, count, group))
-	if _palette.get_child_count() == 0:
-		var empty := Ui.label("COLONY_NOTHING_TO_BUILD", AppTheme.VARIATION_MUTED)
-		empty.autowrap_mode = TextServer.AUTOWRAP_OFF
-		_palette.add_child(empty)
-
-
-func _tool_button(tool: String, display_name: String, count: int, group: ButtonGroup) -> Button:
-	var button := Button.new()
-	button.toggle_mode = true
-	button.button_group = group
-	button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	button.text = tr("COLONY_ITEM_COUNT").format({"name": display_name, "count": count})
-	button.custom_minimum_size = Vector2(AppTheme.TOUCH_MIN, AppTheme.TOUCH_MIN)
-	button.button_pressed = tool == _tool
-	button.pressed.connect(_choose_tool.bind(tool))
-	return button
+		var item := definitions.module(key).item
+		units[item] = supply.units(item, now)
+	_palette.show_entries(BuildCatalog.entries(definitions, units), _tool)
 
 
 func _choose_tool(tool: String) -> void:
 	_tool = tool
 	_rotation = 0
 	_status.text = ""
+	_fill_palette()
 	_refresh()
 
 
