@@ -342,3 +342,4 @@ MAP_STAR_TYPE_WHITE_DWARF,White dwarf
 MAP_STAR_TYPE_RED_GIANT,Red giant
 MAP_STAR_TYPE_NEUTRON,Neutron star
 MAP_STAR_TYPE_UNKNOWN,Star
+LOGIN_SESSION_ENDED,"The server ended your session. During the test phase this happens when the game world is reset: then your account is gone too, so create a new one."

@@ -29,6 +29,14 @@ func _run() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 
+	# The server ended the stored session (e.g. a world reset): the login screen says so.
+	Services.session.session_ended = true
+	var ended_login := LoginScreen.new()
+	add_child(ended_login)
+	await _capture("login_session_ended")
+	ended_login.queue_free()
+	Services.session.session_ended = false
+
 	var login := LoginScreen.new()
 	add_child(login)
 	await _capture("login_sign_in")

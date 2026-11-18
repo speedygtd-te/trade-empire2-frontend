@@ -28,6 +28,12 @@ var _events: EventStream
 var _store: SessionStore
 
 
+## The server ended a stored session (it rejected the token: signed out elsewhere, expired, or
+## — in the test phase — the world was reset with all accounts). Cleared by the next sign-in and
+## by signing out here.
+var session_ended := false
+
+
 func setup(server: ServerUrl, api: ApiClient, events: EventStream, store: SessionStore) -> void:
 	_server = server
 	_api = api
@@ -86,6 +92,7 @@ func logout() -> void:
 		# Best effort: the local session ends even when the backend cannot be told.
 		await _api.post_json("/v2/auth/logout", {})
 	_forget_session()
+	session_ended = false
 	_set_status(Status.SIGNED_OUT)
 
 
@@ -99,6 +106,7 @@ func _authenticate(path: String, body: Dictionary) -> ApiError:
 		malformed.code = ApiResult.CODE_MALFORMED_RESPONSE
 		return malformed
 	_api.token = token
+	session_ended = false
 	_store.save_token(_server.base, token)
 	_log_token(token)
 	await _load_account()
@@ -115,6 +123,7 @@ func _load_account() -> void:
 	elif result.error.is_unauthenticated():
 		last_error = result.error
 		_forget_session()
+		session_ended = true
 		_set_status(Status.SIGNED_OUT)
 	else:
 		last_error = result.error
@@ -140,6 +149,7 @@ func _verify_session() -> void:
 	if not result.is_ok() and result.error.is_unauthenticated():
 		last_error = result.error
 		_forget_session()
+		session_ended = true
 		_set_status(Status.SIGNED_OUT)
 
 
@@ -147,6 +157,7 @@ func _on_stream_unauthenticated() -> void:
 	if status != Status.SIGNED_IN:
 		return
 	_forget_session()
+	session_ended = true
 	_set_status(Status.SIGNED_OUT)
 
 

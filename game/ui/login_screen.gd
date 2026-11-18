@@ -70,6 +70,13 @@ func _build() -> void:
 	column.add_child(title)
 	column.add_child(Ui.spacer(32))
 
+	# The server ended the stored session: say so instead of just asking to sign in again.
+	if Services.session.session_ended:
+		var ended := Ui.label("LOGIN_SESSION_ENDED")
+		ended.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+		ended.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		column.add_child(ended)
+
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 0)
 	var group := ButtonGroup.new()

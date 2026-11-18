@@ -241,6 +241,7 @@ func _run() -> void:
 	var old_token := api.token
 	await session.logout()
 	_check(session.status == SessionController.Status.SIGNED_OUT, "logout -> signed out")
+	_check(not session.session_ended, "own logout is not an ended session")
 	_check(events.state() == EventStream.State.STOPPED, "logout stops the event channel")
 	_check(SessionStore.new(store_path).load_token(server.base).is_empty(), "logout removes the stored token")
 	other.token = old_token
@@ -255,6 +256,7 @@ func _run() -> void:
 	await session.restore()
 	_check(session.status == SessionController.Status.SIGNED_OUT, "rejected stored token -> signed out")
 	_check(SessionStore.new(store_path).load_token(server.base).is_empty(), "rejected stored token is removed")
+	_check(session.session_ended, "rejected stored token -> the login screen says the session ended")
 
 	# --- server not reachable: the token must survive ---
 	var dead := ServerUrl.parse("http://127.0.0.1:9")
