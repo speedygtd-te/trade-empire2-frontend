@@ -2,7 +2,9 @@ class_name MapScreen
 extends Control
 ## The star system of the player's colony: the star, the orbits, and planets, moons and belts
 ## where they stand now, moving with the game clock. A tap on a body shows its details. Opened
-## from the colony screen over it; Close or Back returns there.
+## from the colony screen over it; Close or Back returns there. "Galaxy" opens the galaxy map over it;
+## a system tapped there opens its own system map (`from_galaxy`), whose "Galaxy" button and Back
+## return to the galaxy.
 ##
 ## Time-lapse runs the map a game day per second for looking; it is never sent anywhere and
 ## switching it off returns to the present.
@@ -17,6 +19,8 @@ const LIST_PAGE := 200
 
 var _system_id := ""
 var _home_body := ""
+## Opened from the galaxy map: "Galaxy" goes back there instead of opening another one.
+var _from_galaxy := false
 var _map: SystemMap = null
 ## Body id → names of the player's structures there.
 var _structures: Dictionary = {}
@@ -36,32 +40,42 @@ var _details: BodyPanel
 var _lapse_button: Button
 var _fit_button: Button
 var _state: CenterContainer
+var _galaxy_button: Button
+## Everything of the system map; hidden while the galaxy covers it.
+var _content: Control
+var _galaxy: GalaxyScreen = null
 
 
-## The system to show and the player's home body (marked on the map).
-func setup(system_id: String, home_body_id: String) -> void:
+## The system to show and the player's home body (marked on the map); `from_galaxy` when the
+## galaxy map opened it.
+func setup(system_id: String, home_body_id: String, from_galaxy: bool = false) -> void:
 	_system_id = system_id
 	_home_body = home_body_id
+	_from_galaxy = from_galaxy
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_content = Control.new()
+	_content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_content)
 	var background := ColorRect.new()
 	background.color = AppTheme.COLOR_BACKGROUND
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(background)
+	_content.add_child(background)
 	_view = SystemMapView.new()
 	_view.home_body = _home_body
 	_view.body_tapped.connect(_on_body_tapped)
-	add_child(_view)
+	_content.add_child(_view)
 	_build_overlay()
 	_load()
 
 
 func _process(delta: float) -> void:
-	if _map == null:
+	if _map == null or _galaxy != null:
 		return
 	if _lapse:
 		_lapse_s += delta * TIME_LAPSE
@@ -73,9 +87,12 @@ func _process(delta: float) -> void:
 	_view.queue_redraw()
 
 
-## Back: close the details, otherwise leave the map.
+## Back: the galaxy opened from here handles it first; then close the details, otherwise leave
+## the map.
 func handle_back() -> void:
-	if not _view.selected.is_empty():
+	if _galaxy != null:
+		_galaxy.handle_back()
+	elif not _view.selected.is_empty():
 		_select("")
 	else:
 		closed.emit()
@@ -87,7 +104,7 @@ func _build_overlay() -> void:
 	var margin := SafeAreaMargin.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(margin)
+	_content.add_child(margin)
 	var column := Ui.column(0)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(column)
@@ -142,11 +159,14 @@ func _build_overlay() -> void:
 	_fit_button = Ui.secondary_button("MAP_SHOW_ALL")
 	_fit_button.pressed.connect(_on_fit)
 	actions.add_child(_fit_button)
+	_galaxy_button = Ui.secondary_button("MAP_GALAXY")
+	_galaxy_button.pressed.connect(_on_galaxy)
+	actions.add_child(_galaxy_button)
 
 	_state = CenterContainer.new()
 	_state.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_state.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_state)
+	_content.add_child(_state)
 	_show_state("MAP_LOADING")
 
 	# Deferred: while a container lays out, a moved child's global rect is not current yet.
@@ -201,7 +221,7 @@ func _load() -> void:
 	if not system.is_ok():
 		_show_state("MAP_LOAD_FAILED", system.error)
 		return
-	var structures := await _list_structures()
+	var structures := await list_structures()
 	if not structures.is_ok():
 		_show_state("MAP_LOAD_FAILED", structures.error)
 		return
@@ -227,7 +247,8 @@ func _load() -> void:
 	_view.show_map(_map)
 
 
-func _list_structures() -> ApiResult:
+## All of the player's structures, page by page, as one result with `items`.
+static func list_structures() -> ApiResult:
 	var items: Array = []
 	var cursor := ""
 	while true:
@@ -285,3 +306,27 @@ func _show_status() -> void:
 	else:
 		_status.text = tr("MAP_LIVE")
 		_status.remove_theme_color_override("font_color")
+
+
+# --- galaxy ---------------------------------------------------------------------------------
+
+## The galaxy over this map; from a map that the galaxy opened, back to that galaxy.
+func _on_galaxy() -> void:
+	if _from_galaxy:
+		closed.emit()
+		return
+	if _galaxy != null:
+		return
+	_galaxy = GalaxyScreen.new()
+	_galaxy.setup(_system_id, _home_body)
+	_galaxy.closed.connect(_close_galaxy)
+	add_child(_galaxy)
+	_content.visible = false
+
+
+func _close_galaxy() -> void:
+	if _galaxy == null:
+		return
+	_galaxy.queue_free()
+	_galaxy = null
+	_content.visible = true

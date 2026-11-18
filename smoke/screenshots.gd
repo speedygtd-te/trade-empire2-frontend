@@ -5,7 +5,8 @@ extends Control
 ## (not a `-s` script): the screens use the `Services` autoload, which only exists in a normal
 ## run. The signed-in screens use the development account of tools/dev-account.cjs
 ## (.local/dev-account.json, created by `node tools/dev-account.cjs`); without it they are skipped.
-## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map.
+## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map and
+## the galaxy (`--only=galaxy` does the same).
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 
@@ -96,7 +97,7 @@ func _run() -> void:
 		model.star_brightness(), model.star_size())
 	await _capture("colony_night")
 	colony._sun_left = 0.0
-	if OS.get_cmdline_user_args().has("--only=map"):
+	if OS.get_cmdline_user_args().has("--only=map") or OS.get_cmdline_user_args().has("--only=galaxy"):
 		await _capture_map(colony)
 		await _finish(colony, session, had_session)
 		return
@@ -390,6 +391,7 @@ func _capture_map(colony: ColonyScreen) -> void:
 	await get_tree().create_timer(3.0).timeout
 	await _capture("map_time_lapse")
 	screen._lapse_button.button_pressed = false
+	await _capture_galaxy(colony, screen)
 	colony.handle_back()
 	colony.handle_back()
 	await get_tree().process_frame
@@ -402,6 +404,128 @@ func _capture_map(colony: ColonyScreen) -> void:
 	await _until(func() -> bool: return broken._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
 	await _capture("map_error")
 	broken.queue_free()
+
+
+## The galaxy from the home system's map: the neighbourhood of home, the whole spiral, a middle
+## zoom, a selected system and the map of a foreign system; then Back step by step to the map.
+func _capture_galaxy(colony: ColonyScreen, map: MapScreen) -> void:
+	map._on_galaxy()
+	var galaxy := map._galaxy
+	await _capture("galaxy_loading")
+	await _until(func() -> bool: return galaxy._shape != null or galaxy._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
+	if galaxy._shape == null:
+		await _capture("galaxy_error")
+		print("GALAXY  not loaded")
+		map._close_galaxy()
+		return
+	# The systems around home load after the camera rested; the glow is computed meanwhile.
+	await get_tree().create_timer(1.0).timeout
+	await _until(func() -> bool: return not galaxy._loading and galaxy._glow_task < 0, 30000)
+	await _capture("galaxy_near_home")
+	var view := galaxy._view
+	print("GALAXY  %s: home %s, own systems %d, visible radius %.0f ly, %d stars loaded, status: %s" % [
+		galaxy._shape.galaxy_name, galaxy._home_system, galaxy._own.size(), view.visible_radius(),
+		galaxy._store.entries().size(), galaxy._status.text])
+	if galaxy._last != null:
+		print("GALAXY  last sphere: radius %.1f, covered %.1f, truncated %s, rows %d" % [
+			galaxy._last.radius, galaxy._last.covered, galaxy._last.truncated, galaxy._last.rows])
+	print("GALAXY  stand-in stars %d, real stars %d" % [view._field.multimesh.instance_count, view._stars.multimesh.instance_count])
+	await _galaxy_load_test(galaxy)
+	# Sample only: the stars failed to load (made up, nothing sent).
+	galaxy._load_error = ApiError.transport("sample")
+	galaxy._show_status()
+	await _capture("galaxy_stars_failed")
+	print("SAMPLE  galaxy: star loading error (made up, not from the server)")
+	galaxy._load_error = null
+	# The rim of the galaxy, where the server has few or no systems (empty state).
+	view.look_at_point(Vector2(galaxy._shape.view_extent(), 0.0), 150.0)
+	await get_tree().create_timer(1.0).timeout
+	await _until(func() -> bool: return not galaxy._loading, 20000)
+	await _capture("galaxy_rim")
+	print("GALAXY  rim: ", galaxy._status.text)
+
+	galaxy._on_show_all()
+	await get_tree().create_timer(1.0).timeout
+	await _capture("galaxy_far")
+	print("GALAXY  whole galaxy: %.1f ly/px, %d stand-in stars" % [view.units_per_px(), view._field.multimesh.instance_count])
+	if galaxy._home != null:
+		view.look_at_point(Vector2(galaxy._home.position.x, galaxy._home.position.y), 4000.0)
+		await get_tree().create_timer(1.0).timeout
+		await _capture("galaxy_middle")
+		view.look_at_point(Vector2(galaxy._home.position.x, galaxy._home.position.y), 600.0)
+		await get_tree().create_timer(1.0).timeout
+		await _capture("galaxy_close")
+		print("GALAXY  middle zoom: %d stand-in stars" % view._field.multimesh.instance_count)
+	galaxy._on_home()
+	await get_tree().create_timer(1.0).timeout
+	await _until(func() -> bool: return not galaxy._loading, 20000)
+
+	# A foreign system: the nearest star to home that is not home.
+	var foreign := ""
+	var best := INF
+	for entry: GalaxySystems.Entry in galaxy._store.entries():
+		if entry.id == galaxy._home_system or galaxy._home == null:
+			continue
+		var distance := entry.position.distance_to(galaxy._home.position)
+		if distance < best:
+			best = distance
+			foreign = entry.id
+	if foreign.is_empty():
+		print("GALAXY  no foreign system loaded; the home system stands in")
+		galaxy._select(galaxy._home_system)
+		await _capture("galaxy_selected")
+	else:
+		galaxy._select(foreign)
+		await _capture("galaxy_selected")
+		print("GALAXY  selected %s (%.1f ly from home)" % [foreign, best])
+		galaxy._open_system(foreign)
+		var system_map := galaxy._system_map
+		await _until(func() -> bool: return system_map._map != null or system_map._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
+		await get_tree().create_timer(1.0).timeout
+		await _capture("galaxy_foreign_system")
+		colony.handle_back()
+		await get_tree().process_frame
+		print("GALAXY  Back from the foreign map returns to the galaxy: ", galaxy._system_map == null)
+	colony.handle_back()
+	colony.handle_back()
+	await get_tree().process_frame
+	print("GALAXY  Back twice more returns to the system map: ", map._galaxy == null and colony._map == map)
+
+
+## The heaviest answer there is: 200 ly around the galactic centre (20 000 rows, truncated).
+## Measures download, parsing and drawing it here on the main thread (the screen parses on a
+## worker), checks how far the cut answer counts as covered, then restores the view.
+func _galaxy_load_test(galaxy: GalaxyScreen) -> void:
+	var view := galaxy._view
+	var started := Time.get_ticks_msec()
+	var raw := await Services.api.get_text("/v2/galaxy/systems?" + GalaxyCamera.query(Vector3.ZERO, 200.0), "application/x-ndjson")
+	var fetched := Time.get_ticks_msec() - started
+	if not raw.is_ok():
+		print("GALAXY  core sphere failed: ", raw.error.code)
+		return
+	started = Time.get_ticks_msec()
+	var stream := Ndjson.parse(raw.body)
+	var parsed := Time.get_ticks_msec() - started
+	started = Time.get_ticks_msec()
+	var answer := GalaxySystems.from_stream(stream, Vector3.ZERO, 200.0, galaxy._shape.sector_size)
+	var read := Time.get_ticks_msec() - started
+	print("GALAXY  core sphere r=200: %d rows (end line %d), truncated %s, covered %.1f ly; %d KB, fetch %d ms, parse %d ms, entries %d ms" % [
+		answer.entries.size(), answer.rows, answer.truncated, answer.covered, roundi(raw.body.length() / 1024.0), fetched, parsed, read])
+	started = Time.get_ticks_msec()
+	view.set_systems(answer.entries, GalaxySystems.area_density(answer))
+	var built := Time.get_ticks_msec() - started
+	started = Time.get_ticks_msec()
+	view._size_stars()
+	var sized := Time.get_ticks_msec() - started
+	print("GALAXY  20 000 stars: buffer %d ms, resize on zoom %d ms" % [built, sized])
+	view.set_systems(galaxy._store.entries(), GalaxySystems.area_density(galaxy._last))
+	view.look_at_point(view.centre(), 3000.0)
+	view._field_range = Rect2i()
+	view._field_cells.clear()
+	started = Time.get_ticks_msec()
+	view._update_field(view.visible_radius())
+	print("GALAXY  stand-in stars at 3000 ly from scratch: %d in %d ms" % [view._field.multimesh.instance_count, Time.get_ticks_msec() - started])
+	view.look_at_point(view.centre(), GalaxyCamera.HOME_RADIUS)
 
 
 ## A free cell next to the structure, for the build preview.

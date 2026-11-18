@@ -342,6 +342,31 @@ MAP_STAR_TYPE_WHITE_DWARF,White dwarf
 MAP_STAR_TYPE_RED_GIANT,Red giant
 MAP_STAR_TYPE_NEUTRON,Neutron star
 MAP_STAR_TYPE_UNKNOWN,Star
+MAP_GALAXY,Galaxy
+GALAXY_TITLE,Galaxy
+GALAXY_LOADING,Loading the galaxy…
+GALAXY_LOAD_FAILED,The galaxy could not be loaded.
+GALAXY_HINT,"Drag to move, pinch to zoom. Close up the real stars appear: tap one for details."
+GALAXY_HOME,Home
+GALAXY_SHOW_ALL,Whole galaxy
+GALAXY_YOU_ARE_HERE,You are here
+GALAXY_HOME_LABEL,{name} (home)
+GALAXY_SCALE,{ly} ly
+GALAXY_OPEN_SYSTEM,Open system map
+GALAXY_UNNAMED,Unnamed star
+GALAXY_HOME_HERE,Your home colony is in this system.
+GALAXY_OWN_HERE,You have structures in this system.
+GALAXY_STAR_LINE,"{kelvin} K · {luminosity} × the Sun's light · {mass} solar masses"
+GALAXY_PLANETS_NONE,No planets
+GALAXY_PLANETS_ONE,1 planet
+GALAXY_PLANETS,{count} planets
+GALAXY_DISTANCE,{ly} light years from your home system
+GALAXY_STATUS_FAR,Zoom in to see the single stars.
+GALAXY_STATUS_LOADING,Loading the stars nearby…
+GALAXY_STATUS_FAILED,The stars nearby could not be loaded. {reason}
+GALAXY_STATUS_EMPTY,No stars here.
+GALAXY_STATUS_STARS,{count} stars within {ly} light years
+GALAXY_STATUS_TRUNCATED,"Very many stars here: showing the nearest {count}, complete within {ly} light years."
 LOGIN_SESSION_ENDED,"The server ended your session. During the test phase this happens when the game world is reset: then your account is gone too, so create a new one."
 COLONY_CATEGORY_HULLS,Hulls
 COLONY_CATEGORY_PRODUCTION,Production

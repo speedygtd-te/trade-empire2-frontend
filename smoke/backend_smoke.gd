@@ -110,6 +110,33 @@ func _check_definitions(server: ServerUrl) -> void:
 	cache.clear()
 
 
+## The galaxy map's requests: the shape, the home system's position, the systems around it as a
+## raw NDJSON answer (complete, with its end line, home among them), and the radius limit.
+func _check_galaxy(api: ApiClient, home_body: String) -> void:
+	var galaxy := await api.get_json("/v2/galaxy")
+	var shape: GalaxyShape = GalaxyShape.from_galaxy(galaxy.data) if galaxy.is_ok() else null
+	_check(shape != null, "galaxy: shape parameters read")
+	var system_id := GalaxySystems.system_of_body(home_body)
+	var system := await api.get_json("/v2/systems/" + system_id.uri_encode())
+	var home: GalaxySystems.Entry = GalaxySystems.entry_from_system(system.data) if system.is_ok() else null
+	_check(home != null, "galaxy: home system %s has a position" % system_id)
+	if shape == null or home == null:
+		return
+	var raw := await api.get_text("/v2/galaxy/systems?" + GalaxyCamera.query(home.position, 20.0), "application/x-ndjson")
+	_check(raw.is_ok() and raw.rev >= 0, "galaxy: systems around home -> ok (error: %s)" % _code(raw.error))
+	if not raw.is_ok():
+		return
+	var answer := GalaxySystems.from_stream(Ndjson.parse(raw.body), home.position, 20.0, shape.sector_size)
+	_check(answer.ended and not answer.truncated and answer.rows == answer.entries.size(),
+		"galaxy: complete answer, end line counts %d rows" % answer.rows)
+	var found := false
+	for entry: GalaxySystems.Entry in answer.entries:
+		found = found or entry.id == system_id
+	_check(found, "galaxy: the home system is among them")
+	var too_far := await api.get_text("/v2/galaxy/systems?" + GalaxyCamera.query(home.position, 250.0), "application/x-ndjson")
+	_check(_code(too_far.error) == "VALIDATION_FAILED", "galaxy: radius above 200 -> VALIDATION_FAILED (got %s)" % _code(too_far.error))
+
+
 func _run() -> void:
 	# `_initialize` runs before the root node is inside the tree; nodes added now could not
 	# send requests yet.
@@ -183,6 +210,9 @@ func _run() -> void:
 	var health := await api.get_json("/v2/health", false)
 	var offset := health.game_time_ms - estimate
 	_check(health.is_ok() and absi(offset) <= 500, "clock estimate is close to the server (%d ms behind)" % offset)
+
+	# --- the galaxy around home (raw answer, parsed as the galaxy map does) ---
+	await _check_galaxy(api, session.account.home_body_id)
 
 	# --- a domain event: a second sign-in of the same player ---
 	var other := _new_api(server.base)
