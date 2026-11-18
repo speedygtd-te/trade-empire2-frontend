@@ -61,6 +61,8 @@ var data_hash: String = ""
 var fixed_point_scale: int = 0
 ## The whole parsed bundle, for parts that are not modelled yet.
 var bundle: Dictionary = {}
+## Labs and techs (`research`); empty when the bundle has none.
+var research := ResearchCatalog.new()
 
 var _modules: Dictionary = {}
 var _hulls: Dictionary = {}
@@ -94,6 +96,7 @@ static func from_bundle(data: Dictionary) -> GameDefinitions:
 		var blueprint := _read_blueprint(Wire.as_dict(entry))
 		if not blueprint.key.is_empty():
 			definitions._blueprints[blueprint.key] = blueprint
+	definitions.research = ResearchCatalog.from_wire(Wire.as_dict(data.get("research")))
 	return definitions
 
 

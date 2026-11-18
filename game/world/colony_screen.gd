@@ -5,12 +5,12 @@ extends Control
 ##
 ## The surface shows the structure closed (StructureLook): a tap on it selects it and the panel
 ## shows its details. Edit or Build opens it in place — the shut hulls give way to the modules
-## on their floors — and the tabs Inspect, Build, Store and Log appear. Close or Back shuts it.
+## on their floors — and the tabs Inspect, Build, Store, Log and Research appear. Close or Back shuts it.
 ##
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects a field. Building is two
 ## taps — choose the field, then confirm — and removing is two-step as well.
 
-enum Mode { VIEW, BUILD, STORE, LOG }
+enum Mode { VIEW, BUILD, STORE, LOG, RESEARCH }
 
 ## Pointer travel (canvas px) below which a press counts as a tap, not a drag.
 const TAP_SLOP := 18.0
@@ -44,6 +44,8 @@ var _store_tab: Button
 var _store: StorePanel
 var _log: LogPanel
 var _log_tab: Button
+var _research: ResearchPanel
+var _research_tab: Button
 var _recipes: RecipePanel
 var _actions: HBoxContainer
 var _loading: Control
@@ -113,6 +115,8 @@ func _process(delta: float) -> void:
 			_refresh()
 		elif _mode == Mode.STORE:
 			_store.tick()
+		elif _mode == Mode.RESEARCH and _opened:
+			_research.tick()
 
 
 ## Android back: close the menu or the recipes, clear the selected field, shut the open
@@ -120,6 +124,8 @@ func _process(delta: float) -> void:
 func handle_back() -> void:
 	if _menu != null and _menu.visible:
 		_menu.visible = false
+	elif _opened and _mode == Mode.RESEARCH and _research.handle_back():
+		pass
 	elif _recipes.visible:
 		_close_recipes()
 	elif _opened and _cell != null:
@@ -217,6 +223,9 @@ func _build_overlay() -> void:
 	_log_tab = Ui.tab_button("COLONY_TAB_LOG", group)
 	_log_tab.pressed.connect(_set_mode.bind(Mode.LOG))
 	_tabs.add_child(_log_tab)
+	_research_tab = Ui.tab_button("COLONY_TAB_RESEARCH", group)
+	_research_tab.pressed.connect(_set_mode.bind(Mode.RESEARCH))
+	_tabs.add_child(_research_tab)
 
 	_store = StorePanel.new()
 	_store.setup(_model)
@@ -225,6 +234,10 @@ func _build_overlay() -> void:
 	_log.setup(_model)
 	_log.visible = false
 	rows.add_child(_log)
+	_research = ResearchPanel.new()
+	_research.setup(_model)
+	_research.visible = false
+	rows.add_child(_research)
 	_recipes = RecipePanel.new()
 	_recipes.visible = false
 	_recipes.chosen.connect(_on_recipe_chosen)
@@ -341,12 +354,14 @@ func _set_mode(mode: Mode) -> void:
 	_build_tab.set_pressed_no_signal(mode == Mode.BUILD)
 	_store_tab.set_pressed_no_signal(mode == Mode.STORE)
 	_log_tab.set_pressed_no_signal(mode == Mode.LOG)
+	_research_tab.set_pressed_no_signal(mode == Mode.RESEARCH)
 	# A closed structure shows only its details: no tabs, no store, no log.
 	_tabs.visible = _opened
-	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG)
+	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG or mode == Mode.RESEARCH)
 	_palette_scroll.visible = _opened and mode == Mode.BUILD
 	_store.visible = _opened and mode == Mode.STORE
 	_log.visible = _opened and mode == Mode.LOG
+	_research.visible = _opened and mode == Mode.RESEARCH
 	_info.visible = not panel_mode
 	_status.visible = not panel_mode
 	_actions.visible = not panel_mode
@@ -354,6 +369,8 @@ func _set_mode(mode: Mode) -> void:
 		_view.show_preview([], false)
 	if _opened and mode == Mode.LOG:
 		_log.reload()
+	if _opened and mode == Mode.RESEARCH:
+		_research.reload()
 	if _opened and mode == Mode.STORE:
 		_store.show_inventory(_model.inventory)
 		_store.show_balance(_model)
@@ -453,7 +470,7 @@ func _refresh() -> void:
 	if not _opened:
 		_refresh_closed()
 		return
-	if _mode == Mode.STORE or _mode == Mode.LOG:
+	if _mode == Mode.STORE or _mode == Mode.LOG or _mode == Mode.RESEARCH:
 		return
 	_primary.disabled = _busy
 	_secondary.disabled = _busy
