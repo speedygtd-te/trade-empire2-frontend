@@ -100,11 +100,15 @@ async function main() {
 
   // Shafts (elevator, staircase) need a hull above them; under-water modules need water.
   const fits = (m) => slotOf(m) !== null && !m.verticalAccess;
-  const wanted = definitions.modules.filter(fits);
+  // Modules the store does not hold (the core module: the colony has its one already) stay out.
+  const inStore = (m) => (stock[moduleItem[m.key]] || 0) >= 1;
+  const wanted = definitions.modules.filter((m) => fits(m) && inStore(m));
   const skipped = definitions.modules.filter((m) => !fits(m)).map((m) => m.key);
+  const notInStore = definitions.modules.filter((m) => fits(m) && !inStore(m)).map((m) => m.key);
   wanted.sort((a, b) => b.size.x * b.size.y - a.size.x * a.size.y || a.key.localeCompare(b.key));
   const { placed, rows } = pack(wanted, columns);
   console.log(`# ${wanted.length} modules in ${columns} x ${rows} cells; left out (under water, shafts): ${skipped.join(', ') || '-'}`);
+  if (notInStore.length > 0) console.log(`# left out (not in the store): ${notInStore.join(', ')}`);
 
   // Hull type of every cell of the block.
   const cellHull = {};

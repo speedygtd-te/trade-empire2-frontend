@@ -31,16 +31,20 @@ def build():
     model.box((POST[0], POST[1], 0.075), (0.12, 0.12, 0.04), "steel_dark")
     model.beam((POST[0], POST[1], 0.055), (POST[0], POST[1], HEAD), 0.05, "steel_dark")
     model.box((POST[0], POST[1], HEAD - 0.02), (0.07, 0.07, 0.04), "steel")
-    # The panel looks to the front and a little to the right, towards the game camera.
-    with model.placed((POST[0], POST[1], HEAD + 0.05), turn=math.radians(20.0),
-                      tilt=math.radians(38.0)):
-        model.box((0.0, 0.0, 0.0), (PANEL[0], PANEL[1], 0.025), "steel_light")
-        cell = (PANEL[0] / 2.0 - 0.03, PANEL[1] / 2.0 - 0.03)
-        for sx in (-1, 1):
-            for sy in (-1, 1):
-                center = (sx * (cell[0] / 2.0 + 0.01), sy * (cell[1] / 2.0 + 0.01))
-                model.plate((*center, 0.0131), cell, "+z", "solar")
-                model.plate((*center, 0.0137), (0.005, cell[1]), "+z", "blue")
+    # At rest the panel looks to the front and a little to the right, towards the game camera.
+    # It is a moving part ("panel"): by day the game turns it towards the sun.
+    head = (POST[0], POST[1], HEAD + 0.05)
+    turn, tilt = math.radians(20.0), math.radians(38.0)
+    with model.moving("panel", head, turn=turn, tilt=tilt):
+        with model.placed(head, turn=turn, tilt=tilt):
+            model.box((0.0, 0.0, 0.0), (PANEL[0], PANEL[1], 0.025), "steel_light")
+            model.box((0.0, 0.0, -0.03), (0.06, 0.06, 0.04), "steel")
+            cell = (PANEL[0] / 2.0 - 0.03, PANEL[1] / 2.0 - 0.03)
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    center = (sx * (cell[0] / 2.0 + 0.01), sy * (cell[1] / 2.0 + 0.01))
+                    model.plate((*center, 0.0131), cell, "+z", "solar")
+                    model.plate((*center, 0.0137), (0.005, cell[1]), "+z", "blue")
 
     _cabinet(model)
     parts.pipe(model, [(CABINET[0] + 0.06, CABINET[1] + 0.05, 0.26),

@@ -82,6 +82,11 @@ var _layout_loading := false
 var _layout_again := false
 var _inventory_loading := false
 var _production_due := false
+## From the last rate solution: how much each module type works (ModuleMotion), the power
+## scale, and whether one was loaded at all.
+var _activity_by_type: Dictionary = {}
+var _power_scale := 1.0
+var _production_known := false
 var _naming := false
 
 
@@ -291,6 +296,11 @@ func reload_production() -> void:
 	for entry: Variant in idle:
 		var row := Wire.as_dict(entry)
 		idle_reasons[Wire.as_int(row.get("moduleId"))] = Wire.as_string(row.get("reason"))
+	var micro := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+	var buckets: Array = answer.data.get("buckets") if typeof(answer.data.get("buckets")) == TYPE_ARRAY else []
+	_activity_by_type = ModuleMotion.activity_by_type(buckets, micro)
+	_power_scale = clampf(Wire.as_int(power_data.get("scale"), micro) / float(maxi(micro, 1)), 0.0, 1.0)
+	_production_known = true
 	workforce.apply_groups(answer.data.get("workforce"))
 	# Inhabitants are a flow per habitat; the structure counts them at the time of its answer.
 	var details := await Services.api.get_json("/v2/structures/%d" % structure_id)
@@ -376,6 +386,16 @@ func set_blueprint(cell: Vector3i, blueprint: String) -> ApiResult:
 	if result.is_ok():
 		reload_production()
 	return result
+
+
+## How much a module works now (0..1), for its moving parts (ModuleMotion). Before the first
+## rate solution (and for a guest never selected) every finished, switched-on module counts as
+## working.
+func module_activity(module: StructureLayout.Module) -> float:
+	if not _production_known:
+		return 0.0 if module.is_building() or module.is_disabled() else 1.0
+	return ModuleMotion.activity(module.module_type, module.is_building(), module.is_disabled(),
+		idle_reasons.has(module.module_id), _activity_by_type, _power_scale)
 
 
 ## Absolute cell the camera should start on: the middle of the structure.

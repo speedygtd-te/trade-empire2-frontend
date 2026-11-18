@@ -83,6 +83,12 @@ var _lamp_energy := LAMP_DAY
 ## The structure under the highlight tint; 0 for none.
 var _highlight_id := 0
 var _highlight_material: StandardMaterial3D
+## Rotors, fans, dishes, pump rods and solar panels of the modules on screen (ModuleMotion).
+var _mover := ModuleMover.new()
+## Whether they move (not on the slowest detail tier), and where the sun stands for the panels.
+var _moving := true
+var _to_sun := Vector3.UP
+var _sun_up := true
 
 
 func setup(colony: ColonyModel) -> void:
@@ -90,6 +96,7 @@ func setup(colony: ColonyModel) -> void:
 	model.layout_changed.connect(_rebuild_structure)
 	model.guests_changed.connect(_rebuild_structure)
 	model.surface_loaded.connect(_on_surface_loaded)
+	model.production_changed.connect(_mover.refresh_activity)
 
 
 func _ready() -> void:
@@ -351,6 +358,7 @@ func _rebuild_structure() -> void:
 		child.queue_free()
 	for child: Node in _modules.get_children():
 		child.queue_free()
+	_mover.clear()
 	for structure: ColonyModel in _structures():
 		_build_structure(structure)
 	_perimeter.rebuild()
@@ -421,6 +429,7 @@ func _build_structure(structure: ColonyModel) -> void:
 		elif placed.is_disabled():
 			_tint(node, COLOR_DISABLED)
 		module_group.add_child(node)
+		_mover.add(node, structure, placed)
 
 
 ## Draws every loaded ground block near the camera (after the origin moved).
@@ -467,6 +476,16 @@ func _instance(key: String) -> Node3D:
 	var node := scene.instantiate() as Node3D
 	_collect_lamps(node)
 	return node
+
+
+func _process(delta: float) -> void:
+	if _moving:
+		_mover.step(delta, _to_sun, _sun_up)
+
+
+## Moving parts of the modules on screen (for measuring).
+func moving_parts() -> int:
+	return _mover.count()
 
 
 ## Strength of lamps and windows now (LAMP_DAY … LAMP_NIGHT).
@@ -643,6 +662,8 @@ func _add_environment() -> void:
 func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, density: float = 1.0,
 		star_brightness: float = 1.0, star_size: float = 1.0) -> void:
 	var to_sun := Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
+	_to_sun = to_sun
+	_sun_up = elevation > ModuleMotion.SUN_UP
 	var up := Vector3.UP if absf(to_sun.y) < 0.999 else Vector3.FORWARD
 	_sun.basis = Basis.looking_at(-to_sun, up)
 	var light := SkyLight.at(elevation, star_kelvin, density, star_brightness)
@@ -687,6 +708,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
 	_props.apply_detail(tier)
 	_perimeter.apply_detail(tier)
+	_moving = tier != DetailGovernor.Tier.SLOW
 
 
 func _child(node_name: String) -> Node3D:

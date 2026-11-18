@@ -8,7 +8,7 @@
 # window never stays open. Exit code: 0 = ok, 3 = stopped after the timeout.
 param(
     [string]$Out = '',
-    [int]$TimeoutSeconds = 60,
+    [int]$TimeoutSeconds = 180,
     [string]$Only = ''
 )
 

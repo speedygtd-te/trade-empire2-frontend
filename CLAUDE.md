@@ -51,6 +51,7 @@ verschärft, wenn es nötig wird.
 | Alle Module in eine Kolonie setzen (eigenes Showcase-Konto) | `node tools/showcase.cjs` (`--dry-run` zeigt nur den Plan; braucht den Test-Grant; einmal je frischem Konto) |
 | Showcase-Kolonie ansehen | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase` |
 | Masten, Radar und Lichtkegel um die Basis ansehen | `godot --path . --resolution 720x1280 res://smoke/perimeter_view.tscn -- --out=build/perimeter` (Modelle: `tools\build-models.ps1 -Only perimeter`) |
+| Bewegte Modulteile ansehen (Rotoren, Lüfter, Schüsseln, Solarpanels; Showcase-Konto) | `godot --path . --resolution 720x1280 res://smoke/motion_view.tscn -- --out=build/motion` (Bildfolgen je Typ, Kosten je Frame) |
 | Entwicklerkonto, echte Antworten ansehen | `node tools/dev-account.cjs /v2/structures` (Zugang in `.local/`, nie committen) |
 | Lokales Backend (nur Ausnahme) | `powershell -File tools\dev-backend.ps1 start` (auch `stop`, `status`, `sync`, `build`, `reset`) |
 | Bildschirmfotos | `powershell -File tools\screenshots.ps1` → `build\screenshots\` |
@@ -82,6 +83,12 @@ Von außen ist eine Struktur geschlossen (`StructureLook`): Innenhüllen zeigen 
 Außenmodulen bleiben offen; erst Bearbeiten/Bauen öffnet sie an Ort und Stelle. Glänzende und metallische Flächen spiegeln die Umgebung —
 die Szene braucht dafür einen Himmel als Spiegelquelle (Muster: `smoke/model_preview.gd`),
 sonst werden sie dunkel.
+Bewegte Teile baut `kit.Builder.moving("<rolle>", drehpunkt)`: Sie werden Kindknoten
+`move_<rolle>[_n]` desselben Modells (gleiche Texturen) und drehen um ihre eigene Hochachse;
+`core/module_motion.gd` bewegt sie nach der Rolle (rotor, fan, dish, scope, sensor, drill, rod,
+panel) so schnell, wie das Modul laut Raten-Lösung arbeitet — im Bau, aus oder untätig stehen
+sie still. Eine neue Rolle braucht einen Eintrag in `ModuleMotion.ROLES`, sonst schlägt der
+Modelltest an.
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
 am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine Hülle füllt ihre

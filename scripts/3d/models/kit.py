@@ -1,6 +1,7 @@
 """Building kit for hand-made low-poly models. Runs inside Blender (written against 5.3).
 
-A model is one mesh. Every face has a palette colour and a surface kind (metal or concrete).
+A model is one mesh, plus its moving parts (Builder.moving: a rotor, a fan, a dish), which
+become child objects the game moves. Every face has a palette colour and a surface kind (metal or concrete).
 For the game file the look is baked into one texture per model: the colour, broken up by a
 generated surface texture (scripts/3d/textures, made by scripts/3d/make-texture.cjs), rust,
 dirt in the corners and worn edges. Changing the palette, the surface textures or the recipe
@@ -164,6 +165,9 @@ BAKE_SAMPLES = 24
 _TINT = "tint"
 _FINISH = "finish"
 _GLOW = "glow"
+_PART = "part"
+# Name prefix of a moving part's object (Builder.moving).
+MOVING_PREFIX = "move_"
 _SURFACE_PIXELS = 512
 # How a face's surface texture is stored in the blue channel of its finish (see Builder).
 _SURFACE_STEP = 1.0 / 16.0
@@ -202,6 +206,10 @@ class Builder:
         # stores its texture's place in this list (1, 2 ...) or 0 for the texture of its kind.
         self._surfaces = []
         self._frame = Matrix.Identity(4)
+        # Moving parts (see moving): each face stores the number of its part, 0 for none.
+        self._part_layer = self._solid.faces.layers.int.new(_PART)
+        self._part = 0
+        self._parts = []
 
     @contextmanager
     def _into(self, color: str):
@@ -224,6 +232,26 @@ class Builder:
             yield
         finally:
             self._frame = previous
+
+    @contextmanager
+    def moving(self, name: str, pivot=(0.0, 0.0, 0.0), turn: float = 0.0, tilt: float = 0.0):
+        """Everything added inside the with-block becomes a moving part: a child object
+        "move_<name>" of the model whose origin is *pivot* (in the current coordinates, which
+        stay as they are) and whose axes are turned by *turn* around Z and tilted by *tilt*
+        around X like `placed`. The game moves it after its name (core/module_motion.gd: what
+        comes after "move_" up to the first digit or underscore is the role, "fan_2" -> fan);
+        a turning part turns around its own Z axis (up in the game). The part is baked with the
+        rest of the model. Parts cannot be nested; glass (PANE) inside a part stays put."""
+        if self._part:
+            raise RuntimeError("moving parts cannot be nested")
+        frame = (self._frame @ Matrix.Translation(Vector(pivot))
+                 @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Rotation(tilt, 4, "X"))
+        self._parts.append((name, frame))
+        self._part = len(self._parts)
+        try:
+            yield
+        finally:
+            self._part = 0
 
     def box(self, center, size, color: str, turn: float = 0.0) -> None:
         """A box with its centre at *center*; *turn* rotates it around Z (radians)."""
@@ -309,10 +337,7 @@ class Builder:
         scene = stage_scene()
         previous = scene.collection.objects.get(self.name)
         if previous is not None:
-            previous_mesh = previous.data
-            bpy.data.objects.remove(previous, do_unlink=True)
-            if previous_mesh.users == 0:
-                bpy.data.meshes.remove(previous_mesh)
+            remove(previous)
         mesh = bpy.data.meshes.new(self.name)
         self._solid.to_mesh(mesh)
         self._solid.free()
@@ -322,6 +347,7 @@ class Builder:
             _bake_look(target, self._glowing, self.wear, self._surfaces)
         else:
             mesh.color_attributes.active_color_name = _TINT
+        _split_parts(target, self._parts)
         if len(self._glass.faces) > 0:
             _add_glass(target, self._glass)
         self._glass.free()
@@ -346,6 +372,7 @@ class Builder:
         light = (*GLOWS.get(color, (0.0, 0.0, 0.0)), 1.0)
         self._glowing = self._glowing or color in GLOWS
         for face in faces:
+            face[self._part_layer] = self._part
             for loop in face.loops:
                 loop[self._tint] = value
                 # Blue carries the surface texture (_SURFACE_STEP per place in the list).
@@ -717,6 +744,49 @@ def _add_glass(target: bpy.types.Object, glass: bmesh.types.BMesh) -> None:
         bpy.ops.object.join()
 
 
+def _split_parts(target: bpy.types.Object, moving: list) -> None:
+    """Moves the faces of each moving part (Builder.moving) out of the model into a child
+    object "move_<name>" whose origin and axes are the part's frame. The faces keep their
+    material and texture coordinates, so the part shares the model's baked textures."""
+    mesh = target.data
+    if moving:
+        whole = bmesh.new()
+        whole.from_mesh(mesh)
+        for number, (name, frame) in enumerate(moving, start=1):
+            piece = whole.copy()
+            layer = piece.faces.layers.int.get(_PART)
+            bmesh.ops.delete(piece, geom=[face for face in piece.faces if face[layer] != number],
+                             context="FACES")
+            bmesh.ops.transform(piece, matrix=frame.inverted(), verts=piece.verts)
+            part_mesh = bpy.data.meshes.new(MOVING_PREFIX + name)
+            piece.to_mesh(part_mesh)
+            piece.free()
+            for material in mesh.materials:
+                part_mesh.materials.append(material)
+            part = bpy.data.objects.new(MOVING_PREFIX + name, part_mesh)
+            target.users_scene[0].collection.objects.link(part)
+            part.parent = target
+            part.matrix_parent_inverse = Matrix.Identity(4)
+            part.matrix_basis = frame
+        layer = whole.faces.layers.int.get(_PART)
+        bmesh.ops.delete(whole, geom=[face for face in whole.faces if face[layer] != 0],
+                         context="FACES")
+        whole.to_mesh(mesh)
+        whole.free()
+    for owner in [target, *target.children]:
+        if _PART in owner.data.attributes:
+            owner.data.attributes.remove(owner.data.attributes[_PART])
+
+
+def remove(target: bpy.types.Object) -> None:
+    """Deletes a model with its moving parts and their meshes."""
+    for owner in [*target.children_recursive, target]:
+        mesh = owner.data
+        bpy.data.objects.remove(owner, do_unlink=True)
+        if mesh is not None and mesh.users == 0:
+            bpy.data.meshes.remove(mesh)
+
+
 # --- Checking, showing, writing ---------------------------------------------------------------
 
 def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1),
@@ -724,11 +794,14 @@ def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1
     """Size and triangle count, plus what breaks the limits of the model: within `footprint`
     of each of its `cells` (x, y) on the ground and below `max_height` (MAX_HEIGHT for modules;
     the masts around a base, perimeter.py, may be taller)."""
-    mesh = target.data
-    low = Vector((min(v.co.x for v in mesh.vertices), min(v.co.y for v in mesh.vertices),
-                  min(v.co.z for v in mesh.vertices)))
-    high = Vector((max(v.co.x for v in mesh.vertices), max(v.co.y for v in mesh.vertices),
-                   max(v.co.z for v in mesh.vertices)))
+    # Moving parts count where they rest (their pose in the file).
+    points = [vertex.co.copy() for vertex in target.data.vertices]
+    triangles = sum(len(polygon.vertices) - 2 for polygon in target.data.polygons)
+    for part in target.children:
+        points += [part.matrix_basis @ vertex.co for vertex in part.data.vertices]
+        triangles += sum(len(polygon.vertices) - 2 for polygon in part.data.polygons)
+    low = Vector((min(p.x for p in points), min(p.y for p in points), min(p.z for p in points)))
+    high = Vector((max(p.x for p in points), max(p.y for p in points), max(p.z for p in points)))
     problems = []
     limit_x = cells[0] - 1.0 + footprint
     limit_y = cells[1] - 1.0 + footprint
@@ -740,7 +813,8 @@ def describe(target: bpy.types.Object, footprint: float = FOOTPRINT, cells=(1, 1
         problems.append("does not stand on the ground")
     return {
         "name": target.name,
-        "triangles": sum(len(polygon.vertices) - 2 for polygon in mesh.polygons),
+        "triangles": triangles,
+        "parts": [part.name for part in target.children],
         "size": [round(value, 3) for value in (high - low)],
         "problems": problems,
     }
@@ -775,8 +849,9 @@ def export_glb(target: bpy.types.Object, path: str) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     scene = target.users_scene[0]
     view_layer = scene.view_layers[0]
+    wanted = {target, *target.children_recursive}
     for other in view_layer.objects:
-        other.select_set(other == target, view_layer=view_layer)
+        other.select_set(other in wanted, view_layer=view_layer)
     view_layer.objects.active = target
     overrides = {"scene": scene, "view_layer": view_layer}
     windows = bpy.context.window_manager.windows
@@ -819,17 +894,16 @@ def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT,
             target = build()
             facts = describe(target, footprint, cells, max_height)
             export_glb(target, path)
-            mesh = target.data
-            bpy.data.objects.remove(target, do_unlink=True)
-            bpy.data.meshes.remove(mesh)
+            remove(target)
         except Exception as error:
             import traceback
             traceback.print_exc()
             print("FAIL  %s: %s" % (name, error))
             failed += 1
             continue
-        print("RESULT %s.glb: %d triangles, size %s, %.1f KB%s" % (
+        print("RESULT %s.glb: %d triangles, size %s, %.1f KB%s%s" % (
             name, facts["triangles"], facts["size"], os.path.getsize(path) / 1024.0,
+            "".join(", moving " + part for part in facts["parts"]),
             "".join(", PROBLEM: " + problem for problem in facts["problems"])))
         if facts["problems"]:
             failed += 1
@@ -852,8 +926,9 @@ def run_from_command_line(build, footprint: float = FOOTPRINT, cells=(1, 1)) -> 
         traceback.print_exc()
         print("FAIL  %s" % error)
         sys.exit(1)
-    print("RESULT %s: %d triangles, size %s, %.1f KB%s" % (
+    print("RESULT %s: %d triangles, size %s, %.1f KB%s%s" % (
         os.path.basename(options.output), facts["triangles"], facts["size"],
         os.path.getsize(options.output) / 1024.0,
+        "".join(", moving " + part for part in facts["parts"]),
         "".join(", PROBLEM: " + problem for problem in facts["problems"])))
     sys.exit(1 if facts["problems"] else 0)

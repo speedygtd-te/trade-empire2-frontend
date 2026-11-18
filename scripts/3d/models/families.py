@@ -198,16 +198,22 @@ def core(model, top, accent, half):
 
 
 def fans(model, top, accent, half):
-    for x in (-half[0] * 0.45, half[0] * 0.45):
+    """Two roof fans; their blades turn (moving parts "fan_1", "fan_2")."""
+    for number, x in enumerate((-half[0] * 0.45, half[0] * 0.45), start=1):
         model.cylinder((x, 0.04, top), (x, 0.04, top + 0.04), 0.10, "steel", segments=10)
-        model.plate((x, 0.04, top + 0.0406), (0.14, 0.02), "+z", "dark")
-        model.plate((x, 0.04, top + 0.0412), (0.02, 0.14), "+z", "dark")
+        model.plate((x, 0.04, top + 0.0403), (0.17, 0.17), "+z", "dark")
+        with model.moving("fan_%d" % number, (x, 0.04, top + 0.04)):
+            for turn in (0.0, math.pi / 2.0):
+                model.box((x, 0.04, top + 0.046), (0.17, 0.028, 0.008), "steel_light", turn=turn)
+            model.cylinder((x, 0.04, top + 0.04), (x, 0.04, top + 0.056), 0.02, accent, segments=6)
 
 
 def dish_small(model, top, accent, half):
+    """A small dish on a post that sweeps the sky (moving part "dish")."""
     model.cylinder((0.12, 0.10, top), (0.12, 0.10, top + 0.10), 0.015, "steel_dark", segments=6)
-    with model.placed((0.12, 0.10, top + 0.12), tilt=math.radians(40.0)):
-        model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, 0.03), 0.10, "white", segments=12, end_radius=0.04)
+    with model.moving("dish", (0.12, 0.10, top + 0.10)):
+        with model.placed((0.12, 0.10, top + 0.12), tilt=math.radians(40.0)):
+            model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, 0.03), 0.10, "white", segments=12, end_radius=0.04)
 
 
 def crates_front(model, base, accent, edge):
@@ -236,33 +242,59 @@ def mast(name, accent="yellow", head=None, height=0.80, base="concrete"):
 
 
 def dish_head(model, z, accent):
+    """A dish that sweeps the sky (moving part "dish", turning on the mast's axis)."""
     model.box((0.0, 0.0, z + 0.02), (0.14, 0.14, 0.04), "steel_dark")
-    with model.placed((0.0, -0.02, z + 0.14), tilt=math.radians(35.0)):
-        model.cylinder((0.0, 0.0, -0.02), (0.0, 0.0, 0.04), 0.24, "white", segments=16, end_radius=0.10)
-        model.beam((0.0, 0.0, 0.04), (0.0, 0.0, 0.16), 0.012, "steel_dark")
-        model.cylinder((0.0, 0.0, 0.16), (0.0, 0.0, 0.18), 0.025, accent, segments=8)
+    with model.moving("dish", (0.0, 0.0, z + 0.04)):
+        model.cylinder((0.0, 0.0, z + 0.04), (0.0, 0.0, z + 0.08), 0.04, "steel", segments=8)
+        with model.placed((0.0, -0.02, z + 0.14), tilt=math.radians(35.0)):
+            model.cylinder((0.0, 0.0, -0.02), (0.0, 0.0, 0.04), 0.24, "white", segments=16, end_radius=0.10)
+            model.beam((0.0, 0.0, 0.04), (0.0, 0.0, 0.16), 0.012, "steel_dark")
+            model.cylinder((0.0, 0.0, 0.16), (0.0, 0.0, 0.18), 0.025, accent, segments=8)
 
 
 def scope_head(model, z, accent):
-    model.box((0.0, 0.0, z + 0.03), (0.16, 0.16, 0.06), "steel_dark")
-    with model.placed((0.0, 0.0, z + 0.08), tilt=math.radians(50.0)):
-        model.cylinder((0.0, 0.0, -0.06), (0.0, 0.0, 0.18), 0.06, "white", segments=12)
-        model.cylinder((0.0, 0.0, 0.18), (0.0, 0.0, 0.20), 0.065, accent, segments=12)
+    """A telescope tube that pans slowly (moving part "scope")."""
+    model.box((0.0, 0.0, z + 0.02), (0.16, 0.16, 0.04), "steel_dark")
+    with model.moving("scope", (0.0, 0.0, z + 0.04)):
+        model.box((0.0, 0.0, z + 0.05), (0.13, 0.13, 0.02), "steel")
+        with model.placed((0.0, 0.0, z + 0.08), tilt=math.radians(50.0)):
+            model.cylinder((0.0, 0.0, -0.06), (0.0, 0.0, 0.18), 0.06, "white", segments=12)
+            model.cylinder((0.0, 0.0, 0.18), (0.0, 0.0, 0.20), 0.065, accent, segments=12)
 
 
 def sensor_head(model, z, accent):
+    """A sensor dome that turns (moving part "sensor"); the fin on its side shows the turn."""
     model.cylinder((0.0, 0.0, z), (0.0, 0.0, z + 0.05), 0.06, "steel_dark", segments=10)
-    model.cylinder((0.0, 0.0, z + 0.05), (0.0, 0.0, z + 0.12), 0.08, "white", segments=12, end_radius=0.02)
-    model.cylinder((0.0, 0.0, z + 0.12), (0.0, 0.0, z + 0.14), 0.02, accent, segments=8)
+    with model.moving("sensor", (0.0, 0.0, z + 0.05)):
+        model.cylinder((0.0, 0.0, z + 0.05), (0.0, 0.0, z + 0.12), 0.08, "white", segments=12, end_radius=0.02)
+        model.cylinder((0.0, 0.0, z + 0.12), (0.0, 0.0, z + 0.14), 0.02, accent, segments=8)
+        model.box((0.075, 0.0, z + 0.075), (0.05, 0.012, 0.035), accent)
 
 
 def rotor_head(model, z, accent):
+    """Nacelle and a three-bladed rotor (moving part "rotor", turning on the hub axis)."""
     model.cylinder((0.0, 0.04, z), (0.0, -0.10, z), 0.04, "white", segments=10)
-    model.cylinder((0.0, -0.10, z), (0.0, -0.14, z), 0.03, accent, segments=8, end_radius=0.01)
-    for angle in (90, 210, 330):
-        x = math.cos(math.radians(angle)) * 0.12
-        zz = z + math.sin(math.radians(angle)) * 0.12
-        model.beam((0.0, -0.11, z), (x * 2.2, -0.11, z + (zz - z) * 2.2), 0.02, "white")
+    # Tilted by 90 degrees, the part's own Z axis runs along the hub towards -Y.
+    with model.moving("rotor", (0.0, -0.11, z), tilt=math.radians(90.0)):
+        model.cylinder((0.0, -0.10, z), (0.0, -0.14, z), 0.03, accent, segments=8, end_radius=0.01)
+        for angle in (90, 210, 330):
+            x = math.cos(math.radians(angle)) * 0.12
+            zz = z + math.sin(math.radians(angle)) * 0.12
+            model.beam((0.0, -0.11, z), (x * 2.2, -0.11, z + (zz - z) * 2.2), 0.02, "white")
+
+
+def drill_head(model, z, accent):
+    """A drill string down the middle of the mast, turned by a rotary table on the slab (moving
+    part "drill"); a swivel hangs from a crown block at the top."""
+    model.box((0.0, 0.0, z + 0.015), (0.14, 0.14, 0.03), "steel_dark")
+    model.box((0.0, 0.0, z - 0.06), (0.05, 0.05, 0.06), accent)
+    slab = parts.SLAB_TOP
+    model.cylinder((0.0, 0.0, slab), (0.0, 0.0, slab + 0.03), 0.09, "steel_dark", segments=10)
+    with model.moving("drill", (0.0, 0.0, slab + 0.03)):
+        model.cylinder((0.0, 0.0, slab + 0.03), (0.0, 0.0, slab + 0.055), 0.075, accent, segments=6)
+        model.box((0.055, 0.0, slab + 0.065), (0.04, 0.025, 0.02), "steel_dark")
+        model.box((-0.055, 0.0, slab + 0.065), (0.04, 0.025, 0.02), "steel_dark")
+        model.cylinder((0.0, 0.0, slab + 0.055), (0.0, 0.0, z - 0.09), 0.016, "steel_light", segments=6)
 
 
 def turret(name, accent="red", barrels=1, kind="cannon", cells=(1, 1)):
@@ -534,7 +566,7 @@ MODELS = {
     "greenhouse": (lambda: room("te_greenhouse", "plant", wall="glass", floor="soil", fittings=[garden]), ONE),
     "water_synthesizer": (lambda: towers("te_water_synthesizer", "glass", 2, color="white"), ONE),
     "big_pump": (lambda: block("te_big_pump", "red", body="steel", height=0.40, cells=TWO, roof=[tanks, chimneys], front=[barrels_front]), TWO),
-    "deep_drill": (lambda: mast("te_deep_drill", "yellow", head=None, height=0.85, base="concrete_dark"), ONE),
+    "deep_drill": (lambda: mast("te_deep_drill", "yellow", head=drill_head, height=0.85, base="concrete_dark"), ONE),
     "orbital_collector": (lambda: mast("te_orbital_collector", "glow_cyan", head=dish_head, height=0.64), ONE),
     "drive_works": (lambda: block("te_drive_works", "glow_orange", height=0.50, roof=[fans], front=[barrels_front]), ONE),
     "miniaturization_factory": (lambda: block("te_miniaturization_factory", "glow_purple", height=0.50, cells=TWO, roof=[fans, dish_small], front=[crates_front]), TWO),
