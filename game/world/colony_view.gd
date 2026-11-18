@@ -24,7 +24,14 @@ const ZOOM_MAX := 40.0
 ## Distance in cells from the origin after which the origin follows the camera.
 const REBASE_DISTANCE := 512
 ## Ambient light that stays at night, so the colony is still readable, and its colour.
-const NIGHT_AMBIENT := 0.28
+const NIGHT_AMBIENT := 0.38
+## Moonlight-like fill at night: a weak bluish light from the camera's side, no shadows, so the
+## walls one looks at stay readable on a phone screen. Its strength at full night.
+const NIGHT_FILL := 0.5
+const NIGHT_FILL_COLOR := Color(0.62, 0.72, 1.0)
+## How much of the airless ground darkening is left at full night (the lit colony should stand
+## out by day; at night the ground would go black).
+const AIRLESS_DARKENING_AT_NIGHT := 0.5
 const NIGHT_COLOR := Color(0.45, 0.55, 0.85)
 ## Light strengths at full sun and full skylight (SkyLight gives 0..1).
 const SUN_ENERGY := 1.25
@@ -63,6 +70,7 @@ var _modules: Node3D
 var _preview: Node3D
 var _selection: Node3D
 var _sun: DirectionalLight3D
+var _night_fill: DirectionalLight3D
 var _world: WorldEnvironment
 var _scenes: Dictionary = {}
 var _hull_meshes: Dictionary = {}
@@ -603,6 +611,15 @@ func _add_environment() -> void:
 	_sun.directional_shadow_max_distance = 80.0
 	add_child(_sun)
 
+	# Comes from above, slightly behind the camera (yaw CAMERA_YAW_DEGREES), onto the walls in view.
+	_night_fill = DirectionalLight3D.new()
+	_night_fill.rotation_degrees = Vector3(-55.0, CAMERA_YAW_DEGREES + 20.0, 0.0)
+	_night_fill.light_color = NIGHT_FILL_COLOR
+	_night_fill.light_energy = 0.0
+	_night_fill.shadow_enabled = false
+	_night_fill.visible = false
+	add_child(_night_fill)
+
 
 ## Sets the sun from its height and direction (radians, SunPosition), the star's surface
 ## temperature (Kelvin) and the atmosphere's density (SkyLight): low sun through air turns red,
@@ -634,7 +651,12 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 	_lamp_energy = lerpf(LAMP_DAY, LAMP_NIGHT, SkyLight.lamp_level(light, density))
 	for material: StandardMaterial3D in _lamps.values():
 		material.emission_energy_multiplier = _lamp_energy
-	var ground := 1.0 - AIRLESS_GROUND_DARKENING * SkyLight.airless(density)
+	# Night: a moonlight fill keeps the colony readable; it fades in as sun and sky go.
+	var night := clampf(1.0 - (strength + sky_strength) * 1.5, 0.0, 1.0)
+	_night_fill.light_energy = NIGHT_FILL * night
+	_night_fill.visible = night > 0.01
+	var darkening := AIRLESS_GROUND_DARKENING * lerpf(1.0, AIRLESS_DARKENING_AT_NIGHT, night)
+	var ground := 1.0 - darkening * SkyLight.airless(density)
 	_ground.set_tint(Color(ground, ground, ground))
 
 

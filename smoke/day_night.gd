@@ -40,6 +40,8 @@ func _run() -> void:
 		["earth_sunset", 4.0, 5800.0, 1.0],
 		["earth_dusk", -3.0, 5800.0, 1.0],
 		["earth_night", -25.0, 5800.0, 1.0],
+		["thin_air_night", -25.0, 5800.0, 0.2],
+		["airless_night", -25.0, 5800.0, 0.0],
 		["airless_noon", 50.0, 5800.0, 0.0],
 		["colony_noon", 50.0, own_kelvin, own_air],
 		["colony_sunset", 4.0, own_kelvin, own_air],
