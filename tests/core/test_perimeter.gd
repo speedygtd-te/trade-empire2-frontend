@@ -137,6 +137,18 @@ func test_the_way_into_a_dock_stays_clear() -> void:
 			assert_int(_distance(spot.cell, dock, WIDTH)).is_greater(Perimeter.DOCK_CLEARANCE)
 
 
+func test_a_dock_field_gets_masts_on_its_outer_ring() -> void:
+	# A closed 4×4 base with a 4×3 dock field beside it (as players extend their bases).
+	var footprint := _rect(0, 0, 4, 4)
+	var docks := _rect(4, 1, 4, 3)
+	footprint.append_array(docks)
+	var lamps_by_the_docks := 0
+	for spot: Perimeter.Spot in Perimeter.spots(footprint, [], WIDTH, docks):
+		if spot.kind == Perimeter.Kind.LAMP and _nearest(spot.cell, docks, WIDTH) == 2:
+			lamps_by_the_docks += 1
+	assert_int(lamps_by_the_docks).is_greater_equal(2)
+
+
 func test_growing_the_base_changes_only_the_spots_nearby() -> void:
 	var before := _rect(0, 0, 24, 4)
 	var after := before.duplicate()

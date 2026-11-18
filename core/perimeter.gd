@@ -19,7 +19,7 @@ extends RefCounted
 ##   anything.
 ## - Beacons on the inner ring (distance 1), about one in BEACON_SHARE, BEACON_SPACING apart and not
 ##   next to anything.
-## - The ring in front of docks stays clear (DOCK_CLEARANCE), and so does every cell another
+## - The cells right next to docks stay clear (DOCK_CLEARANCE), and so does every cell another
 ##   structure (or an underground part of this one) occupies.
 
 enum Kind { LAMP, RADAR, ANTENNA, BEACON }
@@ -36,8 +36,9 @@ const BEACON_SHARE := 4
 const BEACON_SPACING := 3
 ## Least distance between any two items of different kinds (2: never side by side).
 const ITEM_SPACING := 2
-## Cells within this distance of a dock carry nothing: the way in stays open.
-const DOCK_CLEARANCE := 2
+## Cells within this distance of a dock carry nothing: the pad's edge stays open. Only the inner
+## ring; masts on the outer ring light the docks like the rest of the base.
+const DOCK_CLEARANCE := 1
 ## Resolution of the rank and phase streams.
 const RANK_STEPS := 65536
 
