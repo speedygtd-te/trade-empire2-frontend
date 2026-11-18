@@ -22,15 +22,7 @@ async function call(server, method, route, body, token) {
   const headers = { Accept: 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
-  const request = { method, headers, body: body ? JSON.stringify(body) : undefined };
-  let response;
-  try {
-    response = await fetch(server + route, request);
-  } catch (error) {
-    // Now and then a kept-alive connection was already closed by the server ("fetch failed");
-    // one more try on a fresh one.
-    response = await fetch(server + route, request);
-  }
+  const response = await fetch(server + route, { method, headers, body: body ? JSON.stringify(body) : undefined });
   return { status: response.status, type: response.headers.get('content-type') || '', text: await response.text() };
 }
 
@@ -79,6 +71,9 @@ async function main() {
   const named = args.indexOf('--account');
   if (named !== -1) name = args.splice(named, 2)[1] || 'dev';
   const server = args[0] && args[0].startsWith('http') ? args.shift() : 'https://trade-empire.net';
+  // Git Bash rewrites arguments starting with "/" into Windows paths ("/v2/me" becomes
+  // "C:/Program Files/Git/v2/me", then fetch fails with ENOTFOUND): take the route back out.
+  for (let i = 0; i < args.length; i++) args[i] = args[i].replace(/^.*?(\/v2\/)/, '$1');
   const account = await signIn(server, name);
   console.log(`# account ${account.playerName} on ${server}`);
   for (const route of args) {
@@ -95,5 +90,5 @@ async function main() {
 module.exports = { ROOT, call, signIn, accountFile };
 
 if (require.main === module) {
-  main().catch((error) => { console.error('FAILED ' + error.message); process.exit(1); });
+  main().catch((error) => { console.error('FAILED ' + error.message + (error.cause ? ` (${error.cause.code || error.cause.message})` : '')); process.exit(1); });
 }
