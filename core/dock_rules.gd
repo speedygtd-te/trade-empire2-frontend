@@ -115,6 +115,13 @@ static func check_place_hull(host: StructureLayout, guests: Array[StructureLayou
 		return _check_area(host, guests, guest, rect.merge(column) if rect.has_area() else column, dock_level(guest))
 	if host.hull_at(host_cell + Vector3i(0, 0, -1)) == DOCK:
 		return _check_area(host, guests, null, column, host_cell.z - 1)
+	if host_cell.z != 0:
+		# Above the ground only touching the host makes it a question of the level; touching
+		# nothing it would be a new structure off the docks (FOUND_ONLY_ON_DOCK).
+		for step: Vector3i in _NEIGHBOURS:
+			if not host.hull_at(host_cell + step).is_empty():
+				return BuildRules.Verdict.WRONG_LEVEL
+		return BuildRules.Verdict.NOT_CONNECTED
 	return BuildRules.check_place_hull(host, host_cell)
 
 

@@ -128,6 +128,8 @@ func test_away_from_docks_the_host_rules_apply() -> void:
 	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(-1, 0, 0))).is_equal(BuildRules.Verdict.OK)
 	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(9, 9, 0))).is_equal(BuildRules.Verdict.NOT_CONNECTED)
 	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, 1))).is_equal(BuildRules.Verdict.WRONG_LEVEL)
+	# Up in the air touching nothing: no new structure off the docks.
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(9, 9, 1))).is_equal(BuildRules.Verdict.NOT_CONNECTED)
 
 
 func test_dock_under_a_guest_cannot_go() -> void:
