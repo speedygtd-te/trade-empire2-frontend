@@ -9,6 +9,8 @@ extends Node
 signal meta_received(rev: int, game_time_ms: int)
 
 const TIMEOUT_SECONDS := 15.0
+## Read size per poll for raw answers (`get_text`).
+const RAW_CHUNK_SIZE := 1 << 20
 
 ## "scheme://host[:port]" without trailing slash.
 var base_url: String = ""
@@ -24,6 +26,12 @@ func get_json(path: String, authorised: bool = true) -> ApiResult:
 ## buffered and split into lines; the proxy compresses them, HTTPRequest unpacks that.
 func get_ndjson(path: String) -> ApiResult:
 	return await _send(HTTPClient.METHOD_GET, path, "", true, ["Accept: application/x-ndjson"], false, true)
+
+
+## GET whose answer is kept as text, unparsed, in `body` (ApiResult.from_raw): for large answers
+## the caller parses away from the main thread, such as the galaxy's systems (NDJSON).
+func get_text(path: String, accept: String) -> ApiResult:
+	return await _send(HTTPClient.METHOD_GET, path, "", true, ["Accept: " + accept], true, false, true)
 
 
 ## Conditional GET for unchanging documents (definitions): sends `If-None-Match` when
@@ -48,8 +56,9 @@ func put_json(path: String, body: Dictionary, authorised: bool = true) -> ApiRes
 
 
 func _send(method: HTTPClient.Method, path: String, body: String, authorised: bool,
-		extra_headers: PackedStringArray = [], keep_body: bool = false, ndjson: bool = false) -> ApiResult:
-	var headers: PackedStringArray = [] if ndjson else ["Accept: application/json"]
+		extra_headers: PackedStringArray = [], keep_body: bool = false, ndjson: bool = false,
+		raw: bool = false) -> ApiResult:
+	var headers: PackedStringArray = [] if ndjson or raw else ["Accept: application/json"]
 	headers.append_array(extra_headers)
 	if not body.is_empty():
 		headers.append("Content-Type: application/json")
@@ -58,6 +67,11 @@ func _send(method: HTTPClient.Method, path: String, body: String, authorised: bo
 
 	var request := HTTPRequest.new()
 	request.timeout = TIMEOUT_SECONDS
+	if raw:
+		# Large answers (megabytes): read in big chunks on the request's own thread instead of
+		# 64 KiB per frame on the main thread.
+		request.download_chunk_size = RAW_CHUNK_SIZE
+		request.use_threads = true
 	add_child(request)
 	var started := request.request(base_url + path, headers, method, body)
 	if started != OK:
@@ -74,7 +88,13 @@ func _send(method: HTTPClient.Method, path: String, body: String, authorised: bo
 		return ApiResult.failed(ApiError.transport("no answer (request result %d)" % outcome))
 
 	var text := payload.get_string_from_utf8()
-	var result := ApiResult.from_ndjson(status, text) if ndjson else ApiResult.from_http(status, text)
+	var result: ApiResult
+	if raw:
+		result = ApiResult.from_raw(status, text)
+	elif ndjson:
+		result = ApiResult.from_ndjson(status, text)
+	else:
+		result = ApiResult.from_http(status, text)
 	result.etag = ApiResult.etag_from_headers(response_headers)
 	if keep_body and result.is_ok() and not result.not_modified:
 		result.body = text

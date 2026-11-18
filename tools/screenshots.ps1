@@ -1,7 +1,7 @@
 # Saves a PNG of each screen for review. Opens a game window for a few seconds.
 #
 #   powershell -File tools\screenshots.ps1 [output folder]
-#   powershell -File tools\screenshots.ps1 -Only map   # signed in, straight to the system map
+#   powershell -File tools\screenshots.ps1 -Only map   # signed in, straight to the system map and galaxy
 #
 # Default output: build\screenshots (ignored by git). The signed-in screen needs the local dev
 # backend (tools\dev-backend.ps1 start). The run is stopped after -TimeoutSeconds, so a stuck

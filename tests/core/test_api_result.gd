@@ -94,6 +94,31 @@ func test_empty_ndjson_answer_is_malformed() -> void:
 	assert_str(ApiResult.from_ndjson(200, "").error.code).is_equal(ApiResult.CODE_MALFORMED_RESPONSE)
 
 
+func test_raw_answer_keeps_the_text_and_reads_meta_from_the_first_line() -> void:
+	var text := '{"rev":7,"gameTime":99,"radius":50.0}\n{"systemId":"sys-0_0_0-0"}\n{"end":true,"rows":1,"truncated":false}\n'
+	var result := ApiResult.from_raw(200, text)
+
+	assert_bool(result.is_ok()).is_true()
+	assert_str(result.body).is_equal(text)
+	assert_int(result.rev).is_equal(7)
+	assert_int(result.game_time_ms).is_equal(99)
+	assert_object(result.stream).is_null()
+
+
+func test_raw_answer_without_meta_reports_minus_one() -> void:
+	var result := ApiResult.from_raw(200, "plain")
+
+	assert_bool(result.is_ok()).is_true()
+	assert_int(result.rev).is_equal(-1)
+
+
+func test_raw_error_status_is_the_server_error() -> void:
+	var result := ApiResult.from_raw(404, '{"error":"NOT_FOUND","message":"x"}')
+
+	assert_str(result.error.code).is_equal("NOT_FOUND")
+	assert_str(result.body).is_empty()
+
+
 func test_failed_wraps_a_transport_error() -> void:
 	var result := ApiResult.failed(ApiError.transport("timeout"))
 

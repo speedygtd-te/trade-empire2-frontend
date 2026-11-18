@@ -66,6 +66,21 @@ static func from_ndjson(status: int, body: String) -> ApiResult:
 	return result
 
 
+## Keeps a successful answer as text without parsing it (a large NDJSON answer that is parsed
+## away from the main thread): `body` holds the text, `rev`/`game_time_ms` come from its first
+## line when that is a JSON object. Failures are read as usual.
+static func from_raw(status: int, body: String) -> ApiResult:
+	if status < 200 or status >= 300:
+		return from_http(status, body)
+	var result := ApiResult.new()
+	result.body = body
+	var end := body.find("\n")
+	var first := Wire.parse_object(body if end < 0 else body.substr(0, end))
+	result.rev = Wire.as_int(first.get("rev"), -1)
+	result.game_time_ms = Wire.as_int(first.get("gameTime"), -1)
+	return result
+
+
 ## The value of the `ETag` header among raw "Name: value" header lines; "" when absent.
 static func etag_from_headers(headers: PackedStringArray) -> String:
 	for line: String in headers:
