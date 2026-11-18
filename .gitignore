@@ -43,3 +43,6 @@ scripts/previews/
 
 # Python caches (Blender model scripts)
 __pycache__/
+
+# Local credentials of the development account (tools/dev-account.cjs)
+/.local/

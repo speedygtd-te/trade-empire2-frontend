@@ -31,6 +31,7 @@ const COLOR_PENDING := Color(0.984, 0.749, 0.141)
 const COLOR_TRANSPARENT := Color(0, 0, 0, 0)
 
 const VARIATION_PRIMARY_BUTTON := "PrimaryButton"
+const VARIATION_DANGER_BUTTON := "DangerButton"
 const VARIATION_TAB_BUTTON := "TabButton"
 const VARIATION_TITLE := "TitleLabel"
 const VARIATION_HEADING := "HeadingLabel"
@@ -63,6 +64,15 @@ static func build() -> Theme:
 	theme.set_stylebox("disabled", VARIATION_PRIMARY_BUTTON, _box(COLOR_PANEL, COLOR_PANEL_LIGHT))
 	theme.set_stylebox("focus", VARIATION_PRIMARY_BUTTON, _focus_ring())
 	_button_font_colors(theme, VARIATION_PRIMARY_BUTTON, Color.WHITE, Color.WHITE)
+
+	# Destructive actions: red outline and text, so they never look like the main action.
+	theme.set_type_variation(VARIATION_DANGER_BUTTON, "Button")
+	theme.set_stylebox("normal", VARIATION_DANGER_BUTTON, _box(COLOR_PANEL, COLOR_DANGER))
+	theme.set_stylebox("hover", VARIATION_DANGER_BUTTON, _box(COLOR_PANEL, COLOR_DANGER))
+	theme.set_stylebox("pressed", VARIATION_DANGER_BUTTON, _box(COLOR_PANEL_LIGHT, COLOR_DANGER))
+	theme.set_stylebox("disabled", VARIATION_DANGER_BUTTON, _box(COLOR_PANEL, COLOR_PANEL_LIGHT))
+	theme.set_stylebox("focus", VARIATION_DANGER_BUTTON, _focus_ring())
+	_button_font_colors(theme, VARIATION_DANGER_BUTTON, COLOR_DANGER, COLOR_DANGER)
 
 	# Tabs: a toggle button with an underline while selected. The unselected tab keeps a
 	# transparent underline of the same width so the row does not jump.

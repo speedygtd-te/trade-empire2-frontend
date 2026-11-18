@@ -1,11 +1,11 @@
 extends SceneTree
 ## End-to-end check of the session flow against a running backend.
 ##
-## Run through tools\smoke.ps1 (needs the local dev backend: tools\dev-backend.ps1 start).
+## Run through tools\smoke.ps1 (live server by default).
 ## Registers a fresh throwaway account on every run and makes five sign-in/registration calls;
 ## the backend allows ten per minute and address, so do not run it more than once a minute.
 
-const DEFAULT_SERVER := "http://127.0.0.1:18080"
+const DEFAULT_SERVER := "https://trade-empire.net"
 
 ## Fresh per run, so a throwaway account on a public server has no guessable password.
 var _password := ""
@@ -77,6 +77,39 @@ func _on_event_received(event: SseEvent) -> void:
 	_event_types.append(event.type)
 
 
+## Game data: downloaded once, then confirmed unchanged (304) and taken from the local copy.
+## Needs no account.
+func _check_definitions(server: ServerUrl) -> void:
+	var cache_path := "user://smoke_definitions_%d.json" % Time.get_ticks_usec()
+	var cache := DefinitionsCache.new(cache_path)
+	var source := DefinitionsSource.new()
+	source.setup(_new_api(server.base), cache, server.base)
+	root.add_child(source)
+
+	var first := await source.load_definitions()
+	_check(first.error == null and first.definitions != null and not first.from_cache,
+		"definitions: downloaded (error: %s)" % (_code(first.error)))
+	if first.definitions == null:
+		return
+	var definitions := first.definitions
+	_check(definitions.module_count() > 0 and definitions.hull_count() > 0 and definitions.resource_count() > 0,
+		"definitions: %d modules, %d hulls, %d resources" % [
+			definitions.module_count(), definitions.hull_count(), definitions.resource_count()])
+	var pump := definitions.module("PUMP")
+	_check(pump != null and pump.display_name == "Pump" and pump.size == Vector3i.ONE,
+		"definitions: PUMP is a 1x1x1 module named Pump")
+	var starter := definitions.hull("STARTER")
+	_check(starter != null and not starter.display_name.is_empty(), "definitions: STARTER hull has a name")
+	_check(not definitions.resource_name("IRON").is_empty(), "definitions: resources have display names")
+	_check(cache.load_entry(server.base) != null, "definitions: stored locally with its ETag")
+
+	var second := await source.load_definitions()
+	_check(second.error == null and second.from_cache and second.definitions != null
+		and second.definitions.data_hash == definitions.data_hash,
+		"definitions: second start -> 304, taken from the local copy")
+	cache.clear()
+
+
 func _run() -> void:
 	# `_initialize` runs before the root node is inside the tree; nodes added now could not
 	# send requests yet.
@@ -87,6 +120,12 @@ func _run() -> void:
 		quit(2)
 		return
 	print("server: ", server.base)
+
+	await _check_definitions(server)
+	if OS.get_cmdline_user_args().has("--definitions-only"):
+		print("%d check(s) failed" % _failures if _failures > 0 else "all checks passed")
+		quit(1 if _failures > 0 else 0)
+		return
 
 	var stamp := int(Time.get_unix_time_from_system())
 	var store_path := "user://smoke_session_%d.json" % stamp

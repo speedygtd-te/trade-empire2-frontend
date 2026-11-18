@@ -8,6 +8,8 @@ extends RefCounted
 const KEY_EMAIL := "ERROR_VALIDATION_EMAIL"
 const KEY_PASSWORD := "ERROR_VALIDATION_PASSWORD"
 const KEY_PLAYER_NAME := "ERROR_VALIDATION_PLAYER_NAME"
+const KEY_RESET_CODE := "ERROR_VALIDATION_RESET_CODE"
+const RESET_CODE_LENGTH := 8
 
 const EMAIL_MAX := 254
 const PASSWORD_MIN := 8
@@ -35,6 +37,19 @@ static func password_problem(password: String, registering: bool) -> String:
 	if registering and (password.length() < PASSWORD_MIN or password.length() > PASSWORD_MAX):
 		return KEY_PASSWORD
 	return ""
+
+
+## The password-reset code from the mail: 8 characters once dashes and spaces are removed
+## (the backend accepts any case and reads O as 0, I and L as 1).
+static func reset_code_problem(code: String) -> String:
+	if normalised_reset_code(code).length() != RESET_CODE_LENGTH:
+		return KEY_RESET_CODE
+	return ""
+
+
+## The code as sent: without dashes and spaces, upper case.
+static func normalised_reset_code(code: String) -> String:
+	return code.replace("-", "").replace(" ", "").strip_edges().to_upper()
 
 
 static func player_name_problem(player_name: String) -> String:

@@ -1,0 +1,476 @@
+class_name ColonyView
+extends Node3D
+## Draws a colony in 3D: the ground around it, its hulls and modules, a build preview, and the
+## camera (fixed slanted angle, no perspective).
+##
+## Everything is placed relative to an origin cell (floating origin, see WorldGrid). When the
+## camera wanders far from it, the origin moves and the scene is rebuilt around the new one.
+
+## Height of a hull's floor plate: modules stand on top of it (scripts/3d/models/hulls.py).
+const HULL_FLOOR_HEIGHT := 0.06
+const MODELS := "res://game/world/models/"
+const CAMERA_PITCH_DEGREES := 35.0
+const CAMERA_YAW_DEGREES := 45.0
+## Visible height of the view in cells, and its limits.
+const ZOOM_DEFAULT := 9.0
+const ZOOM_MIN := 3.0
+const ZOOM_MAX := 40.0
+## Distance in cells from the origin after which the origin follows the camera.
+const REBASE_DISTANCE := 512
+## The V1 tile colours are graded dark for 2D; lit in 3D they need lifting.
+const GROUND_BRIGHTNESS := 1.9
+## Ambient light that stays at night, so the colony is still readable.
+const NIGHT_AMBIENT := 0.28
+
+const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
+const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
+const COLOR_BUILDING := Color(0.984, 0.749, 0.141, 0.40)
+const COLOR_SELECTED := Color(0.133, 0.827, 0.933, 0.9)
+
+## The colony to draw.
+var model: ColonyModel
+## Origin of the scene, absolute cell.
+var origin := Vector3i.ZERO
+## Camera focus on the ground, scene coordinates.
+var focus := Vector3.ZERO
+var zoom := ZOOM_DEFAULT
+
+var _camera: Camera3D
+var _ground: Node3D
+var _hulls: Node3D
+var _modules: Node3D
+var _preview: Node3D
+var _selection: Node3D
+var _sun: DirectionalLight3D
+var _world: WorldEnvironment
+var _scenes: Dictionary = {}
+var _hull_meshes: Dictionary = {}
+var _ground_material: StandardMaterial3D
+var _tile_mesh: PlaneMesh
+
+
+func setup(colony: ColonyModel) -> void:
+	model = colony
+	model.layout_changed.connect(_rebuild_structure)
+	model.surface_loaded.connect(_on_surface_loaded)
+
+
+func _ready() -> void:
+	_add_environment()
+	_ground = _child("Ground")
+	_hulls = _child("Hulls")
+	_modules = _child("Modules")
+	_preview = _child("Preview")
+	_selection = _frame(COLOR_SELECTED)
+	_selection.visible = false
+	add_child(_selection)
+
+	_camera = Camera3D.new()
+	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	_camera.near = 0.1
+	_camera.far = 400.0
+	add_child(_camera)
+
+	_ground_material = StandardMaterial3D.new()
+	_ground_material.vertex_color_use_as_albedo = true
+	_ground_material.roughness = 0.95
+	_tile_mesh = PlaneMesh.new()
+	_tile_mesh.size = Vector2.ONE
+	_tile_mesh.material = _ground_material
+	_update_camera()
+
+
+## Centres the view on an absolute cell and makes it the origin.
+func look_at_cell(cell: Vector3i) -> void:
+	origin = Vector3i(cell.x, cell.y, 0)
+	focus = WorldGrid.to_scene(cell, origin, model.size_x)
+	_rebuild_all()
+	_update_camera()
+	model.ensure_surface(focus_cell())
+
+
+## Moves the camera by a distance on screen (pixels of the view of size `view_size`).
+func pan(screen_delta: Vector2, view_size: Vector2) -> void:
+	var per_pixel := zoom / maxf(view_size.y, 1.0)
+	var yaw := deg_to_rad(CAMERA_YAW_DEGREES)
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var down := Vector3(sin(yaw), 0.0, cos(yaw))
+	var pitch := deg_to_rad(CAMERA_PITCH_DEGREES)
+	focus -= right * screen_delta.x * per_pixel
+	focus -= down * screen_delta.y * per_pixel / sin(pitch)
+	_after_move()
+
+
+## Zooms by a factor (< 1 zooms in) around the centre of the view.
+func zoom_by(factor: float) -> void:
+	zoom = clampf(zoom * factor, ZOOM_MIN, ZOOM_MAX)
+	_update_camera()
+
+
+## The absolute cell under a point of the view, or null when the ray misses the ground.
+func cell_at(screen_point: Vector2) -> Variant:
+	var from := _camera.project_ray_origin(screen_point)
+	var direction := _camera.project_ray_normal(screen_point)
+	if absf(direction.y) < 0.0001:
+		return null
+	var distance := -from.y / direction.y
+	if distance < 0.0:
+		return null
+	var hit := from + direction * distance
+	return WorldGrid.to_cell(hit, origin, model.size_x)
+
+
+## Absolute cell under the camera focus.
+func focus_cell() -> Vector3i:
+	return WorldGrid.to_cell(focus, origin, model.size_x)
+
+
+## Marks a cell (absolute) as selected; null hides the mark.
+func select_cell(cell: Variant) -> void:
+	if cell == null:
+		_selection.visible = false
+		return
+	var at: Vector3i = cell
+	_selection.visible = true
+	_selection.position = WorldGrid.to_scene(at, origin, model.size_x) + Vector3(0.0, HULL_FLOOR_HEIGHT + 0.01, 0.0)
+
+
+## Shows what a build would look like: `cells` (absolute) tinted by whether it can work, and
+## optionally a model standing on them. An empty list hides the preview.
+func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rotation: int = 0) -> void:
+	for child: Node in _preview.get_children():
+		child.queue_free()
+	if cells.is_empty():
+		return
+	for cell: Vector3i in cells:
+		var mark := _outline(COLOR_OK if ok else COLOR_BAD, true)
+		mark.position = WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, 0.004, 0.0)
+		_preview.add_child(mark)
+	if scene_key.is_empty():
+		return
+	var ghost := _instance(scene_key)
+	if ghost == null:
+		return
+	_tint(ghost, COLOR_OK if ok else COLOR_BAD)
+	# Modules stand on a hull; a hull itself lies on the ground.
+	var lift := 0.0 if scene_key.begins_with("hull_") else HULL_FLOOR_HEIGHT
+	ghost.position = _footprint_centre(cells) + Vector3(0.0, lift, 0.0)
+	ghost.rotation.y = -deg_to_rad(rotation)
+	_preview.add_child(ghost)
+
+
+func _after_move() -> void:
+	var cell := focus_cell()
+	if absi(WorldGrid.wrapped_delta(origin.x, cell.x, model.size_x)) > REBASE_DISTANCE \
+			or absi(cell.y - origin.y) > REBASE_DISTANCE:
+		var offset := WorldGrid.to_scene(cell, origin, model.size_x)
+		origin = Vector3i(cell.x, cell.y, 0)
+		focus -= Vector3(floorf(offset.x), 0.0, ceilf(offset.z))
+		_rebuild_all()
+	_update_camera()
+	model.ensure_surface(cell)
+
+
+func _update_camera() -> void:
+	if _camera == null:
+		return
+	var pitch := deg_to_rad(CAMERA_PITCH_DEGREES)
+	var yaw := deg_to_rad(CAMERA_YAW_DEGREES)
+	var direction := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+	_camera.size = zoom
+	_camera.position = focus + direction * 60.0
+	_camera.look_at(focus, Vector3.UP)
+
+
+func _rebuild_all() -> void:
+	for child: Node in _ground.get_children():
+		_ground.remove_child(child)
+		child.queue_free()
+	_redraw_ground()
+	_rebuild_structure()
+
+
+func _rebuild_structure() -> void:
+	if model == null or not is_inside_tree():
+		return
+	for child: Node in _hulls.get_children():
+		child.queue_free()
+	for child: Node in _modules.get_children():
+		child.queue_free()
+	var layout := model.layout
+
+	# Hulls: one MultiMesh per hull type.
+	var by_type: Dictionary = {}
+	for cell: Vector3i in layout.hull_cells():
+		var key := layout.hull_at(cell)
+		if not by_type.has(key):
+			by_type[key] = []
+		var cells: Array = by_type[key]
+		cells.append(cell)
+	for key: String in by_type.keys():
+		var cells: Array = by_type[key]
+		var mesh := _hull_mesh(key)
+		var multimesh := MultiMesh.new()
+		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		multimesh.mesh = mesh
+		multimesh.instance_count = cells.size()
+		for index: int in cells.size():
+			var local: Vector3i = cells[index]
+			var at := WorldGrid.to_scene(layout.to_absolute(local), origin, model.size_x)
+			multimesh.set_instance_transform(index, Transform3D(Basis.IDENTITY, at))
+		var instance := MultiMeshInstance3D.new()
+		instance.multimesh = multimesh
+		_hulls.add_child(instance)
+
+	# Modules: one scene each.
+	for placed: StructureLayout.Module in layout.modules():
+		var node := _instance(placed.module_type.to_lower())
+		if node == null:
+			node = _placeholder(placed.module_type)
+		var cells: Array[Vector3i] = []
+		for local: Vector3i in placed.cells():
+			if local.z == placed.origin.z:
+				cells.append(layout.to_absolute(local))
+		node.position = _footprint_centre(cells) + Vector3(0.0, HULL_FLOOR_HEIGHT + placed.origin.z, 0.0)
+		node.rotation.y = -deg_to_rad(placed.rotation)
+		if placed.is_building():
+			_tint(node, COLOR_BUILDING)
+		_modules.add_child(node)
+
+
+## Draws every loaded ground block near the camera (after the origin moved).
+func _redraw_ground() -> void:
+	if model == null:
+		return
+	var cell := focus_cell()
+	var centre := model.surface.block_of(cell.x, cell.y)
+	var reach := ColonyModel.SURFACE_RADIUS + 1
+	for by: int in range(centre.y - reach, centre.y + reach + 1):
+		for bx: int in range(centre.x - reach, centre.x + reach + 1):
+			if model.surface.is_loaded(model.surface.block_of(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)):
+				_add_ground_block(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)
+
+
+func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) -> void:
+	for block: Vector2i in request.blocks:
+		_add_ground_block(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
+
+
+## One MultiMesh of BLOCK × BLOCK coloured tiles.
+func _add_ground_block(x0: int, y0: int) -> void:
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.use_colors = true
+	multimesh.mesh = _tile_mesh
+	multimesh.instance_count = SurfaceBlocks.BLOCK * SurfaceBlocks.BLOCK
+	var index := 0
+	for dy: int in SurfaceBlocks.BLOCK:
+		for dx: int in SurfaceBlocks.BLOCK:
+			var cell := model.surface.cell(x0 + dx, y0 + dy)
+			var at := WorldGrid.to_scene(Vector3i(x0 + dx, y0 + dy, 0), origin, model.size_x)
+			multimesh.set_instance_transform(index, Transform3D(Basis.IDENTITY, at))
+			multimesh.set_instance_color(index, _ground_color(cell))
+			index += 1
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multimesh
+	_ground.add_child(instance)
+
+
+func _ground_color(cell: SurfacePatch.Cell) -> Color:
+	if cell == null:
+		return BiomeColors.FALLBACK
+	# The variants of a biome differ strongly as tiles; as flat colours they would form a
+	# chequerboard, so they only tint the biome's mean colour.
+	var mean := BiomeColors.mean(cell.biome)
+	var color := mean.lerp(BiomeColors.of(cell.biome, cell.variant), 0.35) * GROUND_BRIGHTNESS
+	# Vegetation darkens slightly, elevation lightens slightly: a little life in flat areas.
+	var shade := 1.0 - cell.vegetation * 0.025 + (cell.elevation - 500) * 0.00012
+	return Color(color.r * shade, color.g * shade, color.b * shade, 1.0)
+
+
+func _footprint_centre(cells: Array[Vector3i]) -> Vector3:
+	var sum := Vector3.ZERO
+	for cell: Vector3i in cells:
+		sum += WorldGrid.to_scene(cell, origin, model.size_x)
+	return sum / maxf(cells.size(), 1)
+
+
+func _scene(key: String) -> PackedScene:
+	if not _scenes.has(key):
+		var path := MODELS + key + ".glb"
+		_scenes[key] = load(path) as PackedScene if ResourceLoader.exists(path) else null
+	return _scenes[key] as PackedScene
+
+
+func _instance(key: String) -> Node3D:
+	var scene := _scene(key)
+	return scene.instantiate() as Node3D if scene != null else null
+
+
+func _hull_mesh(hull_type: String) -> Mesh:
+	if _hull_meshes.has(hull_type):
+		return _hull_meshes[hull_type] as Mesh
+	var node := _instance("hull_" + hull_type.to_lower())
+	if node == null:
+		node = _instance("hull_starter")
+	var mesh: Mesh = null
+	if node != null:
+		var found := node.find_children("*", "MeshInstance3D", true, false)
+		if not found.is_empty():
+			mesh = (found[0] as MeshInstance3D).mesh
+		node.free()
+	if mesh == null:
+		var box := BoxMesh.new()
+		box.size = Vector3(1.0, HULL_FLOOR_HEIGHT, 1.0)
+		mesh = box
+	_hull_meshes[hull_type] = mesh
+	return mesh
+
+
+## A box standing in for a module without model, coloured by its category.
+func _placeholder(module_type: String) -> Node3D:
+	var box := BoxMesh.new()
+	box.size = Vector3(0.7, 0.45, 0.7)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.35, 0.42, 0.55)
+	var definitions := Services.definitions
+	if definitions != null and definitions.module(module_type) != null:
+		match definitions.module(module_type).category:
+			"PRODUCTION":
+				material.albedo_color = Color(0.30, 0.45, 0.62)
+			"COLONY":
+				material.albedo_color = Color(0.35, 0.60, 0.42)
+			"LOGISTICS":
+				material.albedo_color = Color(0.62, 0.52, 0.28)
+			"TRANSPORT", "MILITARY":
+				material.albedo_color = Color(0.55, 0.35, 0.35)
+	box.material = material
+	var instance := MeshInstance3D.new()
+	instance.mesh = box
+	instance.position.y = 0.225
+	var holder := Node3D.new()
+	holder.add_child(instance)
+	return holder
+
+
+## Lays a translucent colour over every mesh of a model.
+func _tint(node: Node3D, color: Color) -> void:
+	var overlay := StandardMaterial3D.new()
+	overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	overlay.albedo_color = color
+	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
+		(found as MeshInstance3D).material_overlay = overlay
+
+
+## A bold frame around one cell, drawn on top of everything, so it stays visible on a cell
+## that carries a module.
+func _frame(color: Color) -> Node3D:
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = color
+	material.no_depth_test = true
+	material.render_priority = 10
+	var holder := Node3D.new()
+	var width := 0.045
+	for side: int in 4:
+		var bar := BoxMesh.new()
+		bar.size = Vector3(1.0 + width, 0.01, width) if side % 2 == 0 else Vector3(width, 0.01, 1.0 + width)
+		bar.material = material
+		var instance := MeshInstance3D.new()
+		instance.mesh = bar
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var sign := -0.5 if side < 2 else 0.5
+		instance.position = Vector3(0.0, 0.0, sign) if side % 2 == 0 else Vector3(sign, 0.0, 0.0)
+		holder.add_child(instance)
+	return holder
+
+
+## A flat square marking one cell: a frame, or filled.
+func _outline(color: Color, filled: bool = false) -> MeshInstance3D:
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = color
+	material.no_depth_test = not filled
+	var mesh := ImmediateMesh.new()
+	if filled:
+		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
+		for corner: Vector3 in [Vector3(-0.48, 0, -0.48), Vector3(0.48, 0, -0.48), Vector3(0.48, 0, 0.48),
+				Vector3(-0.48, 0, -0.48), Vector3(0.48, 0, 0.48), Vector3(-0.48, 0, 0.48)]:
+			mesh.surface_add_vertex(corner)
+	else:
+		mesh.surface_begin(Mesh.PRIMITIVE_LINES, material)
+		var corners: Array[Vector3] = [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5),
+			Vector3(0.5, 0, 0.5), Vector3(-0.5, 0, 0.5)]
+		for index: int in 4:
+			mesh.surface_add_vertex(corners[index])
+			mesh.surface_add_vertex(corners[(index + 1) % 4])
+	mesh.surface_end()
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
+
+
+func _add_environment() -> void:
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.039, 0.059, 0.110)
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.82, 0.86, 0.95)
+	environment.ambient_light_energy = 0.55
+	# A sky that is not shown: shiny and metallic surfaces mirror it.
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color(0.50, 0.64, 0.84)
+	sky_material.sky_horizon_color = Color(0.82, 0.86, 0.90)
+	sky_material.ground_horizon_color = Color(0.55, 0.57, 0.60)
+	sky_material.ground_bottom_color = Color(0.22, 0.24, 0.27)
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	environment.sky = sky
+	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	_world = WorldEnvironment.new()
+	_world.environment = environment
+	add_child(_world)
+
+	# Fixed sun for now; it will follow the body's day once the backend sends orbit data.
+	_sun = DirectionalLight3D.new()
+	_sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
+	_sun.light_energy = 1.15
+	_sun.shadow_enabled = true
+	_sun.directional_shadow_max_distance = 80.0
+	add_child(_sun)
+
+
+## Sets the sun from its height and direction (radians, SunPosition) and the star's colour.
+## Low sun turns the light warm; at night a dim bluish light stays, so the colony remains
+## readable on a phone.
+func set_sun(elevation: float, azimuth: float, star_color: Color = Color.WHITE) -> void:
+	var to_sun := Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
+	var up := Vector3.UP if absf(to_sun.y) < 0.999 else Vector3.FORWARD
+	_sun.basis = Basis.looking_at(-to_sun, up)
+	var day := clampf(sin(elevation) * 4.0, 0.0, 1.0)
+	var warm := clampf(1.0 - sin(maxf(elevation, 0.0)) * 3.0, 0.0, 1.0)
+	_sun.light_color = star_color.lerp(Color(1.0, 0.62, 0.38), warm * 0.7)
+	_sun.light_energy = 1.15 * day
+	_sun.visible = day > 0.0
+	var environment := _world.environment
+	environment.ambient_light_energy = lerpf(NIGHT_AMBIENT, 0.55, day)
+	environment.ambient_light_color = Color(0.45, 0.55, 0.85).lerp(Color(0.82, 0.86, 0.95), day)
+
+
+## Applies a detail tier: shadows, edge smoothing and render resolution (DetailGovernor).
+func apply_detail(tier: DetailGovernor.Tier) -> void:
+	var viewport := get_viewport()
+	_sun.shadow_enabled = tier != DetailGovernor.Tier.SLOW
+	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
+	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
+
+
+func _child(node_name: String) -> Node3D:
+	var node := Node3D.new()
+	node.name = node_name
+	add_child(node)
+	return node

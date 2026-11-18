@@ -48,3 +48,14 @@ func test_invalid_player_names() -> void:
 		assert_str(CredentialsCheck.player_name_problem(player_name)).is_equal(
 			CredentialsCheck.KEY_PLAYER_NAME
 		)
+
+
+func test_reset_code_needs_eight_characters_without_dashes_and_spaces() -> void:
+	assert_str(CredentialsCheck.reset_code_problem("K7M2-Q9XZ")).is_empty()
+	assert_str(CredentialsCheck.reset_code_problem("k7m2 q9xz")).is_empty()
+	assert_str(CredentialsCheck.reset_code_problem("K7M2-Q9X")).is_equal(CredentialsCheck.KEY_RESET_CODE)
+	assert_str(CredentialsCheck.reset_code_problem("")).is_equal(CredentialsCheck.KEY_RESET_CODE)
+
+
+func test_reset_code_is_sent_without_dashes_in_upper_case() -> void:
+	assert_str(CredentialsCheck.normalised_reset_code(" k7m2-q9xz ")).is_equal("K7M2Q9XZ")

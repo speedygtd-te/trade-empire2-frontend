@@ -1,11 +1,15 @@
 # End-to-end check of sign-in, session restore and the event channel against a running backend.
 #
-#   powershell -File tools\smoke.ps1                              # local dev backend
-#   powershell -File tools\smoke.ps1 https://trade-empire.net     # another server
+#   powershell -File tools\smoke.ps1                              # live server
+#   powershell -File tools\smoke.ps1 http://127.0.0.1:18080       # another server
+#   powershell -File tools\smoke.ps1 -DefinitionsOnly             # game data only, no account
 #
-# Needs a reachable backend (local: tools\dev-backend.ps1 start). Registers one throwaway
-# account per run. Exit code: 0 = green, 1 = a check failed, 2 = wrong usage.
-param([string]$Server = 'http://127.0.0.1:18080')
+# Registers one throwaway account per run on that server, so do not run it without reason
+# (-DefinitionsOnly needs no account). Exit code: 0 = green, 1 = a check failed, 2 = wrong usage.
+param(
+    [string]$Server = 'https://trade-empire.net',
+    [switch]$DefinitionsOnly
+)
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
@@ -19,7 +23,9 @@ if (-not (Test-Path -LiteralPath $godot)) {
 Push-Location -LiteralPath $root
 try {
     & $godot --headless --path . --import --quit *> $null
-    $output = & $godot --headless --path . -s res://smoke/backend_smoke.gd -- "--server=$Server" 2>&1
+    $smokeArgs = @("--server=$Server")
+    if ($DefinitionsOnly) { $smokeArgs += '--definitions-only' }
+    $output = & $godot --headless --path . -s res://smoke/backend_smoke.gd -- @smokeArgs 2>&1
     $code = $LASTEXITCODE
     # Session tokens are printed in debug runs; keep them out of the summary.
     $output | ForEach-Object { ([string]$_) -replace '[0-9a-f]{64}', '<token>' } |

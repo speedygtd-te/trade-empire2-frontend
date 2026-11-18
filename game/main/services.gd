@@ -2,8 +2,11 @@ extends Node
 ## Autoload "Services": owns the long-lived objects and wires them together.
 ##
 ## Server address: `--server=<url>` after `--` on the command line wins, otherwise the project
-## setting `trade_empire/server/base_url` (its `.editor` override points at the local
-## development backend, exported builds use the real server).
+## setting `trade_empire/server/base_url` (the live server; the export preset "Android Local"
+## overrides it with the local development backend).
+
+## Emitted when game data became available or changed.
+signal definitions_loaded
 
 const SETTING_SERVER := "trade_empire/server/base_url"
 const FALLBACK_SERVER := "https://trade-empire.net"
@@ -13,6 +16,9 @@ var api: ApiClient
 var events: EventStream
 var clock: GameClock
 var session: SessionController
+## The static game data; null until the first load finished with a result.
+var definitions: GameDefinitions
+var _definitions_source: DefinitionsSource
 
 
 func _ready() -> void:
@@ -33,9 +39,25 @@ func _ready() -> void:
 	session.setup(server, api, events, SessionStore.new())
 	add_child(session)
 
+	_definitions_source = DefinitionsSource.new()
+	_definitions_source.name = "DefinitionsSource"
+	_definitions_source.setup(api, DefinitionsCache.new(), server.base)
+	add_child(_definitions_source)
+
 	api.meta_received.connect(_on_meta_received)
 	events.ready_received.connect(_on_stream_ready)
 	events.state_changed.connect(_on_stream_state_changed)
+	load_definitions.call_deferred()
+
+
+## Loads the game data (public, no sign-in needed). A failed load keeps what is there.
+func load_definitions() -> void:
+	var outcome := await _definitions_source.load_definitions()
+	if outcome.error != null:
+		push_warning("Game data: %s" % outcome.error.code)
+	if outcome.definitions != null:
+		definitions = outcome.definitions
+		definitions_loaded.emit()
 
 
 func _resolve_server() -> ServerUrl:

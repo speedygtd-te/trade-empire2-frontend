@@ -1,7 +1,10 @@
 class_name HomeScreen
 extends Control
-## Placeholder for the signed-in state: shows the account, the live connection and the running
-## game time. The game world replaces it.
+## Account page, opened from the colony's menu: the account, the live connection, the running
+## game time and signing out.
+
+## Name of the home colony's body; set by the screen that opens this page.
+var home_name := ""
 
 var _events_received := 0
 
@@ -49,10 +52,9 @@ func _build() -> void:
 	column.add_child(welcome)
 
 	var account_rows := _panel(column, "HOME_ACCOUNT")
-	_row(account_rows, "HOME_PLAYER_ID").text = account.player_id
 	_row(account_rows, "HOME_EMAIL").text = account.email
 	var home_body := _row(account_rows, "HOME_HOME_BODY")
-	home_body.text = tr("HOME_NO_COLONY") if account.home_body_id.is_empty() else account.home_body_id
+	home_body.text = tr("HOME_NO_COLONY") if account.home_body_id.is_empty() else home_name
 	_expires_value = _row(account_rows, "HOME_SESSION")
 
 	var live_rows := _panel(column, "HOME_LIVE")
@@ -60,10 +62,6 @@ func _build() -> void:
 	_game_time_value = _row(live_rows, "HOME_GAME_TIME")
 	_events_value = _row(live_rows, "HOME_EVENTS_RECEIVED")
 	_events_value.text = "0"
-
-	var note := Ui.label("HOME_PLACEHOLDER_NOTE", AppTheme.VARIATION_MUTED)
-	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(note)
 
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL

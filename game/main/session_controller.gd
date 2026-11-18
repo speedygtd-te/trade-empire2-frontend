@@ -66,6 +66,20 @@ func register(email: String, password: String, player_name: String) -> ApiError:
 	return await _authenticate("/v2/auth/register", body)
 
 
+## Asks the backend to mail a reset code. The answer is the same whether the account exists or
+## not. Returns null on success, otherwise the reason.
+func request_password_reset(email: String) -> ApiError:
+	var result := await _api.post_json("/v2/auth/password-reset", {"email": email}, false)
+	return null if result.is_ok() else result.error
+
+
+## Sets a new password with the mailed code and signs in (every other session of the account
+## ends). Returns null on success.
+func confirm_password_reset(email: String, code: String, new_password: String) -> ApiError:
+	var body := {"email": email, "code": code, "newPassword": new_password}
+	return await _authenticate("/v2/auth/password-reset/confirm", body)
+
+
 func logout() -> void:
 	_events.stop()
 	if not _api.token.is_empty():

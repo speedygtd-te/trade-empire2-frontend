@@ -1,19 +1,24 @@
-# Builds every hand-made model (scripts\3d\models\*.py, except kit and parts) into a game-ready GLB:
-# geometry from code, the look baked into one texture per model. Runs Blender without a window.
+﻿# Builds the 3D models of the game (scripts\3d\models) into game-ready GLB files: geometry from
+# code, the look baked into textures. Runs Blender without a window.
 #
 #   powershell -File tools\build-models.ps1 [output folder] [-Only pump]
+#   powershell -File tools\build-models.ps1 -Only families [-Types academy,rtg]
 #
-# Default output: build\models (ignored by git). Look at the result with
-#   powershell -File tools\preview-models.ps1 build\models build\model-preview
+# Every script builds one model (pump.py -> pump.glb), except families.py, which builds the
+# module types without a script of their own from shared templates. kit.py, parts.py and
+# hulls.py are libraries. Default output: game\world\models (the models the game loads).
+# Look at them with
+#   powershell -File tools\preview-models.ps1 game\world\models build\model-preview -NoFit
 # Exit code: 0 = ok, 1 = at least one model failed or breaks its size limits, 2 = Blender not found.
 param(
     [string]$Out = '',
-    [string]$Only = ''
+    [string]$Only = '',
+    [string]$Types = ''
 )
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
-if (-not $Out) { $Out = Join-Path $root 'build\models' }
+if (-not $Out) { $Out = Join-Path $root 'game\world\models' }
 $blender = $env:BLENDER_BIN
 if (-not $blender) { $blender = 'F:\Program Files\Blender Foundation\Blender 5.3\blender.exe' }
 if (-not (Test-Path -LiteralPath $blender)) {
@@ -24,11 +29,16 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 $failed = 0
 $models = Get-ChildItem -LiteralPath (Join-Path $root 'scripts\3d\models') -Filter '*.py' -File |
-    Where-Object { $_.BaseName -notin @('kit', 'parts') -and (-not $Only -or $_.BaseName -eq $Only) } |
+    Where-Object { $_.BaseName -notin @('kit', 'parts', 'hulls') -and (-not $Only -or $_.BaseName -eq $Only) } |
     Sort-Object Name
 foreach ($model in $models) {
-    $target = Join-Path $Out ($model.BaseName + '.glb')
-    $lines = & $blender --background --factory-startup --python $model.FullName -- --output $target 2>&1 |
+    if ($model.BaseName -eq 'families') {
+        $arguments = @('--output-dir', $Out)
+        if ($Types) { $arguments += @('--only', $Types) }
+    } else {
+        $arguments = @('--output', (Join-Path $Out ($model.BaseName + '.glb')))
+    }
+    $lines = & $blender --background --factory-startup --python $model.FullName -- @arguments 2>&1 |
         ForEach-Object { "$_" }
     $exit = $LASTEXITCODE
     $lines | Where-Object { $_ -cmatch '^(RESULT|FAIL)' }

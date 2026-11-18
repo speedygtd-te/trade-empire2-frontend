@@ -134,6 +134,16 @@ func _add_stage() -> void:
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color.WHITE
 	environment.ambient_light_energy = 0.7
+	# A plain sky that is not shown: it is what shiny and metallic surfaces mirror.
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color(0.50, 0.64, 0.84)
+	sky_material.sky_horizon_color = Color(0.82, 0.86, 0.90)
+	sky_material.ground_horizon_color = Color(0.55, 0.57, 0.60)
+	sky_material.ground_bottom_color = Color(0.22, 0.24, 0.27)
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	environment.sky = sky
+	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	var world := WorldEnvironment.new()
 	world.environment = environment
 	add_child(world)

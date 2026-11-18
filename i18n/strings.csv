@@ -35,7 +35,6 @@ HOME_GAME_TIME,Game time
 HOME_GAME_TIME_PAUSED,{time} (paused)
 HOME_EVENTS_RECEIVED,Events received
 HOME_SIGN_OUT,Sign out
-HOME_PLACEHOLDER_NOTE,The game world arrives with the next packages.
 ERROR_VALIDATION_FAILED,Please check your entries.
 ERROR_VALIDATION_EMAIL,That does not look like a valid e-mail address.
 ERROR_VALIDATION_PASSWORD,The password needs 8 to 128 characters.
@@ -50,3 +49,126 @@ ERROR_UNAVAILABLE,The server is restarting. Please try again shortly.
 ERROR_INTERNAL,The server ran into a problem. Please try again.
 ERROR_NO_CONNECTION,Cannot reach the server. Check your connection.
 ERROR_UNKNOWN,Something went wrong. Please try again.
+COMMON_CLOSE,Close
+COLONY_MENU,Menu
+COLONY_LOADING,Loading your colony…
+COLONY_LOAD_FAILED,The colony could not be loaded.
+COLONY_TAB_VIEW,Inspect
+COLONY_TAB_BUILD,Build
+COLONY_HINT_VIEW,Tap a field to see what is there.
+COLONY_HINT_BUILD,"Choose a hull or module from the store, then tap a field."
+COLONY_HINT_PLACE,Tap a field to place {name}.
+COLONY_FREE_GROUND,Free ground.
+COLONY_CELL_HULL,{hull} without module.
+COLONY_CELL_MODULE,{module} on {hull}.
+COLONY_CELL_MODULE_BUILDING,"{module} on {hull} – under construction, ready in {duration}."
+COLONY_ITEM_COUNT,{name} ×{count}
+COLONY_NOTHING_TO_BUILD,Nothing to build in the store.
+COLONY_BUILD_HERE,Build here
+COLONY_ROTATE,Rotate
+COLONY_CANCEL,Done
+COLONY_REMOVE_MODULE,Remove module
+COLONY_REMOVE_HULL,Remove hull
+COLONY_CONFIRM_REMOVE,Tap again to remove
+COLONY_SENDING,Sending…
+COLONY_DONE,Done.
+SLOT_INDOOR,indoor
+SLOT_OUTDOOR,outdoor
+SLOT_UNDER_WATER,under water
+BUILD_VERDICT_OK,Ready to build.
+BUILD_VERDICT_OCCUPIED,This field already has a hull.
+BUILD_VERDICT_NOT_CONNECTED,A new hull has to touch the colony.
+BUILD_VERDICT_WRONG_LEVEL,Only the ground level can be built on for now.
+BUILD_VERDICT_NO_HULL,A module needs a hull under every field it covers.
+BUILD_VERDICT_HULL_OCCUPIED,This hull already carries a module.
+BUILD_VERDICT_POSITIONING,This module needs a hull with a {slots} slot.
+BUILD_VERDICT_NO_ITEM,None left in the store.
+BUILD_VERDICT_HULL_HAS_MODULE,Remove the module first.
+BUILD_VERDICT_UNKNOWN_TYPE,The game data does not know this type.
+ERROR_CELL_OCCUPIED,This field is already taken.
+ERROR_FOREIGN_NEIGHBOR,Too close to another player's buildings.
+ERROR_INSUFFICIENT_HULLS,No hull of this kind left in the store.
+ERROR_MISSING_MODULE_ITEM,No module of this kind left in the store.
+ERROR_HULL_NOT_FOUND,There is no hull of this colony here.
+ERROR_HULL_OCCUPIED,This hull already carries a module.
+ERROR_HULL_HAS_MODULE,Remove the module first.
+ERROR_HULL_IS_BRIDGE,This hull connects two parts of the colony and cannot be removed.
+ERROR_POSITIONING_MISMATCH,This module does not fit this kind of hull.
+ERROR_OUT_OF_BOUNDS,This field lies outside the buildable area.
+ERROR_HULL_Z_RESTRICTED,This hull cannot be built at this height.
+ERROR_INCOMPATIBLE_HULL,This hull cannot be built here.
+ERROR_OVERHANG_EXCEEDED,This would overhang too far.
+ERROR_NOT_BUILDABLE,This body cannot be built on.
+ERROR_FOUND_ONLY_ON_DOCK,New buildings must touch the colony.
+ERROR_STRUCTURE_NOT_EMPTY,Empty the store before removing the last hull.
+ERROR_LAST_STRUCTURE,You cannot remove your last colony.
+ERROR_TIER_NOT_UNLOCKED,This needs a higher housing tier first.
+ERROR_CARGO_WOULD_OVERFLOW,The store has no room for the returned items.
+ERROR_STRUCTURE_NOT_FOUND,This colony no longer exists.
+ERROR_MODULE_NOT_FOUND,There is no module here.
+ERROR_NOT_HULL_OWNER,This hull belongs to someone else.
+COLONY_TAB_STORE,Store
+STORE_UNKNOWN_ITEM,Unknown item
+STORE_FILL,{used} of {capacity} units stored
+COLONY_CHOOSE_RECIPE,Recipe
+RECIPE_NONE,No recipe (stand still)
+RECIPE_LOCKED,Needs research first.
+RECIPE_MAKES,Makes {outputs} per hour
+RECIPE_TURNS,Turns {inputs} into {outputs} per hour
+RECIPE_CURRENT,Recipe: {name} – {flows}
+RECIPE_IDLE_NONE,No recipe set – it stands still.
+RECIPE_IDLE_LOCATION,Cannot work at this spot (atmosphere or deposit missing).
+ERROR_NOT_BLUEPRINT_MODULE,This module does not run recipes.
+ERROR_INVALID_BLUEPRINT,This recipe does not exist.
+ERROR_INCOMPATIBLE_BLUEPRINT,This module cannot run that recipe.
+ERROR_BLUEPRINT_LOCKED,This recipe needs research first.
+STORE_POWER,Energy: {production} made / {consumption} used per hour
+STORE_LIFE_SUPPORT,Life support: {production} made / {consumption} used per hour
+STORE_FOOD_SHORTAGE,Food is running out.
+STORE_FULL,The store is full; production is slowed down.
+LOGIN_FORGOT_PASSWORD,Forgot your password?
+LOGIN_BACK_TO_SIGN_IN,Back to sign in
+LOGIN_RESET_TITLE,Set a new password
+LOGIN_RESET_EXPLAIN,Enter the e-mail address of your account. We send you a code to set a new password.
+LOGIN_RESET_CODE_SENT,"If an account exists for {email}, a code is on its way. It is valid for 30 minutes."
+LOGIN_RESET_CODE,Code from the e-mail
+LOGIN_NEW_PASSWORD,New password
+LOGIN_RESET_SEND,Send code
+LOGIN_RESET_SUBMIT,Set password and sign in
+ERROR_VALIDATION_RESET_CODE,The code has 8 characters.
+ERROR_RESET_CODE_INVALID,This code is not valid. Check it or ask for a new one.
+ERROR_RESET_CODE_EXPIRED,This code has expired. Please ask for a new one.
+COLONY_TAB_LOG,Log
+LOG_EMPTY,Nothing has happened here yet.
+LOG_OLDER,Show older entries
+LOG_AGO,{duration} ago
+LOG_SOMETHING,something
+LOG_FOUNDED,The colony was founded.
+LOG_MERGED,Another colony merged into this one.
+LOG_GUEST_ADDED,A ship was founded on the dock.
+LOG_GUEST_REMOVED,A ship left the dock.
+LOG_HULLS_PLACED,Built: {hulls}.
+LOG_HULLS_REMOVED,Removed: {hulls}.
+LOG_MODULE_PLACED,Construction of {module} started.
+LOG_MODULE_REMOVED,{module} was removed.
+LOG_MODULE_COMPLETED,{module} is finished.
+LOG_RECIPE_SET,{module} now runs {recipe}.
+LOG_RECIPE_REMOVED,{module} has no recipe any more.
+LOG_SHAFT_EXTENDED,The shaft now has {floors} floors.
+LOG_TRANSFER_IN,Received {items}.
+LOG_TRANSFER_OUT,Sent {items}.
+LOG_DISCARDED,Discarded {items}.
+LOG_GRANTED,Received {items} as a grant.
+LOG_CAP_SET,The store limit for {resource} changed.
+LOG_WORKFORCE_SET,The crew assignment changed.
+LOG_LAB_SLOTS_SET,The inputs of a lab changed.
+LOG_RESEARCH_COMPLETED,A research project was completed.
+STORE_DISCARD_N,Discard {count}
+STORE_DISCARD_ALL,Discard all
+STORE_DISCARD_CONFIRM,Tap again
+STORE_DISCARD_HINT,"{name}: discarding destroys the goods for good."
+STORE_DISCARD_WARNING,Tap the same button again to destroy the goods. This cannot be undone.
+STORE_DISCARD_NOTHING,There is nothing left to discard.
+STORE_DISCARDED,{count} {name} discarded.
+ERROR_INSUFFICIENT_STOCK,There is not that much in the store any more.
+ERROR_INVALID_RESOURCE,This cannot be discarded.

@@ -36,35 +36,47 @@ verschärft, wenn es nötig wird.
 - **V1-Material.** `assets/`, `src/assets/`, `scripts/`, `Docs/` sind Asset-Bestand und
   -Pipeline aus V1 und tragen `.gdignore`: Godot sieht sie nicht. Sprites werden bewusst in
   einen eigenen Ordner unter `game/` übernommen, nie von dort geladen.
-- **Git.** Commits und Pushes nur auf Rudis ausdrückliche Anweisung.
+- **Git.** Nach jeder größeren, geprüften Umsetzung committen und auf `main` pushen (Rudi,
+  2026-11-18). Nie `.local/`, `scripts/.env` oder `build/` mitnehmen; nichts Rotes committen.
 
 ## Befehle (PowerShell, aus dem Projektordner)
 
 | Zweck | Aufruf |
 |---|---|
 | Unit-Tests | `powershell -File tools\test.ps1` |
-| Lokales Backend | `powershell -File tools\dev-backend.ps1 start` (auch `stop`, `status`, `sync`, `build`, `reset`) |
-| Ablauf gegen das Backend | `powershell -File tools\smoke.ps1` (höchstens einmal pro Minute) |
+| Ablauf gegen das Backend | `powershell -File tools\smoke.ps1` (Live-Server, höchstens einmal pro Minute) |
+| Nur Spieldaten prüfen (ohne Konto) | `powershell -File tools\smoke.ps1 -DefinitionsOnly` |
+| Bauen gegen das Backend (Entwicklerkonto) | `powershell -File tools\colony-smoke.ps1` (setzt Hülle, Modul, Rezept und räumt wieder auf) |
+| Entwicklerkonto, echte Antworten ansehen | `node tools/dev-account.cjs /v2/structures` (Zugang in `.local/`, nie committen) |
+| Lokales Backend (nur Ausnahme) | `powershell -File tools\dev-backend.ps1 start` (auch `stop`, `status`, `sync`, `build`, `reset`) |
 | Bildschirmfotos | `powershell -File tools\screenshots.ps1` → `build\screenshots\` |
 | Android-Debug-APK | `powershell -File tools\android-debug.ps1` (`-Live` für den echten Server) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
-| 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `build\models\` |
-| 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 build\models build\model-preview -NoFit` (Übersicht: `all_45.png`) |
+| 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
+| 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 <ordner> build\model-preview -NoFit` (Übersicht: `all_45.png`) |
+| Bodenfarben aus den V1-Kacheln | `godot --headless -s tools/biome_colors.gd` → `game/world/biome_colors.gd` |
 | Materialtextur erzeugen (kostet fal-Guthaben) | `node scripts\3d\make-texture.cjs --preset metal` → `scripts\3d\textures\` |
 | 3D-Modell aus Sprite (kostet fal-Guthaben) | `node scripts\3d\sprite-to-3d.cjs --model hunyuan-lowpoly --input assets\final\mine_0.png` |
 | Generiertes 3D-Modell spielfertig machen | `powershell -File tools\postprocess-models.ps1` → `assets\3d-test\processed\` |
 
 **3D-Assets (Versuch seit 2026-11-17):** Ein Modell ist Blender-Code unter `scripts\3d\models\`
 (Bausatz `kit.py`, wiederverwendbare Teile `parts.py`); sein Aussehen wird aus Palette,
-wenigen Materialtexturen und einem gemeinsamen Rezept in eine Textur je Modell gebacken.
+wenigen Materialtexturen und einem gemeinsamen Rezept in zwei Texturen je Modell gebacken:
+Farbe sowie Glanz und Metallanteil. Glänzende und metallische Flächen spiegeln die Umgebung —
+die Szene braucht dafür einen Himmel als Spiegelquelle (Muster: `smoke/model_preview.gd`),
+sonst werden sie dunkel.
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
-am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Die Modelle sind noch
-nicht ins Spiel eingebunden.
+am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine Hülle füllt ihre
+Zelle als 0,06 hohe Bodenplatte (`hulls.py`, `ColonyView.HULL_FLOOR_HEIGHT`), Module stehen
+darauf. Modultypen ohne eigenes Skript entstehen aus Vorlagen in `families.py`; die Dateinamen
+sind die Typ-Schlüssel klein (`academy.glb`).
 
-Serveradresse: aus dem Editor-Binary das lokale Backend (`http://127.0.0.1:18080`), exportiert
-`https://trade-empire.net`; Preset „Android Local" nimmt `http://10.0.2.2:18080`. Überschreiben:
-`godot --path . -- --server=https://trade-empire.net`.
+Serveradresse: überall der Live-Server `https://trade-empire.net` (Rudis Vorgabe vom
+2026-11-17: „Nutz bitte den Server für alles“). Das lokale Backend (`tools\dev-backend.ps1`,
+Preset „Android Local") bleibt nur für Ausnahmen; Überschreiben mit
+`godot --path . -- --server=http://127.0.0.1:18080`. Jeder Smoke-Lauf legt auf dem Server ein
+Wegwerf-Konto an.
 
 ## Vor jeder Fertigmeldung
 
@@ -93,6 +105,9 @@ Serveradresse: aus dem Editor-Binary das lokale Backend (`http://127.0.0.1:18080
 - Blender über MCP (Rudis laufendes Blender): dort nur bauen und anzeigen, nie exportieren
   oder backen — der glTF-Export aus dem Add-on heraus lässt Blender 5.3 abstürzen. Code erst
   ohne Fenster oder in einer eigenen Instanz prüfen.
+- Godot-Prozesse anderer Sitzungen (z. B. oil-tycoon) schreiben gleichzeitig die globalen
+  Editor-Einstellungen; ein einzelnes „Could not load editor settings" beim Import ist dann ein
+  Lesezeitpunkt-Problem, die Datei ist heil. Fremde Godot-Prozesse nie beenden.
 - Emulator: Solange eine Hardware-Tastatur aktiv ist (Standard im AVD), öffnet Godot keine
   Bildschirmtastatur — das Verhalten bei offener Tastatur lässt sich dort nicht prüfen.
 - Emulator: Der Speicher des AVD `Pixel_7a` ist knapp. Scheitert `adb install` mit

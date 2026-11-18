@@ -19,9 +19,12 @@ func _ready() -> void:
 
 func _notification(what: int) -> void:
 	# Android back: close the topmost layer, never quit the app from here.
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST and _screen is LoginScreen:
-		var login := _screen as LoginScreen
-		login.handle_back()
+	if what != NOTIFICATION_WM_GO_BACK_REQUEST:
+		return
+	if _screen is LoginScreen:
+		(_screen as LoginScreen).handle_back()
+	elif _screen is ColonyScreen:
+		(_screen as ColonyScreen).handle_back()
 
 
 func _on_session_changed() -> void:
@@ -33,7 +36,8 @@ func _on_session_changed() -> void:
 			if not _screen is LoginScreen:
 				_show(LoginScreen.new())
 		SessionController.Status.SIGNED_IN:
-			_show(HomeScreen.new())
+			if not _screen is ColonyScreen:
+				_show(ColonyScreen.new())
 		SessionController.Status.UNREACHABLE:
 			_show(_build_unreachable())
 

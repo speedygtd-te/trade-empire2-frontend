@@ -3,7 +3,7 @@ extends GdUnitTestSuite
 
 const TRANSLATION_PATH := "res://i18n/strings.en.translation"
 const SOURCE_DIRS: PackedStringArray = ["res://game", "res://core", "res://net"]
-const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR)_[A-Z0-9_]+)"'
+const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG)_[A-Z0-9_]+)"'
 
 var _translation: Translation
 
@@ -56,6 +56,19 @@ func test_every_text_key_used_in_code_exists() -> void:
 	assert_int(checked).is_greater(30)
 
 
+func test_every_build_verdict_has_a_text() -> void:
+	# The colony screen builds these keys from the enum names.
+	for verdict: String in BuildRules.Verdict.keys():
+		assert_bool(_has_text("BUILD_VERDICT_" + verdict)).override_failure_message(
+			"no translation for BUILD_VERDICT_" + verdict
+		).is_true()
+
+
+func test_every_module_slot_has_a_text() -> void:
+	for slot: String in ["INDOOR", "OUTDOOR", "UNDER_WATER"]:
+		assert_bool(_has_text("SLOT_" + slot)).override_failure_message("no translation for SLOT_" + slot).is_true()
+
+
 func test_transport_failure_gets_the_connection_text() -> void:
 	assert_str(ErrorText.key_for(ApiError.transport("refused"))).is_equal("ERROR_NO_CONNECTION")
 
@@ -67,7 +80,7 @@ func test_known_code_gets_its_own_text() -> void:
 
 
 func test_unknown_codes_get_the_generic_text_not_the_raw_code() -> void:
-	var build_error := ApiError.from_response(409, '{"error":"HULL_IS_BRIDGE","message":"x"}')
+	var build_error := ApiError.from_response(409, '{"error":"SHAFT_TOO_TALL","message":"x"}')
 	var proxy_error := ApiError.from_response(502, "<html>Bad Gateway</html>")
 
 	assert_str(ErrorText.key_for(build_error)).is_equal("ERROR_UNKNOWN")
