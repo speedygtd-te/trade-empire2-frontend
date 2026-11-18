@@ -54,6 +54,7 @@ verschärft, wenn es nötig wird.
 | Lokales Backend (nur Ausnahme) | `powershell -File tools\dev-backend.ps1 start` (auch `stop`, `status`, `sync`, `build`, `reset`) |
 | Bildschirmfotos | `powershell -File tools\screenshots.ps1` → `build\screenshots\` |
 | Android-Debug-APK | `powershell -File tools\android-debug.ps1` (`-Live` für den echten Server) |
+| Android-Release-APK zum Testen (Live-Server, eigener Schlüssel in `.local/`) | `powershell -File tools\android-release.ps1` → `build\android\trade-empire.apk` (Schlüssel aufheben: Updates brauchen denselben) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
 | Requisiten (Bäume, Steine …) ansehen und messen | `F:\Tools\Godot\godot.exe --path . --resolution 720x1280 res://smoke/prop_view.tscn -- --out=build/props` (Entwicklerkonto; Modelle: `build-models.ps1 -Only props`) |
