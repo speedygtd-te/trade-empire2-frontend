@@ -9,14 +9,17 @@
 // Layout: a block of hulls east of the colony, filled row by row so every new hull touches one
 // that is already there. 2x2 modules first, then 1x1. Indoor modules stand on the indoor hulls
 // in turn (so every closed container shows up too), outdoor ones on outdoor platforms; free
-// cells get standard hulls. Under-water modules are left out (no water on the surface). Sends one
-// bestEffort batch and prints what was refused, with the server's code.
+// cells get standard hulls. Left out: under-water modules (no water on the surface) and shafts
+// (they need a hull above). Sends one bestEffort batch and prints what was refused, with the
+// server's code (habitats above tier 1 stay locked by the tier gate). Run it once per fresh
+// account: a second run builds a second block next to the first.
 'use strict';
 
 const { call, signIn } = require('./dev-account.cjs');
 
 const SERVER = 'https://trade-empire.net';
-const INDOOR_HULLS = ['STARTER', 'STANDARD', 'REINFORCED', 'COMPOSITE', 'GLASS_CARBON'];
+// COMPOSITE is for mobile structures only (guests on docks): refused on the surface.
+const INDOOR_HULLS = ['STARTER', 'STANDARD', 'REINFORCED', 'GLASS_CARBON'];
 const OUTDOOR_HULL = 'PLATFORM_OUTDOOR';
 const FILLER_HULL = 'STANDARD';
 
@@ -95,11 +98,13 @@ async function main() {
   const moduleItem = {};
   for (const resource of definitions.resources) if (resource.kind === 'MODULE_ITEM') moduleItem[resource.module] = resource.key;
 
-  const wanted = definitions.modules.filter((m) => slotOf(m) !== null);
-  const skipped = definitions.modules.filter((m) => slotOf(m) === null).map((m) => m.key);
+  // Shafts (elevator, staircase) need a hull above them; under-water modules need water.
+  const fits = (m) => slotOf(m) !== null && !m.verticalAccess;
+  const wanted = definitions.modules.filter(fits);
+  const skipped = definitions.modules.filter((m) => !fits(m)).map((m) => m.key);
   wanted.sort((a, b) => b.size.x * b.size.y - a.size.x * a.size.y || a.key.localeCompare(b.key));
   const { placed, rows } = pack(wanted, columns);
-  console.log(`# ${wanted.length} modules in ${columns} x ${rows} cells; left out (under water): ${skipped.join(', ') || '-'}`);
+  console.log(`# ${wanted.length} modules in ${columns} x ${rows} cells; left out (under water, shafts): ${skipped.join(', ') || '-'}`);
 
   // Hull type of every cell of the block.
   const cellHull = {};
