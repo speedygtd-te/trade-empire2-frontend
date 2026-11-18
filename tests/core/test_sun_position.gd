@@ -76,10 +76,46 @@ func test_solar_day_of_a_prograde_body_is_longer_than_its_rotation() -> void:
 	assert_float(sun.solar_day_s()).is_equal_approx(8640.0 / (1.0 - 8640.0 / 3153600.0), 0.5)
 
 
-func test_cell_angles_follow_the_draft() -> void:
-	var angles := SunPosition.cell_angles(70000, 35000, 280000, 70000)
+func test_cell_angles_follow_the_contract() -> void:
+	var angles := SunPosition.cell_angles(70000, 0, 280000)
 
 	assert_float(angles.y).is_equal_approx(PI / 2.0, 0.0001)
 	assert_float(angles.x).is_equal_approx(0.0, 0.0001)
-	# The band edge (y = 0) is at -45°.
-	assert_float(SunPosition.cell_angles(0, 0, 280000, 70000).x).is_equal_approx(-PI / 4.0, 0.0001)
+	# The band edges (y = ±sizeY/2 = ±N/8) are at ±45°; x wraps around.
+	assert_float(SunPosition.cell_angles(0, 35000, 280000).x).is_equal_approx(PI / 4.0, 0.0001)
+	assert_float(SunPosition.cell_angles(0, -35000, 280000).x).is_equal_approx(-PI / 4.0, 0.0001)
+	assert_float(SunPosition.cell_angles(-70000, 0, 280000).y).is_equal_approx(1.5 * PI, 0.0001)
+
+
+func test_reads_orbit_and_rotation_from_the_contract() -> void:
+	var body := {
+		"orbit": {"radiusAu": 1.0, "periodS": 3153600.0, "phase0": 90.0, "inclination": 1.0, "node": 0.0},
+		"rotation": {"periodS": 8616.0, "direction": "WEST", "axialTilt": 23.4, "tiltAzimuth": 180.0, "meridian0": 45.0},
+	}
+	var sun := SunPosition.from_body(body)
+
+	assert_float(sun.orbit_period_s).is_equal(3153600.0)
+	assert_float(sun.orbit_phase0).is_equal_approx(PI / 2.0, 0.0001)
+	assert_float(sun.rotation_period_s).is_equal(8616.0)
+	assert_float(sun.rotation_direction).is_equal(-1.0)
+	assert_float(sun.axial_tilt).is_equal_approx(deg_to_rad(23.4), 0.0001)
+	assert_float(sun.tilt_azimuth).is_equal_approx(PI, 0.0001)
+	assert_float(sun.meridian0).is_equal_approx(PI / 4.0, 0.0001)
+
+
+func test_a_moon_follows_its_planets_orbit_with_its_own_spin() -> void:
+	var moon := {
+		"orbit": {"periodS": 236000.0, "phase0": 10.0},
+		"rotation": {"periodS": 236000.0, "direction": "EAST", "axialTilt": 0.0, "tiltAzimuth": 0.0, "meridian0": 0.0},
+	}
+	var planet := {"orbit": {"periodS": 3153600.0, "phase0": 200.0}}
+	var sun := SunPosition.from_body(moon, planet)
+
+	assert_float(sun.orbit_period_s).is_equal(3153600.0)
+	assert_float(sun.orbit_phase0).is_equal_approx(deg_to_rad(200.0), 0.0001)
+	assert_float(sun.rotation_period_s).is_equal(236000.0)
+
+
+func test_without_orbit_data_there_is_no_moving_sun() -> void:
+	assert_object(SunPosition.from_body({})).is_null()
+	assert_object(SunPosition.from_body({"orbit": {"periodS": 0.0}, "rotation": {"periodS": 10.0}})).is_null()

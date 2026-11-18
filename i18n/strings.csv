@@ -182,6 +182,9 @@ COLONY_STRUCTURE_BUILDING,Under construction: {count}
 COLONY_OPEN_EDIT,Edit
 COLONY_OPEN_BUILD,Build
 COLONY_CLOSE_STRUCTURE,Close
+RECIPE_NEEDS_GAS,"Needs {gas} in the air – here {share}."
+RECIPE_NEEDS_DEPOSIT,Needs {resource} in the ground.
+RECIPE_ORBIT_ONLY,Works only in orbit.
 BUILD_VERDICT_DOCK_AREA_TOO_SMALL,The vessel has to stay on the docks: the dock area is too small for this.
 BUILD_VERDICT_DOCK_SPACE_BLOCKED,Another vessel is in the way on these docks.
 BUILD_VERDICT_HULL_HAS_GUEST,A vessel stands on this dock. Remove the vessel first.

@@ -6,8 +6,7 @@ extends RefCounted
 ##
 ## Frame: the body orbits its star in the x-y plane, counter-clockwise seen from +z. The spin
 ## axis leans from +z by `axial_tilt` towards the direction `tilt_azimuth` in the orbit plane.
-## The field names of the contract are not fixed yet; `Body` data is mapped onto these fields
-## once they are.
+## `from_body` maps the contract's `Body.orbit` and `Body.rotation` (draft.18) onto these fields.
 
 ## Orbit: period in seconds of game time, angle at game time 0 (radians).
 var orbit_period_s := 3600.0
@@ -65,11 +64,44 @@ func solar_day_s() -> float:
 	return 1.0 / relative if relative > 0.0 else INF
 
 
-## Latitude and longitude (radians) of a cell on the surface band, after the draft: x runs once
-## around the equator (`size_x` cells), y = size_y / 2 is the equator.
-static func cell_angles(x: int, y: int, size_x: int, size_y: int) -> Vector2:
+## Latitude and longitude (radians) of a cell on the surface band (`Grid`, draft.18): x runs
+## once around the equator (`size_x` cells, x and x ± N are the same cell), y runs from
+## -size_y/2 to size_y/2 with the equator at y = 0; tiles are square, so the band is ±45°.
+## (SPEC-himmelsmechanik puts the equator at y = size_y / 2; the contract wins.)
+static func cell_angles(x: int, y: int, size_x: int) -> Vector2:
 	if size_x <= 0:
 		return Vector2.ZERO
 	var lon := TAU * float(posmod(x, size_x)) / size_x
-	var lat := (y - size_y / 2.0) * TAU / size_x
+	var lat := y * TAU / size_x
 	return Vector2(lat, lon)
+
+
+## The sun of a body from the contract (`Body.orbit`, `Body.rotation`; angles in degrees,
+## periods in game seconds). A moon passes its planet as `parent`: the star's direction follows
+## the planet's orbit, the spin is the moon's own. Null when the data is missing or invalid.
+static func from_body(body: Dictionary, parent: Dictionary = {}) -> SunPosition:
+	var orbit := Wire.as_dict((parent if not parent.is_empty() else body).get("orbit"))
+	var rotation := Wire.as_dict(body.get("rotation"))
+	var orbit_period := _number(orbit.get("periodS"))
+	var rotation_period := _number(rotation.get("periodS"))
+	if orbit_period <= 0.0 or rotation_period <= 0.0:
+		return null
+	var sun := SunPosition.new()
+	sun.orbit_period_s = orbit_period
+	sun.orbit_phase0 = deg_to_rad(_number(orbit.get("phase0")))
+	sun.rotation_period_s = rotation_period
+	sun.rotation_direction = -1.0 if Wire.as_string(rotation.get("direction")) == "WEST" else 1.0
+	sun.meridian0 = deg_to_rad(_number(rotation.get("meridian0")))
+	sun.axial_tilt = deg_to_rad(_number(rotation.get("axialTilt")))
+	sun.tilt_azimuth = deg_to_rad(_number(rotation.get("tiltAzimuth")))
+	return sun
+
+
+static func _number(value: Variant) -> float:
+	if typeof(value) == TYPE_FLOAT:
+		var number: float = value
+		return number
+	if typeof(value) == TYPE_INT:
+		var whole: int = value
+		return whole
+	return 0.0
