@@ -3,7 +3,9 @@ extends GdUnitTestSuite
 
 const TRANSLATION_PATH := "res://i18n/strings.en.translation"
 const SOURCE_DIRS: PackedStringArray = ["res://game", "res://core", "res://net"]
-const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG)_[A-Z0-9_]+)"'
+const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH)_[A-Z0-9_]*[A-Z0-9])"'
+## Game-data keys that look like text keys (a lab type); error codes are skipped as well.
+const NOT_TEXT_KEYS: PackedStringArray = ["RESEARCH_LAB"]
 
 var _translation: Translation
 
@@ -48,6 +50,8 @@ func test_every_text_key_used_in_code_exists() -> void:
 		var source := FileAccess.get_file_as_string(path)
 		for found: RegExMatch in pattern.search_all(source):
 			var key := found.get_string(1)
+			if NOT_TEXT_KEYS.has(key) or ErrorText.HANDLED_CODES.has(key):
+				continue
 			checked += 1
 			assert_bool(_has_text(key)).override_failure_message(
 				"%s uses %s, which has no translation" % [path, key]
@@ -67,6 +71,17 @@ func test_every_build_verdict_has_a_text() -> void:
 func test_every_module_slot_has_a_text() -> void:
 	for slot: String in ["INDOOR", "OUTDOOR", "UNDER_WATER"]:
 		assert_bool(_has_text("SLOT_" + slot)).override_failure_message("no translation for SLOT_" + slot).is_true()
+
+func test_every_lab_status_and_research_field_has_a_text() -> void:
+	# The research panel builds these keys from the server's values.
+	for status: String in ResearchPanel.STATUSES:
+		assert_bool(_has_text("RESEARCH_STATUS_" + status)).override_failure_message(
+			"no translation for RESEARCH_STATUS_" + status
+		).is_true()
+	for category: String in ResearchPanel.CATEGORIES:
+		assert_bool(_has_text("RESEARCH_CATEGORY_" + category)).override_failure_message(
+			"no translation for RESEARCH_CATEGORY_" + category
+		).is_true()
 
 
 func test_transport_failure_gets_the_connection_text() -> void:

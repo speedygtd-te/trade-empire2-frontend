@@ -182,3 +182,64 @@ COLONY_STRUCTURE_BUILDING,Under construction: {count}
 COLONY_OPEN_EDIT,Edit
 COLONY_OPEN_BUILD,Build
 COLONY_CLOSE_STRUCTURE,Close
+COLONY_TAB_RESEARCH,Research
+RESEARCH_LOADING,Loading research…
+RESEARCH_SUMMARY,Researched {done} of {total} technologies.
+RESEARCH_LABS_HEADING,Labs here
+RESEARCH_NO_LAB,"No lab in this structure yet. A Research Lab is made in a Factory (recipe Research Lab Manufacturing) and placed on an indoor hull."
+RESEARCH_NEXT_HEADING,Could research next
+RESEARCH_NEXT_FIRST_LAB,A Research Lab could research
+RESEARCH_NOTHING_OPEN,Nothing is left that this lab can research.
+RESEARCH_DONE_HEADING,Researched
+RESEARCH_NOTHING_DONE,Nothing yet.
+RESEARCH_SOMETHING,something
+RESEARCH_LAB_NUMBERED,{name} {number}
+RESEARCH_SLOTS,Inputs: {slots}
+RESEARCH_SLOT_EMPTY,empty
+RESEARCH_RATE_ITEM,{rate} {name}
+RESEARCH_RATE_FACTOR,{factor}× input
+RESEARCH_TECH_TITLE,{name} · tier {tier} · {duration}
+RESEARCH_TECH_NEEDS,Needs at least: {inputs}
+RESEARCH_TECH_UNLOCKS,Unlocks: {things}
+RESEARCH_TECH_WORKERS,Needs workers of tier {tier} or higher.
+RESEARCH_STATUS_UNKNOWN,State unknown.
+RESEARCH_STATUS_INACTIVE,Under construction. Inputs can be set already.
+RESEARCH_STATUS_NO_SLOTS,Idle: no inputs set.
+RESEARCH_STATUS_NO_TECH,"Idle: no research fits these inputs, this lab or its workers."
+RESEARCH_STATUS_RESEARCHING,Researching.
+RESEARCH_STATUS_PAUSED_LOW_INPUT,"Paused: {resource} gets {rate}, needs at least {required}. Nothing is used."
+RESEARCH_STATUS_STARVED,"Short of supply ({percent} %): an input, energy or workers run short."
+RESEARCH_HINT_FIELD,Half done. Field: {field}.
+RESEARCH_PROGRESS,{percent} % · {duration} left
+RESEARCH_PROGRESS_STILL,{percent} % · stands still
+RESEARCH_GUESS_ONE,These inputs point at: {name} (preview)
+RESEARCH_GUESS_SEVERAL,"These inputs point at one of: {names} (preview)"
+RESEARCH_HINT_CHOOSE,Choose a research below: its inputs go into this lab's slots.
+RESEARCH_PLAN,"New inputs: {slots}. More input is faster, down to {fastest}."
+RESEARCH_PLAN_OTHER,Careful: with these inputs the lab would rather pick {name}.
+RESEARCH_PLAN_TIE,Several researches fit these inputs equally; the server picks one.
+RESEARCH_PLAN_MISSING,Not in the store: {items}. The lab would stand still.
+RESEARCH_APPLY,Set inputs
+RESEARCH_CONFIRM_LOSS,Confirm: lose progress
+RESEARCH_CLEAR,Empty inputs
+RESEARCH_CONFIRM_CLEAR,Confirm: empty
+RESEARCH_LOSS_WARNING,"This lab has progress on its current research. Changing the inputs discards it; tap again to confirm."
+RESEARCH_CLEAR_WARNING,Emptying the inputs stops the lab. Tap again to confirm.
+RESEARCH_APPLIED,Inputs set for {name}. The lab chooses its research itself.
+RESEARCH_CLEARED,Inputs emptied. The lab stands idle.
+RESEARCH_COMPLETED,Research complete: {name}. Its recipes can be used now.
+RESEARCH_CATEGORY_ENERGY,Energy
+RESEARCH_CATEGORY_EXTRACTION,Extraction
+RESEARCH_CATEGORY_HABITATION,Habitation
+RESEARCH_CATEGORY_MANUFACTURING,Manufacturing
+RESEARCH_CATEGORY_PRODUCTION,Production
+RESEARCH_CATEGORY_SATISFACTION,Satisfaction
+RESEARCH_CATEGORY_SECURITY,Security
+RESEARCH_CATEGORY_TRANSPORTATION,Transportation
+RESEARCH_CATEGORY_UNKNOWN,an unknown field
+ERROR_NOT_A_LAB,This module is not a lab.
+ERROR_SLOT_COUNT_MISMATCH,The number of inputs does not fit this lab. Please try again.
+ERROR_RESEARCH_IN_PROGRESS,This lab has progress on its research. Confirm to discard it.
+ERROR_INVALID_SLOT_RATE,Every input needs a rate above zero.
+ERROR_UNKNOWN_TECH,This research does not exist.
+ERROR_NOT_STRUCTURE_OWNER,This structure belongs to someone else.

@@ -116,6 +116,7 @@ func _run() -> void:
 	colony._set_mode(ColonyScreen.Mode.LOG)
 	await get_tree().create_timer(2.0).timeout
 	await _capture("colony_log")
+	await _capture_research(colony)
 
 	colony._close_structure()
 	colony._on_menu()
@@ -125,6 +126,62 @@ func _run() -> void:
 	if not had_session:
 		await session.logout()
 	get_tree().quit()
+
+
+## The research tab. With a real lab in the structure it aims the lab at the first research
+## whose inputs are in the store and shows the progress; a fresh starter has no lab, so after the
+## real (empty) state a made-up lab is shown — clearly a sample, nothing is sent for it.
+func _capture_research(colony: ColonyScreen) -> void:
+	colony._set_mode(ColonyScreen.Mode.RESEARCH)
+	await get_tree().create_timer(3.0).timeout
+	await _capture("colony_research")
+	var model := colony._model
+	var panel := colony._research
+	if model.research == null:
+		print("RESEARCH  not loaded: ", model.research_error.code if model.research_error != null else "?")
+		return
+	var catalog := Services.definitions.research
+	var labs := model.research.labs_of(model.structure_id)
+	print("RESEARCH  %d of %d researched, %d lab(s) here" % [
+		catalog.researched_count(model.research.researched), catalog.selectable_count(), labs.size()])
+	if not labs.is_empty():
+		var lab := labs[0]
+		if lab.slots_empty():
+			for entry: ResearchCatalog.Tech in catalog.open_for_lab(lab.module_type, model.research.researched):
+				if panel._missing_in_store(entry).is_empty():
+					panel._choose_target(entry.key)
+					await _capture("colony_research_plan")
+					panel._on_apply()
+					await get_tree().create_timer(4.0).timeout
+					await _capture("colony_research_running")
+					print("RESEARCH  aimed lab %d at %s: %s" % [lab.module_id, entry.key, panel._status.text])
+					break
+		return
+	# Sample only: a running lab with a hint, and one being planned. Never sent to the server.
+	var now := Services.clock.now_ms()
+	var running := ResearchState.Lab.from_wire({
+		"structureId": model.structure_id, "moduleId": 900001, "moduleType": "RESEARCH_LAB", "slotCount": 3,
+		"slots": [{"resource": "COPPER_WIRE", "ratePerHour": 200000000},
+			{"resource": "GLASS", "ratePerHour": 200000000}, {"resource": "IRON_PLATE", "ratePerHour": 200000000}],
+		"status": "RESEARCHING", "hint": {"category": "HABITATION", "at": now - 60000},
+		"progress": {"value": 560000000, "ratePerHour": 3600000000, "at": now, "goal": 900000000,
+			"startedAt": now - 560000, "endsAt": now + 340000, "supplyPpb": 1000000000}})
+	var idle := ResearchState.Lab.from_wire({
+		"structureId": model.structure_id, "moduleId": 900002, "moduleType": "RESEARCH_LAB", "slotCount": 3,
+		"slots": [null, null, null], "status": "NO_SLOTS"})
+	model.research.apply_lab(running)
+	model.research.apply_lab(idle)
+	panel._lab_id = 900001
+	panel._rebuild()
+	print("SAMPLE  research tab with made-up labs (not from the server)")
+	await _capture("colony_research_sample")
+	panel._choose_lab(900002)
+	var open := catalog.open_for_lab("RESEARCH_LAB", model.research.researched)
+	if not open.is_empty():
+		panel._choose_target(open[0].key)
+	await _capture("colony_research_sample_plan")
+	panel._lab_id = 0
+	await model.reload_research()
 
 
 ## A free cell next to the structure, for the build preview.
