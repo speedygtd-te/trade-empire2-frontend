@@ -134,6 +134,15 @@ static func lamp_level(light: Light, density: float) -> float:
 	return maxf(dark, airless(density))
 
 
+## How dark it is for light cast by lamps (the cones of floodlights on the ground): 0 under the
+## sun or a lit sky, 1 at night. Unlike lamp_level, an airless body by day is not dark: lit
+## windows show against a black sky, a cone of light does not show in sunshine.
+static func darkness(light: Light) -> float:
+	var sun := maxf(light.sun.r, maxf(light.sun.g, light.sun.b))
+	var sky := maxf(light.sky.r, maxf(light.sky.g, light.sky.b))
+	return 1.0 - clampf(sun * 1.5 + sky, 0.0, 1.0)
+
+
 ## How airless a body is for its look: 1 without any air, 0 from AIRLESS_DENSITY on.
 static func airless(density: float) -> float:
 	return clampf(1.0 - maxf(density, 0.0) / AIRLESS_DENSITY, 0.0, 1.0)
