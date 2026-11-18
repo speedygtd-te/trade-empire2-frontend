@@ -54,6 +54,8 @@ func _run() -> void:
 		var elevation: float = scene[1]
 		var kelvin: float = scene[2]
 		var air: float = scene[3]
+		# The screen sets the real sun again every few seconds; hold it off for the picture.
+		colony._sun_left = 3600.0
 		colony._view.set_sun(deg_to_rad(elevation), deg_to_rad(250.0), kelvin, air)
 		await get_tree().create_timer(0.5).timeout
 		await RenderingServer.frame_post_draw
