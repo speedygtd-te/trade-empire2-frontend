@@ -280,3 +280,5 @@ ERROR_TIER_TOO_LOW,Workers below the tier this module needs cannot work here.
 ERROR_INSUFFICIENT_WORKERS,There are not that many free people of this tier.
 ERROR_INSUFFICIENT_ROBOTS,There are not that many robots of this tier in the store.
 RESEARCH_NO_STAFF,"This lab has no staff: inspect it and assign workers with Staff."
+ERROR_STRUCTURE_MOVING,"This structure is travelling; building has to wait until it has arrived."
+ERROR_HOST_MOVING,"The structure this one is docked at is travelling; building has to wait."

@@ -34,6 +34,9 @@ const HANDLED_CODES: PackedStringArray = [
 	"STRUCTURE_NOT_EMPTY",
 	"LAST_STRUCTURE",
 	"TIER_NOT_UNLOCKED",
+	# Movement (draft.19): building is refused while a structure or its host travels.
+	"STRUCTURE_MOVING",
+	"HOST_MOVING",
 	# Workforce (PUT /v2/structures/{id}/workforce).
 	"TIER_TOO_LOW",
 	"INSUFFICIENT_WORKERS",
