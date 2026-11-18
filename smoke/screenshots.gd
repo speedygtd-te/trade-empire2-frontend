@@ -79,6 +79,10 @@ func _run() -> void:
 	# Ground blocks stream in after the colony.
 	await get_tree().create_timer(4.0).timeout
 	await _capture("colony")
+	colony._select_structure(true)
+	await _capture("colony_structure")
+	colony._open_structure(ColonyScreen.Mode.VIEW)
+	await _capture("colony_opened")
 
 	var layout := colony._model.layout
 	var with_module := layout.modules()
@@ -113,6 +117,7 @@ func _run() -> void:
 	await get_tree().create_timer(2.0).timeout
 	await _capture("colony_log")
 
+	colony._close_structure()
 	colony._on_menu()
 	await get_tree().create_timer(1.0).timeout
 	await _capture("account")

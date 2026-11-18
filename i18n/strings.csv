@@ -176,3 +176,9 @@ HOME_CLIENT_VERSION,App version
 HOME_VERSION_CURRENT,Up to date
 HOME_VERSION_OUTDATED,Update available
 HOME_VERSION_UNKNOWN,Unknown
+COLONY_HINT_OUTSIDE,Tap a structure to see its details.
+COLONY_STRUCTURE_SUMMARY,Hulls: {hulls} · Modules: {modules}
+COLONY_STRUCTURE_BUILDING,Under construction: {count}
+COLONY_OPEN_EDIT,Edit
+COLONY_OPEN_BUILD,Build
+COLONY_CLOSE_STRUCTURE,Close

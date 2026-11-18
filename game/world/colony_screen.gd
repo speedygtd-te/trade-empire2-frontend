@@ -3,6 +3,10 @@ extends Control
 ## The signed-in main screen: the colony in 3D with a bottom panel to inspect fields and to
 ## build hulls and modules from the structure's store.
 ##
+## The surface shows the structure closed (StructureLook): a tap on it selects it and the panel
+## shows its details. Edit or Build opens it in place — the shut hulls give way to the modules
+## on their floors — and the tabs Inspect, Build, Store and Log appear. Close or Back shuts it.
+##
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects a field. Building is two
 ## taps — choose the field, then confirm — and removing is two-step as well.
 
@@ -43,7 +47,13 @@ var _actions: HBoxContainer
 var _loading: Control
 var _bottom: PanelContainer
 var _menu: Control
+var _menu_button: Button
+var _tabs: HBoxContainer
 
+## Whether the structure is open for building and editing; closed it shows from outside.
+var _opened := false
+## Whether the closed structure is selected (its details show in the panel).
+var _structure_selected := false
 var _mode: Mode = Mode.VIEW
 ## Absolute cell the player tapped; null when none.
 var _cell: Variant = null
@@ -90,22 +100,27 @@ func _process(delta: float) -> void:
 	_refresh_left -= delta
 	if _refresh_left <= 0.0:
 		_refresh_left = REFRESH_SECONDS
-		if _mode == Mode.VIEW and _cell != null:
+		if not _opened and _structure_selected:
+			_refresh()
+		elif _mode == Mode.VIEW and _cell != null:
 			_refresh()
 		elif _mode == Mode.STORE:
 			_store.tick()
 
 
-## Android back: close the menu, leave build mode, clear the selection — never quit.
+## Android back: close the menu or the recipes, clear the selected field, shut the open
+## structure, clear the selected structure — never quit.
 func handle_back() -> void:
 	if _menu != null and _menu.visible:
 		_menu.visible = false
 	elif _recipes.visible:
 		_close_recipes()
-	elif _mode == Mode.BUILD:
-		_set_mode(Mode.VIEW)
-	elif _cell != null:
+	elif _opened and _cell != null:
 		_select(null)
+	elif _opened:
+		_close_structure()
+	elif _structure_selected:
+		_select_structure(false)
 
 
 # --- building the screen --------------------------------------------------------------------
@@ -165,10 +180,10 @@ func _build_overlay() -> void:
 	_subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	names.add_child(_subtitle)
-	var menu_button := Ui.secondary_button("COLONY_MENU")
-	menu_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	menu_button.pressed.connect(_on_menu)
-	top_row.add_child(menu_button)
+	_menu_button = Ui.secondary_button("COLONY_MENU")
+	_menu_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_menu_button.pressed.connect(_on_menu)
+	top_row.add_child(_menu_button)
 
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -180,21 +195,21 @@ func _build_overlay() -> void:
 	column.add_child(_bottom)
 	var rows := Ui.column(16)
 	_bottom.add_child(rows)
-	var tabs := HBoxContainer.new()
-	rows.add_child(tabs)
+	_tabs = HBoxContainer.new()
+	rows.add_child(_tabs)
 	var group := ButtonGroup.new()
 	_view_tab = Ui.tab_button("COLONY_TAB_VIEW", group)
 	_view_tab.pressed.connect(_set_mode.bind(Mode.VIEW))
-	tabs.add_child(_view_tab)
+	_tabs.add_child(_view_tab)
 	_build_tab = Ui.tab_button("COLONY_TAB_BUILD", group)
 	_build_tab.pressed.connect(_set_mode.bind(Mode.BUILD))
-	tabs.add_child(_build_tab)
+	_tabs.add_child(_build_tab)
 	_store_tab = Ui.tab_button("COLONY_TAB_STORE", group)
 	_store_tab.pressed.connect(_set_mode.bind(Mode.STORE))
-	tabs.add_child(_store_tab)
+	_tabs.add_child(_store_tab)
 	_log_tab = Ui.tab_button("COLONY_TAB_LOG", group)
 	_log_tab.pressed.connect(_set_mode.bind(Mode.LOG))
-	tabs.add_child(_log_tab)
+	_tabs.add_child(_log_tab)
 
 	_store = StorePanel.new()
 	_store.setup(_model)
@@ -308,18 +323,20 @@ func _set_mode(mode: Mode) -> void:
 	_build_tab.set_pressed_no_signal(mode == Mode.BUILD)
 	_store_tab.set_pressed_no_signal(mode == Mode.STORE)
 	_log_tab.set_pressed_no_signal(mode == Mode.LOG)
-	var panel_mode := mode == Mode.STORE or mode == Mode.LOG
-	_palette_scroll.visible = mode == Mode.BUILD
-	_store.visible = mode == Mode.STORE
-	_log.visible = mode == Mode.LOG
+	# A closed structure shows only its details: no tabs, no store, no log.
+	_tabs.visible = _opened
+	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG)
+	_palette_scroll.visible = _opened and mode == Mode.BUILD
+	_store.visible = _opened and mode == Mode.STORE
+	_log.visible = _opened and mode == Mode.LOG
 	_info.visible = not panel_mode
 	_status.visible = not panel_mode
 	_actions.visible = not panel_mode
 	if panel_mode:
 		_view.show_preview([], false)
-	if mode == Mode.LOG:
+	if _opened and mode == Mode.LOG:
 		_log.reload()
-	if mode == Mode.STORE:
+	if _opened and mode == Mode.STORE:
 		_store.show_inventory(_model.inventory)
 		_store.show_balance(_model)
 		_view.show_preview([], false)
@@ -383,9 +400,42 @@ func _select(cell: Variant) -> void:
 	_refresh()
 
 
+## Selects the closed structure (shows its details) or clears that selection.
+func _select_structure(on: bool) -> void:
+	_structure_selected = on
+	_view.highlight_structure(on)
+	_refresh()
+
+
+## Opens the structure in place and switches to a tab: the shut hulls give way to the modules.
+func _open_structure(mode: Mode) -> void:
+	_opened = true
+	_structure_selected = false
+	_view.highlight_structure(false)
+	_view.set_opened(true)
+	_menu_button.text = tr("COLONY_CLOSE_STRUCTURE")
+	_set_mode(mode)
+
+
+## Shuts the open structure again; it stays selected, so its details show.
+func _close_structure() -> void:
+	_opened = false
+	_view.set_opened(false)
+	_view.show_preview([], false)
+	_menu_button.text = tr("COLONY_MENU")
+	_select(null)
+	_set_mode(Mode.VIEW)
+	_select_structure(true)
+
+
 ## Updates preview, info text and buttons from the current state.
 func _refresh() -> void:
-	if _view == null or _model.structure_id == 0 or _mode == Mode.STORE or _mode == Mode.LOG:
+	if _view == null or _model.structure_id == 0:
+		return
+	if not _opened:
+		_refresh_closed()
+		return
+	if _mode == Mode.STORE or _mode == Mode.LOG:
 		return
 	_primary.disabled = _busy
 	_secondary.disabled = _busy
@@ -396,7 +446,37 @@ func _refresh() -> void:
 		_refresh_view()
 
 
+## The closed structure: a hint, or the details of the selected structure with Edit and Build.
+func _refresh_closed() -> void:
+	_primary.disabled = _busy
+	_secondary.disabled = _busy
+	if not _structure_selected:
+		_info.text = tr("COLONY_HINT_OUTSIDE")
+		_info.remove_theme_color_override("font_color")
+		_actions.visible = false
+		return
+	_actions.visible = true
+	var layout := _model.layout
+	var lines := PackedStringArray([tr("COLONY_STRUCTURE_SUMMARY").format({
+		"hulls": layout.hull_count(), "modules": layout.module_count()})])
+	var building := StructureLook.modules_building(layout)
+	if building > 0:
+		lines.append(tr("COLONY_STRUCTURE_BUILDING").format({"count": building}))
+	lines.append(StorePanel.balance_text(_model))
+	_info.text = "\n".join(lines)
+	if StorePanel.is_short(_model):
+		_info.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	else:
+		_info.remove_theme_color_override("font_color")
+	_secondary.visible = true
+	_secondary.text = tr("COLONY_OPEN_EDIT")
+	_primary.visible = true
+	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
+	_primary.text = tr("COLONY_OPEN_BUILD")
+
+
 func _refresh_view() -> void:
+	_info.remove_theme_color_override("font_color")
 	_secondary.visible = false
 	# Everything the inspect view offers on the main button removes something.
 	_primary.theme_type_variation = AppTheme.VARIATION_DANGER_BUTTON
@@ -450,6 +530,7 @@ func _recipe_line(placed: StructureLayout.Module) -> String:
 
 
 func _refresh_build() -> void:
+	_info.remove_theme_color_override("font_color")
 	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
 	_secondary.visible = true
 	_secondary.text = tr("COLONY_CANCEL")
@@ -531,6 +612,10 @@ func _verdict_text(verdict: BuildRules.Verdict) -> String:
 # --- actions --------------------------------------------------------------------------------
 
 func _on_primary() -> void:
+	if not _opened:
+		if _structure_selected:
+			_open_structure(Mode.BUILD)
+		return
 	if _busy or _cell == null:
 		return
 	if _mode == Mode.BUILD:
@@ -551,6 +636,10 @@ func _on_primary() -> void:
 
 
 func _on_secondary() -> void:
+	if not _opened:
+		if _structure_selected:
+			_open_structure(Mode.VIEW)
+		return
 	if _mode == Mode.BUILD and _is_multi_cell() and _cell != null:
 		_rotation = (_rotation + 90) % 360
 		_refresh()
@@ -630,6 +719,10 @@ func _send(ops: Array[Dictionary]) -> void:
 
 
 func _on_menu() -> void:
+	# While the structure is open, the button closes it.
+	if _opened:
+		_close_structure()
+		return
 	if _menu == null:
 		_menu = _build_menu()
 		add_child(_menu)
@@ -719,6 +812,17 @@ func _on_world_input(event: InputEvent) -> void:
 		_view.zoom_by(1.0 / (event as InputEventMagnifyGesture).factor)
 
 
+## Whether a point of the view lies on the closed structure: on the roof of a shut hull, or on
+## a cell of the structure at ground level (platforms, docks).
+func _hits_structure(point: Vector2) -> bool:
+	var layout := _model.layout
+	var roof: Variant = _view.cell_at(point, ColonyView.HULL_CLOSED_HEIGHT)
+	if roof != null and StructureLook.cell_closed(layout, Services.definitions, layout.to_local(roof as Vector3i)):
+		return true
+	var ground: Variant = _view.cell_at(point)
+	return ground != null and not layout.hull_at(layout.to_local(ground as Vector3i)).is_empty()
+
+
 ## Canvas pixels → viewport pixels (the viewport follows the container's size).
 func _scale() -> float:
 	return float(_viewport.size.y) / maxf(_container.size.y, 1.0)
@@ -726,6 +830,9 @@ func _scale() -> float:
 
 func _on_tap(position_in_container: Vector2) -> void:
 	if _model.structure_id == 0:
+		return
+	if not _opened:
+		_select_structure(_hits_structure(position_in_container * _scale()))
 		return
 	var cell: Variant = _view.cell_at(position_in_container * _scale())
 	if cell != null and _cell != null and (cell as Vector3i) == (_cell as Vector3i) and _mode == Mode.VIEW:

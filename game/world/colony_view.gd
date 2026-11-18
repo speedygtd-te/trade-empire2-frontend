@@ -8,6 +8,8 @@ extends Node3D
 
 ## Height of a hull's floor plate: modules stand on top of it (scripts/3d/models/hulls.py).
 const HULL_FLOOR_HEIGHT := 0.06
+## Roof height of a shut hull on a closed structure (scripts/3d/models/hulls.py).
+const HULL_CLOSED_HEIGHT := 0.56
 const MODELS := "res://game/world/models/"
 const CAMERA_PITCH_DEGREES := 35.0
 const CAMERA_YAW_DEGREES := 45.0
@@ -39,6 +41,7 @@ const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
 const COLOR_BUILDING := Color(0.984, 0.749, 0.141, 0.40)
 const COLOR_SELECTED := Color(0.133, 0.827, 0.933, 0.9)
+const COLOR_STRUCTURE := Color(0.133, 0.827, 0.933, 0.18)
 
 ## The colony to draw.
 var model: ColonyModel
@@ -47,6 +50,9 @@ var origin := Vector3i.ZERO
 ## Camera focus on the ground, scene coordinates.
 var focus := Vector3.ZERO
 var zoom := ZOOM_DEFAULT
+## Whether the structure is open (every module on its floor) or closed (shut hulls, only the
+## outdoor modules; StructureLook).
+var opened := false
 
 var _camera: Camera3D
 var _ground: Node3D
@@ -63,6 +69,8 @@ var _tile_mesh: PlaneMesh
 ## Materials of the loaded models that glow (instance id → material), and their strength now.
 var _lamps: Dictionary = {}
 var _lamp_energy := LAMP_DAY
+var _highlighted := false
+var _highlight_material: StandardMaterial3D
 
 
 func setup(colony: ColonyModel) -> void:
@@ -123,17 +131,48 @@ func zoom_by(factor: float) -> void:
 	_update_camera()
 
 
-## The absolute cell under a point of the view, or null when the ray misses the ground.
-func cell_at(screen_point: Vector2) -> Variant:
+## The absolute cell under a point of the view, or null when the ray misses. `height` is the
+## level the ray is cut at: 0 for the ground, HULL_CLOSED_HEIGHT for the roofs of shut hulls.
+func cell_at(screen_point: Vector2, height: float = 0.0) -> Variant:
 	var from := _camera.project_ray_origin(screen_point)
 	var direction := _camera.project_ray_normal(screen_point)
 	if absf(direction.y) < 0.0001:
 		return null
-	var distance := -from.y / direction.y
+	var distance := (height - from.y) / direction.y
 	if distance < 0.0:
 		return null
 	var hit := from + direction * distance
+	hit.y = 0.0
 	return WorldGrid.to_cell(hit, origin, model.size_x)
+
+
+## Opens the structure (every module on its floor) or closes it (shut hulls).
+func set_opened(value: bool) -> void:
+	if opened == value:
+		return
+	opened = value
+	_rebuild_structure()
+
+
+## Lays a light tint over the whole structure (it is selected) or takes it away.
+func highlight_structure(on: bool) -> void:
+	_highlighted = on
+	_apply_highlight()
+
+
+func _apply_highlight() -> void:
+	if _highlight_material == null:
+		_highlight_material = StandardMaterial3D.new()
+		_highlight_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_highlight_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_highlight_material.albedo_color = COLOR_STRUCTURE
+	var overlay: Material = _highlight_material if _highlighted else null
+	for holder: Node3D in [_hulls, _modules]:
+		for found: Node in holder.find_children("*", "GeometryInstance3D", true, false):
+			var geometry := found as GeometryInstance3D
+			# Modules under construction keep their own tint.
+			if geometry.material_overlay == null or geometry.material_overlay == _highlight_material:
+				geometry.material_overlay = overlay
 
 
 ## Absolute cell under the camera focus.
@@ -215,16 +254,20 @@ func _rebuild_structure() -> void:
 		child.queue_free()
 	var layout := model.layout
 
-	# Hulls: one MultiMesh per hull type.
-	var by_type: Dictionary = {}
+	var definitions := Services.definitions
+	# Hulls: one MultiMesh per model; a closed structure shows its indoor hulls shut.
+	var by_model: Dictionary = {}
 	for cell: Vector3i in layout.hull_cells():
-		var key := layout.hull_at(cell)
-		if not by_type.has(key):
-			by_type[key] = []
-		var cells: Array = by_type[key]
+		var hull_type := layout.hull_at(cell).to_lower()
+		var key := "hull_" + hull_type
+		if not opened and StructureLook.cell_closed(layout, definitions, cell):
+			key += "_closed"
+		if not by_model.has(key):
+			by_model[key] = []
+		var cells: Array = by_model[key]
 		cells.append(cell)
-	for key: String in by_type.keys():
-		var cells: Array = by_type[key]
+	for key: String in by_model.keys():
+		var cells: Array = by_model[key]
 		var mesh := _hull_mesh(key)
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -232,14 +275,21 @@ func _rebuild_structure() -> void:
 		multimesh.instance_count = cells.size()
 		for index: int in cells.size():
 			var local: Vector3i = cells[index]
-			var at := WorldGrid.to_scene(layout.to_absolute(local), origin, model.size_x)
-			multimesh.set_instance_transform(index, Transform3D(Basis.IDENTITY, at))
+			var absolute := layout.to_absolute(local)
+			var at := WorldGrid.to_scene(absolute, origin, model.size_x)
+			# Shut containers turn by a quarter now and then, so the roofs do not repeat.
+			var turn := Basis.IDENTITY
+			if key.ends_with("_closed"):
+				turn = Basis(Vector3.UP, PI / 2.0 * (hash(absolute) % 4))
+			multimesh.set_instance_transform(index, Transform3D(turn, at))
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multimesh
 		_hulls.add_child(instance)
 
 	# Modules: one scene each.
 	for placed: StructureLayout.Module in layout.modules():
+		if not opened and not StructureLook.module_visible_closed(layout, definitions, placed):
+			continue
 		var node := _instance(placed.module_type.to_lower())
 		if node == null:
 			node = _placeholder(placed.module_type)
@@ -252,6 +302,7 @@ func _rebuild_structure() -> void:
 		if placed.is_building():
 			_tint(node, COLOR_BUILDING)
 		_modules.add_child(node)
+	_apply_highlight()
 
 
 ## Draws every loaded ground block near the camera (after the origin moved).
@@ -341,12 +392,14 @@ func _collect_lamps(node: Node3D) -> void:
 				material.emission_energy_multiplier = _lamp_energy
 
 
-func _hull_mesh(hull_type: String) -> Mesh:
-	if _hull_meshes.has(hull_type):
-		return _hull_meshes[hull_type] as Mesh
-	var node := _instance("hull_" + hull_type.to_lower())
+## The mesh of a hull model ("hull_starter", "hull_starter_closed"); a hull type without its
+## own model borrows the starter's (open) or the standard container (shut).
+func _hull_mesh(key: String) -> Mesh:
+	if _hull_meshes.has(key):
+		return _hull_meshes[key] as Mesh
+	var node := _instance(key)
 	if node == null:
-		node = _instance("hull_starter")
+		node = _instance("hull_standard_closed" if key.ends_with("_closed") else "hull_starter")
 	var mesh: Mesh = null
 	if node != null:
 		var found := node.find_children("*", "MeshInstance3D", true, false)
@@ -357,7 +410,7 @@ func _hull_mesh(hull_type: String) -> Mesh:
 		var box := BoxMesh.new()
 		box.size = Vector3(1.0, HULL_FLOOR_HEIGHT, 1.0)
 		mesh = box
-	_hull_meshes[hull_type] = mesh
+	_hull_meshes[key] = mesh
 	return mesh
 
 

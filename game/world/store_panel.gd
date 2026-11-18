@@ -61,27 +61,35 @@ func _ready() -> void:
 
 ## Shows the energy and life support balance and warnings of the colony.
 func show_balance(model: ColonyModel) -> void:
-	var scale := _inventory.scale if _inventory != null else 1000000
-	var lines := PackedStringArray([
-		tr("STORE_POWER").format({
-			"production": AmountFormat.units(model.power[0] / scale),
-			"consumption": AmountFormat.units(model.power[1] / scale)}),
-		tr("STORE_LIFE_SUPPORT").format({
-			"production": AmountFormat.units(model.life_support[0] / scale),
-			"consumption": AmountFormat.units(model.life_support[1] / scale)}),
-	])
-	var short := model.power[1] > model.power[0] or model.life_support[1] > model.life_support[0]
-	if model.food_shortage:
-		lines.append(tr("STORE_FOOD_SHORTAGE"))
-		short = true
-	if model.storage_full:
-		lines.append(tr("STORE_FULL"))
-		short = true
-	_balance.text = "\n".join(lines)
-	if short:
+	_balance.text = balance_text(model)
+	if is_short(model):
 		_balance.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	else:
 		_balance.remove_theme_color_override("font_color")
+
+
+## Energy and life support (made / used per hour) and the colony's warnings, one per line.
+static func balance_text(model: ColonyModel) -> String:
+	var scale := model.inventory.scale if model.inventory != null else 1000000
+	var lines := PackedStringArray([
+		TranslationServer.translate("STORE_POWER").format({
+			"production": AmountFormat.units(model.power[0] / scale),
+			"consumption": AmountFormat.units(model.power[1] / scale)}),
+		TranslationServer.translate("STORE_LIFE_SUPPORT").format({
+			"production": AmountFormat.units(model.life_support[0] / scale),
+			"consumption": AmountFormat.units(model.life_support[1] / scale)}),
+	])
+	if model.food_shortage:
+		lines.append(TranslationServer.translate("STORE_FOOD_SHORTAGE"))
+	if model.storage_full:
+		lines.append(TranslationServer.translate("STORE_FULL"))
+	return "\n".join(lines)
+
+
+## Whether something runs short: more used than made, no food, or the store is full.
+static func is_short(model: ColonyModel) -> bool:
+	return model.power[1] > model.power[0] or model.life_support[1] > model.life_support[0] \
+		or model.food_shortage or model.storage_full
 
 
 ## Shows a (new) inventory; rows are rebuilt.
