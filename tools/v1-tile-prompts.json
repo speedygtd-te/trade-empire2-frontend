@@ -1,0 +1,989 @@
+{
+  "about": "Prompt table for tools/regen-v1-tiles.cjs: one entry per V1 biome. Text-to-image entries regenerate the approved basis (slot 0 = basis seed, slots 1-3 = variantSeeds). Entries with `parent` apply one kontext edit to the new square of parent slot n. `source`: approved = prompt and seed of the approved basis; approved edit = the approved kontext prompt and seed; reconstructed = written from the approved look because V1 got it from a chain, a grade or a procedural layer. `origin` says where it came from. variantSeeds = seed + n*100003 (rerolled slots +7, listed in `rerolled`). Optional: `variantPrompt` (prompt for slots 1-3), `slotOverrides` (a slot made as a kontext edit of the biome's own slot `fromSlot`), `centerCrop` (use only the centre of a larger generation), `sdClamp` (grade contrast limits), `adjusted` + `firstTry` (one prompt correction after review), `flatten`/`grade` (post-processing switches).",
+  "defaults": {
+    "endpoint": "fal-ai/flux-pro/v1.1",
+    "size": [
+      512,
+      512
+    ],
+    "grade": 1
+  },
+  "biomes": {
+    "acid_lake": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, murky desaturated acidic pool from directly above, murky desaturated dark green-brown acidic liquid, dull sickly green-brown toxic liquid, dirty foam, grimy scummy surface, dark, dim somber lighting, heavily desaturated, muted dirty palette, no neon, no bright green, no glowing green, no grass, no plants, lit evenly from upper left, perfectly even uniform distribution of foam and scum across the entire surface, homogeneous murky liquid texture, fine even speckle everywhere, NO diagonal streaks, NO bright band, NO bright streak, NO large patches, NO central feature, NO swirl, no visible seams or hotspots, seamless tileable edge to edge",
+      "seed": 43690,
+      "variantSeeds": [
+        143693,
+        243696,
+        343699
+      ],
+      "source": "approved",
+      "origin": "scripts/acid-lake-variants-prod.cjs (var_v3, picked by Rudi, became slot 0 flopped); seed could be 44690 if re-rolled"
+    },
+    "ash_field": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, very dark near-black volcanic ash and soot from directly above, charred ground, faint dark embers, ominous dim, heavily desaturated, seamless tileable, edge-to-edge, evenly distributed, uniform texture, no large patches, no central feature, no diagonal bands, no visible seams or hotspots, no grass, no plants, no water, no blue tint, lit from upper left, heavily desaturated, dark, dim lighting, muted grey-black ash palette, no bright spots, no glowing embers",
+      "seed": 13510,
+      "variantSeeds": [
+        113513,
+        213516,
+        313519
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-ash-field.cjs level dark (ash-field-integrate-basis.cjs)"
+    },
+    "basalt_plain": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, desaturated dark grey columnar basalt rock from directly above, hexagonal volcanic rock columns, light volcanic ash dust, grimy, dim, perfectly uniform basalt column texture, all columns equal tone, NO single bright rock, NO single light rock, NO prominent light stone, NO highlight blob, evenly distributed brightness, no hotspot, seamless tileable edge-to-edge, seamless tileable, edge-to-edge, evenly distributed, uniform hexagonal basalt column pattern across entire surface, no large patches, no central feature, no diagonal bands, no visible seams or hotspots, no grass, no plants, no water, no blue tint, lit from upper left, heavily desaturated, dark, dim lighting, muted grey-black basalt palette",
+      "seed": 71011,
+      "variantSeeds": [
+        171014,
+        271017,
+        371020
+      ],
+      "source": "approved",
+      "origin": "scripts/basalt-plain-new-basis.cjs cand_71011"
+    },
+    "beach": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark wet muddy beach sand from directly above, dark wet desaturated grey-brown muddy beach sand, grimy silt, scattered small dark pebbles, near-black damp shore, very low saturation, ominous dim, muted grey-brown sand palette, no orange or gold tint, no grass, no plants, no water, perfectly uniform even brightness across the ENTIRE tile, NO light side and dark side, no gradient, no diagonal banding, no bright corner, low overall variance, consistent dark tone corner to corner, homogeneous fine sand grain everywhere, evenly distributed, no central feature, no hotspot, no single bright element, no bright rock or shell, no highlight blob, no bright top edge, no visible seams, seamless tileable edge to edge, perfectly even flat ambient lighting",
+      "seed": 70110,
+      "variantSeeds": [
+        170113,
+        270116,
+        370119
+      ],
+      "source": "approved",
+      "origin": "scripts/beach-even-variants.cjs basis seed 70110; V1 then ran flux/dev i2i (0.35, seed 80110) and a warm grade - the i2i is skipped, the grade to V1 replaces the warm grade"
+    },
+    "boulder_field": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        1024,
+        1024
+      ],
+      "prompt": "seamless tileable top-down texture of a rocky boulder field, rocks and boulders of VARYING sizes — large boulders, medium rocks, small stones and fine gravel — all scattered with PERFECTLY UNIFORM even density across the entire frame, flat overhead orthographic view, full edge-to-edge coverage, NO border, NO vignette, NO frame, NO edge concentration, NO empty center, uniform distribution everywhere including the middle, dark desaturated charcoal-grey rock on dark grit, no blue tint, dim, somber, no single bright rock, no hotspot",
+      "seed": 32418,
+      "variantSeeds": [
+        132421,
+        232424,
+        332427
+      ],
+      "source": "approved",
+      "origin": "scripts/boulder-field-even-texture.cjs even_d (1024 generated, centre 512 used)",
+      "centerCrop": 512
+    },
+    "caldera": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark volcanic crater floor rock with a MODERATE amount of glowing orange-red lava cracks and magma veins, somewhat more lava than sparse, evenly distributed across the entire surface including center, more molten glow but still mostly dark rock, no central pit, no hotspot, seamless tileable, no blue, desaturated charcoal stone, dim, seamless tileable, edge-to-edge, evenly distributed across the ENTIRE surface including center, no central crater, no central pit, no large central feature, no diagonal bands, no visible seams or hotspots, uniform distribution, glowing cracks and rock evenly spread over the whole surface including the middle, no single bright glow spot, glow as a distributed network of veins, no grass, no plants, no water, no blue tint, lit from upper left, heavily desaturated rock, dark, dim lighting, muted charcoal volcanic palette, orange glowing lava cracks",
+      "seed": 22130,
+      "variantSeeds": [
+        122133,
+        222143,
+        322139
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-caldera-mild2.cjs caldera_mild2_a",
+      "rerolled": [
+        {
+          "slot": 2,
+          "firstSeed": 222136,
+          "why": "one large ring crater in the centre"
+        }
+      ],
+      "slotOverrides": {
+        "2": {
+          "endpoint": "fal-ai/flux-pro/kontext",
+          "fromSlot": 0,
+          "seed": 930001,
+          "prompt": "keep the exact same ground with the exact same colours, the exact same brightness and the exact same mood; only shift and rearrange its features into a different arrangement; keep them spread evenly over the whole picture so that every part carries the same amount of detail, right into all four corners and all along all four edges, with no single central feature; seen from directly above, seamless tileable ground texture",
+          "why": "first seed and reroll both drew one big central ring crater"
+        }
+      }
+    },
+    "canyon": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, desaturated dark red-brown weathered canyon rock from directly above, dusty muted sediment layers and grimy cracked stone evenly covering the whole surface including the middle, somber low saturation, fairly flat ground, seamless tileable, edge-to-edge, evenly distributed sediment and rock texture across the ENTIRE surface INCLUDING the center, the middle of the image is just as textured as the edges, no large central canyon, no central pit, no central ravine, no central crevice, no dominant central feature, no diagonal bands, no visible seams or hotspots, fairly flat top-down ground, not deep 3D relief, no deep shadows, shallow surface detail only, uniform overall brightness, perfectly even uniform lighting, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright rock block, no bright highlight blob, rock in muted uniform tone, no grass, no plants, no water, heavily desaturated, dusty, dim, muted earthy red-brown terracotta palette, no bright orange, no vivid orange-red, no yellow",
+      "seed": 18280,
+      "variantSeeds": [
+        118283,
+        218286,
+        318289
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-canyon.cjs level medium"
+    },
+    "carbon_crust": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, very dark sooty charred carbon crust from directly above, fine dense network of dark-grey crust ridges and shallow cracks evenly over the whole frame including the center, dirty matte near-black anthracite, dim somber, fairly flat ground, seamless tileable, edge-to-edge, evenly distributed charred carbon crust and dark crack pattern across the ENTIRE surface including the center, brittle encrusted carbon flakes of fairly uniform size covering the whole image, the middle is just as crusted as the edges, no large central crack, no dominant central crack, no central feature, no ring of cracks at the edges, no diagonal bands, no diagonal crack lines, no visible seams or hotspots, fairly flat top-down ground, not deep 3D relief, no deep shadows, shallow surface cracks only, uniform overall brightness, perfectly even uniform lighting, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright patch, no bright highlight blob, NO lava glow, no embers, no orange, no red, no glossy highlights, no bright spots, no shine, matte, no water, no sand, no grass, no plants, heavily desaturated, dirty, grimy, dim, sooty near-anthracite-black dark grey carbon palette",
+      "seed": 60534,
+      "variantSeeds": [
+        160537,
+        260540,
+        360543
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-carbon-crust.cjs v4"
+    },
+    "cave_floor": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dim grimy very dark grey cave ground from slightly above, many large thick blocky broken bone-dry stone plates stacked and tilted at strongly varied heights standing proud above deep recessed crevices with heavy matte black contact shadows pooling in every gap between the raised blocks, a powdery dust coating on the dry rock, some loose chunky rubble, chalk-like crumbly weathered somber, strong chunky three-dimensional relief, the dry rock soaks up the light, strong three-dimensional rocky relief, raised rock slabs and rubble casting deep matte contact shadows, deep crevices and recessed sunken cracks, pronounced depth and ambient occlusion between stones, chunky uneven stone floor with real height variation, rough matte dry stone surface, fully diffuse non-reflective rock, chalky weathered crumbly stone, dusty powdery dry rock skin, flat lighting with soft diffuse shadows, the surface absorbs light, deep matte black shadows in the recesses, seamless tileable, edge-to-edge, evenly distributed across the ENTIRE surface including the center, the middle is just as detailed as the edges, no single central feature, no dominant central crack, no ring at edges, no diagonal bands, no diagonal crack lines, no visible seams or hotspots, uniform overall brightness, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright patch, no stalagmites, no stalactites, no lava, no glow, no colourful crystals, no vegetation, no sand, no grass, very dark, deep shadow, heavily desaturated, dirty grimy dim, dark cave floor in low light, dark grey to brownish-grey rock palette, almost black in the crevices",
+      "seed": 558368,
+      "variantSeeds": [
+        658371,
+        758374,
+        858377
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-cave-floor-darkmatte.cjs e2 (seed 558231 + 137 re-roll)"
+    },
+    "chemical_vent": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "corroded_plain",
+      "prompt": "Turn this corroded dirty ground into a mild toxic chemical vent field: keep most of the cracked grimy dark corroded soil, add just one or two small faint shallow pools of dull muted sickly yellow-green chemical sludge, add a very thin faint low-lying noxious greenish vapor haze, muted heavily desaturated dull sickly yellow-green and olive chemical tones, matte surface, dim somber lighting from the upper left, dark grimy toxic wasteland look, The Expanse sci-fi aesthetic",
+      "seed": 411001,
+      "variantSeeds": [
+        511004,
+        611007,
+        711010
+      ],
+      "source": "approved edit",
+      "origin": "scripts/chemical-vent-hero-style-test.cjs mild (kontext on corroded_plain_0)"
+    },
+    "corroded_plain": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "plains",
+      "prompt": "make this ground corroded and toxic: rusty chemical stains, sickly desaturated yellow-green toxic discoloration, patches of acidic crust, flat dry corroded rusty muddy ground, small poison-green toxic moss patches spread evenly across the whole picture, and several clearly visible dead withered dried-out plants and brown brittle shrubs scattered uniformly across the surface",
+      "seed": 60004,
+      "variantSeeds": [
+        160007,
+        260010,
+        360013
+      ],
+      "source": "approved edit (two edits merged)",
+      "origin": "V1: kontext on plains_0 (seed 60004, adds a puddle) then kontext (seed 30501, puddle -> dry ground + dead plants); both approved prompts merged into one edit without the puddle"
+    },
+    "crater": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark grey lunar regolith from directly above, fine dust and grit, softly pitted with many small shallow impact pits and a few larger shallow worn craters with soft eroded rims, low relief, weathered old surface, evenly distributed across the whole frame",
+      "seed": 920031,
+      "variantSeeds": [
+        1020034,
+        1120037,
+        1220040
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 crater = regolith_0 rolled, darkened, plus a procedural field of shallow hollows (no build script; biome-overview.html)",
+      "size": [
+        512,
+        512
+      ],
+      "adjusted": "the edit on regolith drew large regular render-like bubbles; text prompt describing the V1 look instead",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "keep this grey dusty ground and its fine grain as it is, and press many shallow round hollows of different sizes into it, soft-edged dish-shaped depressions without raised rims, spread evenly over the whole picture, the ground stays level overall, same brightness, seen from directly above, seamless tileable ground texture",
+        "seed": 920031,
+        "parent": "regolith"
+      }
+    },
+    "crevasse": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "glacier",
+      "prompt": "keep this grey ground and its grain exactly as it is, and add a fine network of thin dark hairline cracks forming irregular polygon cells about one twelfth of the picture wide, each crack with a thin bright lip on one side, spread evenly over the whole picture, same tone, same brightness, seen from directly above, seamless tileable ground texture",
+      "seed": 920021,
+      "variantSeeds": [
+        1020024,
+        1120027,
+        1220030
+      ],
+      "source": "reconstructed edit",
+      "origin": "V1 crevasse = glacier_0 x procedural hairline Voronoi net (41 px cells, 5 px cracks) (crevasse-hairline-integrate-prod.cjs)"
+    },
+    "crystal_field": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "corroded_plain",
+      "prompt": "Turn this corroded dirty ground into a mild toxic crystal field: keep most of the cracked grimy dark corroded soil, add just a few small scattered clusters of angular jagged crystalline mineral shards and small geode formations growing up out of the corroded ground, dull opaque matte chalky crystals with rough grainy non-reflective faces, dim light-absorbing mineral surface, muted desaturated dull toxic teal-green crystal colour with olive and grey grime staining the crystal bases, muted heavily desaturated dull toxic tones, matte non-reflective surface, dim somber lighting from the upper left, dark grimy toxic wasteland look, The Expanse sci-fi aesthetic",
+      "seed": 431001,
+      "variantSeeds": [
+        531004,
+        631007,
+        731010
+      ],
+      "source": "approved edit",
+      "origin": "scripts/crystal-field-hero-style-test.cjs mild (kontext on corroded_plain_0)"
+    },
+    "deep_ocean": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark murky deep open-ocean water surface from directly above, gentle wave ripples with even open-water coverage across the whole frame, muted grey-white foam streaks and thin whitecaps woven evenly across the choppy ripples of the whole surface, dark murky blue-grey and teal deep water beneath the foam, matte non-reflective water surface with no bright sun glare, muted heavily desaturated dark blue-grey and murky teal deep-ocean water tones, dim somber overcast lighting from the upper left, cold deep open-ocean look, uniform water texture, ripple pattern even toward every edge",
+      "seed": 475004,
+      "variantSeeds": [
+        575007,
+        675010,
+        775013
+      ],
+      "source": "reconstructed",
+      "origin": "V1 deep_ocean = ocean_0 graded darker (tiles-water-grade.cjs); same reconstructed ocean prompt, own seeds, grade to V1 deep_ocean"
+    },
+    "deep_stone": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "tundra",
+      "prompt": "turn this ground into very dark dense compacted earth packed with large rounded cobbles of irregular sizes set into it, about one sixth of the picture wide, covering almost half of the ground, irregularly scattered, deep shadowed gaps between them, matte, dark, seen from directly above, seamless tileable ground texture",
+      "seed": 920071,
+      "variantSeeds": [
+        1020074,
+        1120077,
+        1220080
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 deep_stone = wet earth base plus procedural cobbles 55-130 px, 42 % cover (tiles-underground-stones.cjs)",
+      "adjusted": "first edit on permafrost became hexagon paving; parent now tundra, irregular cobbles",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "turn this ground into very dark dense compacted earth packed with large rounded cobbles set into it, cobbles about one sixth of the picture wide, covering almost half of the ground, deep shadowed gaps between them, spread evenly over the whole picture, matte, dark, seen from directly above, seamless tileable ground texture",
+        "seed": 920071,
+        "parent": "permafrost"
+      }
+    },
+    "desert_patch": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "sand_dunes",
+      "prompt": "turn this sand into dry cracked hard desert ground: flat parched clay split by a fine network of thin dried mud cracks into many small polygons about one tenth of the picture wide, evenly distributed across the whole surface, flat, weathered",
+      "seed": 71013,
+      "variantSeeds": [
+        171016,
+        271019,
+        371022
+      ],
+      "source": "adjusted (approved edit)",
+      "origin": "scripts/desert-patch-sd-derive.cjs (kontext on sand_dunes_0)",
+      "adjusted": "the approved edit gave few large puffy plates on the new square; asked for a finer crack net",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "dry cracked hard desert ground, dried mud cracks, firm packed earth with polygonal cracks, parched arid clay, weathered, evenly distributed cracks across the whole surface",
+        "seed": 71013,
+        "parent": "sand_dunes"
+      }
+    },
+    "dust_basin": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, cosmic dust basin from directly above, fine grey dust settled in shallow depression, smooth powder, variation 2, slightly different pattern",
+      "seed": 10137,
+      "variantSeeds": [
+        110147,
+        210150,
+        310153
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts DUST_BASIN variant 1 (V1 slot 0 = latticeRoll of slot 1)",
+      "variantPrompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, cosmic dust basin from directly above, fine grey dust, smooth powder with soft low drift ridges and faint ripples, evenly spread across the whole frame, variation 2, slightly different pattern",
+      "rerolled": [
+        {
+          "slot": 1,
+          "firstSeed": 110140,
+          "why": "basis prompt (\"settled in shallow depression\") gave large concentric bowl rings; variants use variantPrompt without the depression"
+        },
+        {
+          "slot": 2,
+          "firstSeed": 210143,
+          "why": "basis prompt (\"settled in shallow depression\") gave large concentric bowl rings; variants use variantPrompt without the depression"
+        },
+        {
+          "slot": 3,
+          "firstSeed": 310146,
+          "why": "basis prompt (\"settled in shallow depression\") gave large concentric bowl rings; variants use variantPrompt without the depression"
+        }
+      ]
+    },
+    "dust_plain": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, barren dust plain from directly above, flat grey-brown fine dusty surface with tiny scattered pebbles",
+      "seed": 10000,
+      "variantSeeds": [
+        110003,
+        210006,
+        310009
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts DUST_PLAIN variant 0 (seed from the formula), colour-graded in V1"
+    },
+    "forest": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "plains",
+      "prompt": "keep the existing grassy ground of this plains tile and turn it into a shaded forest floor by adding woodland ground detail on top of the grass: patches of dull green moss spreading over the grass, scattered fallen brown leaf litter and dead leaves, a few small twigs and thin surface roots crossing the ground, small low clumps of green ferns and low undergrowth, and soft dappled shade, keep it as flat woodland GROUND only with no tree trunks and no tree canopy, make it a fern-heavy shaded forest floor: the grassy ground largely overgrown with many small low green fern clumps and leafy low undergrowth, patches of dull green moss between them, fallen brown leaf litter and a few thin surface roots and twigs filling the gaps, deep dappled shade, dark damp woodland floor, still flat GROUND with no tree trunks, muted heavily desaturated dull woodland tones of dark moss-green and brown leaf litter, matte non-reflective surface, dim dappled shade lighting from the upper left, dark shaded forest floor look under a tree canopy, The Expanse sci-fi aesthetic",
+      "seed": 474004,
+      "variantSeeds": [
+        574007,
+        674010,
+        774013
+      ],
+      "source": "approved edit",
+      "origin": "scripts/forest-hero-style-test.cjs dark_fern (kontext on plains_0)"
+    },
+    "fractured_zone": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, fractured asteroid from directly above, broken dark rock with deep fissures and cracks throughout, variation 2, slightly different pattern",
+      "seed": 14137,
+      "variantSeeds": [
+        114140,
+        214143,
+        314146
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts FRACTURED_ZONE variant 1 (V1 slot 0 = shifted window of slot 1)"
+    },
+    "frozen_lake": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "glacier",
+      "prompt": "keep this photograph as it is: the same grey ground, the same fine dust and grain, the same brightness, the same lighting. Only fill in the craters and press every stone, pebble and piece of rubble flat into the ground until it disappears, so that the ground becomes level and smooth, and the levelled ground is packed with thousands of small flat facets the size of a grain of rice, each one a barely different shade of the same grey, the same aerial photograph as before, unchanged except that the ground is now level.",
+      "seed": 88011,
+      "variantSeeds": [
+        188014,
+        288017,
+        388020
+      ],
+      "source": "adjusted (approved edit)",
+      "origin": "scripts/tiles-frozen-lake-plate.cjs R3-GRAIN (V1 input was a texture-bombed glacier plate)",
+      "adjusted": "the approved edit left bright bead-like stones on the new glacier square; stones now pressed flat",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "keep this photograph as it is: the same grey ground, the same fine dust and grain, the same brightness, the same lighting. Only fill in the craters and cover over the loose stones and the rubble, so that the ground becomes level and smooth, and the levelled ground is packed with thousands of small flat facets the size of a grain of rice, each one a barely different shade of the same grey, the same aerial photograph as before, unchanged except that the ground is now level.",
+        "seed": 88011,
+        "parent": "glacier"
+      }
+    },
+    "fumarole": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark cold volcanic fumarole ground seen from directly above, cold cracked near-black basalt and dark grey rock lightly and evenly stained and dusted all over with a dull muted desaturated pale ochre and greyish-yellow dry sulfur powder crust, the sulfur is a flat dry chalky surface stain spread thinly across the whole cold rock, only a few tiny dark cool specks as small cold gas vents, no crater, no hole, no pit rim, faint thin pale grey cold steam hugging the ground, very dark overall the dark rock dominates and the sulfur staining is sparse and subtle, seamless tileable top-down ground texture, evenly distributed uniform texture across the whole image, the middle just as detailed as the edges, tiles placed edge-to-edge blend without visible seams or hotspots, no central feature, no large patches, no diagonal bands, no single bright element, uniform brightness across the tile, heavily desaturated, dark, dim cold lighting, muted grey-black volcanic palette, the vents are cold dark empty holes with cool dark interiors, the only colour on the rock is the dull chalky muted pale ochre greyish-yellow sulfur mineral dust, never bright yellow, never saturated, never neon, never glowing, never incandescent, no fire, no ember, no lava, no glow, no orange, cold dry sulfur powder not molten, soft light from upper left",
+      "seed": 815140,
+      "variantSeeds": [
+        915143,
+        1015153,
+        1115149
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-fumarole-fresh.cjs h1 (seed 815003 + 137), darkened x0.85 in V1",
+      "rerolled": [
+        {
+          "slot": 2,
+          "firstSeed": 1015146,
+          "why": "central vent hole with radiating cracks"
+        }
+      ],
+      "slotOverrides": {
+        "2": {
+          "endpoint": "fal-ai/flux-pro/kontext",
+          "fromSlot": 0,
+          "seed": 930002,
+          "prompt": "keep the exact same ground with the exact same colours, the exact same brightness and the exact same mood; only shift and rearrange its features into a different arrangement; keep them spread evenly over the whole picture so that every part carries the same amount of detail, right into all four corners and all along all four edges, with no single central feature; seen from directly above, seamless tileable ground texture",
+          "why": "first seed and reroll both drew a central vent with radiating cracks"
+        }
+      }
+    },
+    "glacier": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, lunar regolith from directly above, fine grey moon-like dust with small scattered micro-craters, variation 4, slightly different pattern",
+      "seed": 8411,
+      "variantSeeds": [
+        108414,
+        208417,
+        308420
+      ],
+      "source": "approved",
+      "origin": "scripts/glacier-regolith-integrate-prod.cjs: glacier = regolith_3 (REGOLITH variant 3) flattened and graded"
+    },
+    "ice_cavern": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "crystal_field",
+      "prompt": "keep the cracked dark ground, shrink the crystal clusters into small flat angular ice shards lying in and along the cracks, pale blue-grey translucent ice, and turn the ground into dark cold grey rock with a light dusting of frost, matte, dim, seen from directly above, seamless tileable ground texture",
+      "seed": 920081,
+      "variantSeeds": [
+        1020084,
+        1120087,
+        1220090
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 ice_cavern = crystal_field_0 lattice-shifted and recoloured blue-grey (tiles-ice-cavern-derive.cjs)",
+      "adjusted": "crystals came back large and lotus-shaped; V1 shows small shards",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "keep the cracked dark ground and the crystal clusters where they are, turn the crystals into cold translucent pale blue-grey ice crystals with frost, and the ground into dark cold grey rock with a light dusting of frost, matte, dim, seen from directly above, seamless tileable ground texture",
+        "seed": 920081,
+        "parent": "crystal_field"
+      }
+    },
+    "ice_shelf": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark murky deep open-ocean water surface from directly above, gentle wave ripples with even open-water coverage across the whole frame, muted grey-white foam streaks and thin whitecaps woven evenly across the choppy ripples of the whole surface, dark murky blue-grey and teal deep water beneath the foam, matte non-reflective water surface with no bright sun glare, muted heavily desaturated dark blue-grey and murky teal deep-ocean water tones, dim somber overcast lighting from the upper left, cold deep open-ocean look, uniform water texture, ripple pattern even toward every edge",
+      "seed": 476004,
+      "variantSeeds": [
+        576007,
+        676010,
+        776013
+      ],
+      "source": "reconstructed",
+      "origin": "V1 ice_shelf = ocean_0 graded cold, foam reads as brash ice (tiles-ice-shelf-polar-grade.cjs); same reconstructed ocean prompt, own seeds"
+    },
+    "impact_crater": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, asteroid crater field from directly above, rough dark rocky surface heavily pockmarked with many small overlapping micro-meteor impact pits of different sizes, fine dark grit, low relief, evenly distributed across the whole frame",
+      "seed": 920041,
+      "variantSeeds": [
+        1020044,
+        1120047,
+        1220050
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 impact_crater = crater base rolled plus a second finer procedural hollow field",
+      "size": [
+        512,
+        512
+      ],
+      "adjusted": "the edit on crater drew render-like bubbles; text prompt built on the generate-biome-assets.ts IMPACT_CRATER wording",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "keep this ground as it is and add many more small shallow pockmarks and tiny dish-shaped impact hollows between the existing ones, densely and evenly over the whole picture, no raised rims, same brightness, seen from directly above, seamless tileable ground texture",
+        "seed": 920041,
+        "parent": "crater"
+      }
+    },
+    "island": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark wet muddy beach sand from directly above, dark wet desaturated grey-brown muddy beach sand, grimy silt, scattered small dark pebbles, near-black damp shore, very low saturation, ominous dim, muted grey-brown sand palette, no orange or gold tint, no grass, no plants, no water, perfectly uniform even brightness across the ENTIRE tile, NO light side and dark side, no gradient, no diagonal banding, no bright corner, low overall variance, consistent dark tone corner to corner, homogeneous fine sand grain everywhere, evenly distributed, no central feature, no hotspot, no single bright element, no bright rock or shell, no highlight blob, no bright top edge, no visible seams, seamless tileable edge to edge, perfectly even flat ambient lighting",
+      "seed": 701101,
+      "variantSeeds": [
+        801104,
+        901107,
+        1001110
+      ],
+      "source": "approved prompt (beach), new seed",
+      "origin": "V1 island = finished beach regraded warmer (tiles-water-grade.cjs); same beach basis prompt, own seeds"
+    },
+    "kelp_forest": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, kelp forest from directly above through water, green-brown seaweed canopy visible through blue water surface, variation 3, slightly different pattern",
+      "seed": 11274,
+      "variantSeeds": [
+        111277,
+        211280,
+        311283
+      ],
+      "source": "approved",
+      "origin": "scripts/tiles-water-kontext.cjs: hero = Batch-1 kelp_forest_2 (KELP_FOREST variant 2); V1 slot 0 is a layout-only kontext of it, then graded"
+    },
+    "lava_flow": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, very dark desaturated cooled volcanic crust from directly above, a clear even network of thin deep orange-red ember cracks threading between the matte black basalt plates across the whole surface, the cooled dark crust still dominates, the ember glow subdued and dim, somber heavily desaturated, cooled black charcoal basaltic crust covering most of the ground, broken by an even network of thin glowing cracks holding a subdued deep ember glow deep orange-red, the cooled dark crust sits flush across the whole surface and dominates the area, the dim ember glow is contained inside the thin seams between the crust plates, matte-dominated dark surface, the cooled basalt rock between the cracks is rough dry fully diffuse non-reflective matte stone, the only light emission is the subdued self-illuminated deep-ember glow inside the cracks themselves not a reflection, no mirror reflection, no specular highlight, no bright glare, flat soft diffuse lighting on the rock, deep matte black shadows on the cooled crust, seamless tileable, edge-to-edge, evenly distributed across the ENTIRE surface including the center, the middle is just as detailed as the edges, no single central feature, no dominant central crack, no central river, no central ridge, no ring at edges, no diagonal bands, no diagonal crack lines, no visible seams or hotspots, uniform overall brightness, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright patch, no neon, no bright yellow-white hot lava, no white-hot glow, no fire flames, no smoke plume, no single central river, no diagonal lava band, no colourful crystals, no purple gemstones, no vegetation, no sand, no water, no ice, very dark, deep shadow, heavily desaturated cooled rock dark grey-black to charcoal, the glow is deep ember deep orange-red restrained and dim, explicitly not neon orange not bright yellow not white-hot, the dark cooled crust dominates the tile and the glow is a minority of the surface, ominous somber",
+      "seed": 829517,
+      "variantSeeds": [
+        929520,
+        1029523,
+        1129526
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-lava-flow.cjs level l2"
+    },
+    "magma_pocket": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "lava_flow",
+      "prompt": "keep the dark cooled black charcoal basalt rock and its subdued deep ember glowing cracks exactly as the base, add a few slightly larger round openings of brighter hot glowing molten orange lava, fewer but each a bit larger, still small relative to the tile, scattered evenly across the whole surface, several separate small ones, no single big central pool, no central feature",
+      "seed": 648319,
+      "variantSeeds": [
+        748322,
+        848325,
+        948328
+      ],
+      "source": "approved edit",
+      "origin": "scripts/style-test-tile-magma-pocket.cjs m3 (kontext on lava_flow l2)"
+    },
+    "mesa": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, very dark desaturated brown mesa rock from directly above, dusty shadowed grimy cracked stone with faint subtle sediment layering densely and evenly filling the entire frame including the center, ominous dim, heavily muted red-brown, fairly flat ground, subtle faint sediment layering only, layering must be shallow and even, no large wavy bands, no dominant wave pattern, no agate swirl pattern, no repeating band pattern, no diagonal bands, seamless tileable, edge-to-edge, evenly distributed rock and sediment texture across the ENTIRE surface INCLUDING the center, the middle of the image is just as textured as the edges, no dominant central feature, no central pit, no visible seams or hotspots, fairly flat top-down ground, not deep 3D relief, no deep shadows, shallow surface detail only, uniform overall brightness, perfectly even uniform lighting, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright rock block, no bright highlight blob, rock in muted uniform tone, no grass, no plants, no water, heavily desaturated, dusty, dim, muted earthy red-brown terracotta palette, no bright orange, no vivid orange-red, no glowing orange, no yellow",
+      "seed": 13311,
+      "variantSeeds": [
+        113314,
+        213317,
+        313320
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-mesa.cjs level dark"
+    },
+    "metallic_surface": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, metallic asteroid surface from directly above, silvery iron-nickel rock with metallic sheen and grooves, variation 4, slightly different pattern",
+      "seed": 16411,
+      "variantSeeds": [
+        116414,
+        216417,
+        316420
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts METALLIC_SURFACE variant 3 (V1 slot 0 = shifted slot 3 plus a procedural two-colour corrosion layer)",
+      "adjusted": "tried once and rejected: adding \"rust corrosion and bluish tarnished steel\" to the prompt (seed 16411) turned it into sci-fi hull panels; kept the approved root prompt. V1 got its rust/blue look from a procedural corrosion layer, which the grade only approximates."
+    },
+    "mineral_vein": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "tundra",
+      "prompt": "turn this ground into dark damp compacted brown earth and embed medium stones in the earth, about one eighth of the picture wide, covering about a fifth of the ground; some of the stones are chunks of raw metal ore with a dull metallic glint, irregularly scattered over the whole picture, matte earth, seen from directly above, seamless tileable ground texture",
+      "seed": 920061,
+      "variantSeeds": [
+        1020064,
+        1120067,
+        1220070
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 mineral_vein = wet earth base plus procedural stones 40-95 px with ore chunks and metallic glint (tiles-underground-stones.cjs)",
+      "adjusted": "parent changed to tundra like rock_layer",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "turn this ground into dark damp compacted brown earth: smooth over the frost furrows, and embed medium stones in the earth, about one eighth of the picture wide, covering about a fifth of the ground; some of the stones are chunks of raw metal ore with a dull metallic glint, spread evenly over the whole picture, matte earth, seen from directly above, seamless tileable ground texture",
+        "seed": 920061,
+        "parent": "permafrost"
+      }
+    },
+    "mountain": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "plains",
+      "prompt": "turn most of the grass of this ground into bare dark dirty soil and gravel, keep only a few sparse dry grass tufts, and add a few scattered rounded grey matte weathered rocks and small-to-medium boulders sitting on the ground, spread evenly across the whole picture, same matte dim upper-left lighting and darkness",
+      "seed": 194837,
+      "variantSeeds": [
+        294840,
+        394843,
+        494846
+      ],
+      "source": "adjusted (approved edit)",
+      "origin": "scripts/mountain-4slot-build.cjs d0 (V1 input was plains_dirty_mix_s1, a sibling of plains; here plains)",
+      "adjusted": "plains is grassier than the V1 root (plains_dirty_mix_s1); the edit now also removes most grass",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "keep ALL the existing dry grass tufts, gravel and dark dirty soil exactly as they are — do not remove, cover, recolour or regenerate the existing ground or its vegetation; ONLY ADD a few scattered rocks of cool grey matte weathered mountain rocks and stones and a few small-to-medium boulders sitting on top of the ground; let some of the existing dry grass tufts grow around the bases and edges of the rocks; the dark soil, gravel and grass stay clearly visible between and around the rocks; same matte dim upper-left lighting and darkness",
+        "seed": 194837,
+        "parent": "plains"
+      }
+    },
+    "oasis": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "sand_dunes",
+      "prompt": "small green grass and moss tufts growing scattered across damp moist sandy ground, oasis floor",
+      "seed": 41011,
+      "variantSeeds": [
+        141014,
+        241017,
+        341020
+      ],
+      "source": "approved edit",
+      "origin": "scripts/oasis-sd-derive.cjs slot 0 (kontext on sand_dunes_0)"
+    },
+    "obsidian_ridge": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, very dark desaturated volcanic obsidian field from directly above, an even spread of medium dark almost-black obsidian shards with smooth glassy curved conchoidal fracture faces and sharp angular broken edges showing a faint soft sheen, bedded in matte dry dark grey-black basaltic rock, somber dim heavily desaturated, the matte rock still dominates, scattered dark almost-black volcanic glass obsidian fragments with smooth glassy conchoidal curved fracture faces and sharp angular shard edges, embedded evenly into matte dark grey-black basaltic volcanic rock, the obsidian shards sit flush across the whole ground, matte-dominated dark surface, the dark basaltic rock between the shards is rough dry fully diffuse non-reflective stone, only a faint subtle soft sheen catching the upper-left light on the smooth conchoidal obsidian fracture faces, no strong mirror reflection, no bright hotspot glare, flat soft diffuse lighting, deep matte black shadows in the recesses, seamless tileable, edge-to-edge, evenly distributed across the ENTIRE surface including the center, the middle is just as detailed as the edges, no single central feature, no dominant central crack, no central ridge, no ring at edges, no diagonal bands, no diagonal crack lines, no visible seams or hotspots, uniform overall brightness, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright patch, no lava, no glow, no embers, no fire, no colourful crystals, no purple gemstones, no vegetation, no sand, no water, no ice, very dark, deep shadow, heavily desaturated, dirty grimy dim, dark grey-black to charcoal volcanic palette consistent with dark basalt, almost black in the crevices, ominous somber",
+      "seed": 380417,
+      "variantSeeds": [
+        480420,
+        580423,
+        680426
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-obsidian-ridge.cjs level o2"
+    },
+    "ocean": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark murky deep open-ocean water surface from directly above, gentle wave ripples with even open-water coverage across the whole frame, muted grey-white foam streaks and thin whitecaps woven evenly across the choppy ripples of the whole surface, dark murky blue-grey and teal deep water beneath the foam, matte non-reflective water surface with no bright sun glare, muted heavily desaturated dark blue-grey and murky teal deep-ocean water tones, dim somber overcast lighting from the upper left, cold deep open-ocean look, uniform water texture, ripple pattern even toward every edge",
+      "seed": 474004,
+      "variantSeeds": [
+        574007,
+        674010,
+        774013
+      ],
+      "source": "reconstructed",
+      "origin": "root generate-biome-assets.ts OCEAN v1 (seed 5137, bright tropical blue) + approved dark_foam kontext (ocean-hero-style-test.cjs) merged into one text prompt"
+    },
+    "permafrost": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "tundra",
+      "prompt": "keep this dark frozen stony ground exactly as it is, and press a network of shallow polygonal frost-crack furrows into it: irregular polygon cells about one eighth of the picture wide, separated by narrow sunken furrows with slightly raised lighter rims, spread evenly over the whole picture, same tone, same brightness, seen from directly above, seamless tileable ground texture",
+      "seed": 920011,
+      "variantSeeds": [
+        1020014,
+        1120017,
+        1220020
+      ],
+      "source": "reconstructed edit",
+      "origin": "V1 permafrost = tundra_0 x procedural Voronoi crack net (60 px cells, 12 px furrows) (permafrost-net-integrate-prod.cjs)"
+    },
+    "plains": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, desaturated dirty ground from directly above, roughly equal mix of matted desaturated grass and wet brown mud, balanced 50/50, the grass tufts are muted olive-green, not brown and not dry, desaturated green-grey grass, while the soil between stays wet dark brown mud, plenty of dull olive-green grass tufts evenly spread between mud patches, wet dark brown muddy soil interspersed with abundant matte washed-out olive-green grass, very low overall saturation, grimy trampled grungy terrain, dull olive-green grass over dark brown mud palette, evenly distributed mud and grass across the entire surface, uniform texture, homogeneous mix, no large patches, no central feature, no dominant central motif, no big mud zone, no big grass zone, no diagonal bands, fine even speckle of mud and grass everywhere, seamless tileable ground texture designed to be placed edge-to-edge in a grid, repeating tiles next to and above each other must blend without visible seams or hotspots, flat top-down ground, flat ground-level grass, no tall protruding tufts, no cast shadows, no raised objects, no puddle reflections, no bright flowers, no white dots, no colorful blossoms, no vivid green, lit evenly from upper left",
+      "seed": 73512,
+      "variantSeeds": [
+        173515,
+        273518,
+        373521
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-plains-mix3.cjs seed 0 (plains_dirty_mix3)"
+    },
+    "reef": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, a living coral reef in shallow water seen from directly above, the whole frame is one continuous carpet of coral, coral touching coral everywhere: rounded knobbly brain-coral boulders and mounded encrusting coral heads packed tightly against one another, dense thickets of branching staghorn coral, broad overlapping plate corals and low ruffled fan corals, small tufts of dull olive weed growing between them, and narrow dark shadowed crevices where the colonies touch; the coral heads are large in the frame and the carpet of coral continues straight past all four edges and all four corners of the picture; dusty rose and faded salmon brain corals, muddy amber and burnt ochre staghorn thickets, dull violet-grey plate corals, rust brown fan corals, greyed olive-green encrusting mats, these colours spread evenly across the whole frame, lit from upper left, matte grainy surfaces, seamless tiling underwater texture",
+      "seed": 305881,
+      "variantSeeds": [
+        405884,
+        505887,
+        605890
+      ],
+      "source": "reconstructed",
+      "origin": "approved reef kontext prompt P_REEF v4 (tiles-water-kontext.cjs) rewritten as a top-down text prompt (isometric wording dropped); V1 grade turned it underwater blue",
+      "sdClamp": [
+        0.35,
+        1.6
+      ],
+      "adjusted": "grade only: sd clamp widened to 0.35 so the contrast comes down to the dark V1 reef (no new call)"
+    },
+    "regolith": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, lunar regolith from directly above, fine grey moon-like dust with small scattered micro-craters",
+      "seed": 8000,
+      "variantSeeds": [
+        108003,
+        208006,
+        308009
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts REGOLITH variant 0 (Batch-1 original, seed from the formula)"
+    },
+    "rock_layer": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "tundra",
+      "prompt": "turn this ground into dark damp compacted brown earth and embed many small and medium flat stones flush in the earth, stones about one tenth of the picture wide, covering about a fifth of the ground, irregularly scattered over the whole picture, matte, same darkness, seen from directly above, seamless tileable ground texture",
+      "seed": 920051,
+      "variantSeeds": [
+        1020054,
+        1120057,
+        1220060
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 rock_layer = wet earth base (from permafrost) plus procedural stones 30-70 px, 18 % cover (tiles-underground-stones.cjs)",
+      "adjusted": "permafrost polygon net carried into the stones; parent now tundra (the V1 earth base came from it before the net)",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "turn this ground into dark damp compacted brown earth: smooth over the frost furrows, and embed many small and medium flat stones flush in the earth, stones about one tenth of the picture wide, covering about a fifth of the ground, spread evenly over the whole picture, matte, same darkness, seen from directly above, seamless tileable ground texture",
+        "seed": 920051,
+        "parent": "permafrost"
+      }
+    },
+    "rocky_desert": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "sand_dunes",
+      "prompt": "scatter loose rocks and pebbles of varying sizes on top of this sand: many small grey-brown pebbles and a few larger rounded rocks lying on the surface, spread evenly across the whole picture, keep the sand as it is",
+      "seed": 70011,
+      "variantSeeds": [
+        170014,
+        270017,
+        370020
+      ],
+      "source": "adjusted (approved edit)",
+      "origin": "scripts/rocky-desert-sd-derive.cjs (V1 input was sand_dunes_2, a kontext variant of sand_dunes_0)",
+      "adjusted": "the approved edit turned the ripples into round pits instead of adding rocks",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "add scattered rocks and stones of varying sizes spread evenly across the sand",
+        "seed": 70011,
+        "parent": "sand_dunes"
+      }
+    },
+    "rocky_outcrop": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, rocky outcrop from directly above, sharp angular grey exposed rock formations jutting upward, variation 2, slightly different pattern",
+      "seed": 13137,
+      "variantSeeds": [
+        113147,
+        213143,
+        313153
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts ROCKY_OUTCROP variant 1 (V1 slot 0 is a shifted copy of slot 1)",
+      "rerolled": [
+        {
+          "slot": 1,
+          "firstSeed": 113140,
+          "why": "radial starburst centred in the tile"
+        },
+        {
+          "slot": 3,
+          "firstSeed": 313146,
+          "why": "radial starburst centred in the tile"
+        }
+      ],
+      "slotOverrides": {
+        "1": {
+          "endpoint": "fal-ai/flux-pro/kontext",
+          "fromSlot": 0,
+          "seed": 930003,
+          "prompt": "keep the exact same ground with the exact same colours, the exact same brightness and the exact same mood; only shift and rearrange its features into a different arrangement; keep them spread evenly over the whole picture so that every part carries the same amount of detail, right into all four corners and all along all four edges, with no single central feature; seen from directly above, seamless tileable ground texture",
+          "why": "first seed and reroll both drew a centred radial starburst"
+        }
+      }
+    },
+    "salt_flat": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark dirty grey salt flat crust from directly above, muddy stained dried polygons densely and evenly filling the entire frame including the center, grimy ominous dim, heavily desaturated weathered, fairly flat ground, seamless tileable, edge-to-edge, evenly distributed polygonal salt crust crack pattern across the ENTIRE surface including the center, dried mud-crack polygons of fairly uniform size covering the whole image, the middle is just as cracked as the edges, no large central crack, no dominant central crack, no central feature, no ring of cracks at the edges, no diagonal bands, no diagonal crack lines, no visible seams or hotspots, fairly flat top-down ground, not deep 3D relief, no deep shadows, shallow surface cracks only, uniform overall brightness, perfectly even uniform lighting, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright patch, no bright highlight blob, NOT brilliant white, no pure white, no vivid blue, no bright blue cracks, no water, no sand dunes, no grass, no plants, heavily desaturated, dirty, grimy, dim, muted greyish-beige dirty salt palette",
+      "seed": 55329,
+      "variantSeeds": [
+        155332,
+        255335,
+        355338
+      ],
+      "source": "approved",
+      "origin": "scripts/salt-flat-dark2-even.cjs dark2 (seed from salt-flat-dark2-metrics.json)"
+    },
+    "sand_dunes": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dark desaturated brown-tan desert sand from directly above, dusty shadowed grimy ripples densely and evenly filling the entire frame including the center, ominous dim, heavily muted brown-tan, fairly flat ground, seamless tileable, edge-to-edge, evenly distributed fine sand ripple texture across the ENTIRE surface INCLUDING the center, the middle of the image is just as textured as the edges, no large dunes, no dominant central feature, no central dune relief, no dominant wave pattern, no large wavy bands, no repeating ripple band pattern, no diagonal bands, no visible seams or hotspots, fairly flat top-down sand, not deep 3D relief, no deep shadows, shallow surface detail only, uniform overall brightness, perfectly even uniform lighting, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no bright sand patch, no bright highlight blob, sand in muted uniform tone, no grass, no plants, no water, heavily desaturated, dusty, dim, muted earthy sand-brown beige palette, no bright gold, no glowing gold, no vivid yellow-orange, no yellow",
+      "seed": 16311,
+      "variantSeeds": [
+        116314,
+        216317,
+        316320
+      ],
+      "source": "approved",
+      "origin": "scripts/style-test-tile-sand-dunes.cjs level dark"
+    },
+    "shallow_water": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "oasis",
+      "prompt": "flood this ground with a sheet of clear shallow water: the sandy seabed and its small green tufts stay visible through the water, gentle ripples and faint caustic light patterns on the water surface, even over the whole picture, seen from directly above, seamless tileable texture",
+      "seed": 920091,
+      "variantSeeds": [
+        1020094,
+        1120097,
+        1220100
+      ],
+      "source": "reconstructed edit",
+      "origin": "V1 shallow_water = oasis_0 under a brightened turquoise ocean sheet at 65 % (tiles-shallow-composite.cjs)"
+    },
+    "silicate_plain": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, silicate asteroid surface from directly above, smooth light grey glassy mineral surface with fine texture, variation 3, slightly different pattern",
+      "seed": 14274,
+      "variantSeeds": [
+        114277,
+        214280,
+        314283
+      ],
+      "source": "approved",
+      "origin": "scripts/generate-biome-assets.ts SILICATE_PLAIN variant 2 (V1 slot 0 = patch window of slot 2)"
+    },
+    "snow_peak": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "mountain",
+      "prompt": "cover this rocky ground with a layer of dirty grey-white snow that fills the gaps and hollows, while many angular broken grey rock slabs and stones stay exposed and poke through all over the picture, spread evenly, wind-scoured, matte, dim, seen from directly above, seamless tileable ground texture",
+      "seed": 474005,
+      "variantSeeds": [
+        574008,
+        674011,
+        774014
+      ],
+      "source": "adjusted (approved edit)",
+      "origin": "scripts/snow-peak-hero-style-test.cjs dark_drift (kontext seed 474004 on mountain_3; +1 here so it does not share the forest seed)",
+      "adjusted": "the approved edit buried all rocks under smooth snow fields on the new square; V1 shows angular slabs poking through",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "cover this dark rocky mountain ground with a layer of dirty pale grey-white snow: fill the hollows and gaps between the rocks with grimy wind-scoured snow while leaving dark exposed rock ridges scree and stones poking through, the snow is dirty greyish off-white and matte not pure bright white and not blue, wind-scoured cold snowy mountain peak surface, keep the rocky layout intact, pack a HEAVY layer of grimy pale grey snow into the gaps and drifts between the broken angular rock so mostly snow shows with only a few dark rock edges and scree poking through, darker grimier colder snow, wind-scoured drifts, muted heavily desaturated cold neutral dirty grey-white grimy snow over dark grey mountain rock, matte non-reflective surface, dim somber lighting from the upper left, dark cold high-altitude snowy mountain peak look, dirty greyish snow not pure bright white and not bright blue, The Expanse sci-fi aesthetic",
+        "seed": 474005,
+        "parent": "mountain"
+      }
+    },
+    "swamp": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "plains",
+      "prompt": "add several murky brown-green standing water pools and puddles scattered across the ground, like a wet swampy marsh with scattered pools of stagnant water; keep the exact same dark muddy dry-grass base ground, dark mud and sparse dry grass tufts, same matte dim upper-left lighting and darkness; the water is murky matte brown-green reflecting the dim sky, not bright, not neon, not glowing",
+      "seed": 274051,
+      "variantSeeds": [
+        374054,
+        474057,
+        574060
+      ],
+      "source": "approved edit",
+      "origin": "scripts/swamp-hero-combine.cjs (V1 input was plains_dirty_mix2_s1, a sibling of plains; here plains)"
+    },
+    "toxic_marsh": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "corroded_plain",
+      "prompt": "Turn this corroded dirty ground into a boggy toxic swamp: turn most of the muddy cracked soil into wet boggy muddy hummocks, sink a few shallow pools of thick murky sickly green-brown toxic sludge-water between them, cover them with mats of dead scummy olive vegetation, prominent clusters of many small round gas bubbles bubbling up and foaming on the stagnant sludge surface, little rings of froth and scum around the bubbles, the swamp gently bubbles and off-gasses, muted heavily desaturated dull sickly green-brown and olive swamp tones, matte non-reflective surface, dim somber lighting from the upper left, dark grimy toxic wasteland look, The Expanse sci-fi aesthetic",
+      "seed": 421001,
+      "variantSeeds": [
+        521004,
+        621007,
+        721010
+      ],
+      "source": "approved edit",
+      "origin": "scripts/toxic-marsh-hero-style-test.cjs mild (kontext on corroded_plain_1)"
+    },
+    "tundra": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "plains",
+      "prompt": "keep the existing dark stony soil, the loose gravel and the small dark pebbles exactly as they are, and wherever a plant, a grass tuft, dry straw or a moss patch stands, put that same dark frozen gravel and grit in its place, so the ground becomes one continuous field of bare frozen rubble, keep the original dark matte tone and the original brightness, same camera angle, seamless tileable ground texture",
+      "seed": 71011,
+      "variantSeeds": [
+        171014,
+        271017,
+        371020
+      ],
+      "source": "approved edit",
+      "origin": "scripts/tiles-tundra-deveg.cjs round 2 (V1 input was plains_dirty_mix2_s0, a sibling of plains; \"same diamond shape\" dropped for the square)"
+    },
+    "void_edge": {
+      "endpoint": "fal-ai/flux-pro/v1.1",
+      "size": [
+        512,
+        512
+      ],
+      "prompt": "top-down aerial photograph, terrain texture filling entire image edge to edge, no sky, no horizon, no borders, no vignette, The Expanse sci-fi aesthetic, realistic, dim grimy very dark grey cave ground from slightly above, many large thick blocky broken bone-dry stone plates stacked and tilted at strongly varied heights standing proud above deep recessed crevices with heavy matte black contact shadows pooling in every gap between the raised blocks, a powdery dust coating on the dry rock, some loose chunky rubble, chalk-like crumbly weathered somber, strong chunky three-dimensional relief, the dry rock soaks up the light, strong three-dimensional rocky relief, raised rock slabs and rubble casting deep matte contact shadows, deep crevices and recessed sunken cracks, pronounced depth and ambient occlusion between stones, chunky uneven stone floor with real height variation, rough matte dry stone surface, fully diffuse non-reflective rock, chalky weathered crumbly stone, dusty powdery dry rock skin, flat lighting with soft diffuse shadows, the surface absorbs light, deep matte black shadows in the recesses, seamless tileable, edge-to-edge, evenly distributed across the ENTIRE surface including the center, the middle is just as detailed as the edges, no single central feature, no dominant central crack, no ring at edges, no diagonal bands, no diagonal crack lines, no visible seams or hotspots, uniform overall brightness, no light side, no dark side, no gradient, no vertical gradient, no horizontal gradient, no single bright patch, no stalagmites, no stalactites, no lava, no glow, no colourful crystals, no vegetation, no sand, no grass, very dark, deep shadow, heavily desaturated, dirty grimy dim, dark cave floor in low light, dark grey to brownish-grey rock palette, almost black in the crevices",
+      "seed": 558901,
+      "variantSeeds": [
+        658904,
+        758907,
+        858910
+      ],
+      "source": "approved prompt (cave_floor), new seed",
+      "origin": "V1 void_edge = lattice shift of cave_floor_0 darkened (biome-overview.html); same cave_floor e2 prompt, own seeds"
+    },
+    "volcanic_vent": {
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "parent": "obsidian_ridge",
+      "prompt": "keep this dark rocky ground with its obsidian shards exactly as it is, seen straight from directly above, add a few small round dark vent openings scattered across it with faint pale sulfur haze around them, and lay a thin murky blue-green water tint over the whole picture, flat top-down view, seamless tileable texture",
+      "seed": 920101,
+      "variantSeeds": [
+        1020104,
+        1120107,
+        1220110
+      ],
+      "source": "adjusted (reconstructed edit)",
+      "origin": "V1 volcanic_vent = local composite: obsidian_ridge_0 + charred-tree chimney sprites + haze plumes + ocean sheet at 45 % (volcanic-vent-compose.cjs)",
+      "adjusted": "first edit came back as a perspective deep-sea scene with a horizon",
+      "firstTry": {
+        "endpoint": "fal-ai/flux-pro/kontext",
+        "prompt": "sink this dark rocky ground under murky deep sea water: keep the dark rock and obsidian shards as the sea floor, add a few small black-smoker chimney vents scattered across it with faint pale sulfur haze plumes drifting from them, a thin murky water veil over everything, dim, matte, seen from directly above, evenly spread, seamless tileable texture",
+        "seed": 920101,
+        "parent": "obsidian_ridge"
+      }
+    }
+  }
+}

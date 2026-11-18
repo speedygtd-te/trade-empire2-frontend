@@ -59,7 +59,8 @@ verschärft, wenn es nötig wird.
 | Requisiten (Bäume, Steine …) ansehen und messen | `F:\Tools\Godot\godot.exe --path . --resolution 720x1280 res://smoke/prop_view.tscn -- --out=build/props` (Entwicklerkonto; Modelle: `build-models.ps1 -Only props`) |
 | 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 <ordner> build\model-preview -NoFit` (Übersicht: `all_45.png`) |
 | Bodenfarben aus den V1-Kacheln | `godot --headless -s tools/biome_colors.gd` → `game/world/biome_colors.gd` |
-| Bodentexturen (Atlas) aus den V1-Kacheln | `python -I tools/ground_atlas.py` → `game/world/ground/` (`--source <ordner>` nimmt quadratische `<biome>_<n>.png` vor) |
+| Biom-Kacheln neu erzeugen (kostet fal-Guthaben, ~0,04 $ je Bild) | `node tools/regen-v1-tiles.cjs` (Prompts/Seeds in `tools/v1-tile-prompts.json`) → `assets	iles-square\` |
+| Bodentexturen (Atlas) | `python -I tools/ground_atlas.py --source "F:\Trade Empire\Frontend2ssets	iles-square"` → `game/world/ground/` (ohne `--source`: aus den V1-Rauten) |
 | Boden ansehen (Zoom 3/9/40, weiche/harte Ränder) | `godot --path . --resolution 720x1280 res://smoke/ground_review.tscn -- --out=build/ground` |
 | Materialtextur erzeugen (kostet fal-Guthaben) | `node scripts\3d\make-texture.cjs --preset metal` → `scripts\3d\textures\` |
 | 3D-Modell aus Sprite (kostet fal-Guthaben) | `node scripts\3d\sprite-to-3d.cjs --model hunyuan-lowpoly --input assets\final\mine_0.png` |
