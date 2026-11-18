@@ -26,8 +26,8 @@ func _ready() -> void:
 
 
 ## Fills the list for a module type; `current` is the recipe set now, `usable` the keys the
-## player may use (basis or researched).
-func show_recipes(module_type: String, current: String, usable: Dictionary) -> void:
+## player may use (basis or researched), `atmosphere` the gases of this body's air (share 0..1).
+func show_recipes(module_type: String, current: String, usable: Dictionary, atmosphere: Dictionary = {}) -> void:
 	for child: Node in _list.get_children():
 		child.queue_free()
 	var definitions := Services.definitions
@@ -37,11 +37,34 @@ func show_recipes(module_type: String, current: String, usable: Dictionary) -> v
 	for recipe: GameDefinitions.BlueprintDef in definitions.blueprints_for(module_type):
 		var allowed := usable.has(recipe.key)
 		var text := "%s\n%s" % [recipe.display_name, describe(recipe)]
+		var needs := condition(recipe, atmosphere)
+		if not needs.is_empty():
+			text += "\n" + needs
 		if not allowed:
 			text += "\n" + tr("RECIPE_LOCKED")
 		var button := _entry(text, recipe.key, recipe.key == current, allowed)
 		button.pressed.connect(func() -> void: chosen.emit(recipe.key))
 		_list.add_child(button)
+
+
+## What a recipe needs from its spot: a gas in the air (with its share here), a deposit in the
+## ground, or the orbit; "" when it runs anywhere.
+static func condition(recipe: GameDefinitions.BlueprintDef, atmosphere: Dictionary) -> String:
+	if recipe.orbit_only:
+		return TranslationServer.translate("RECIPE_ORBIT_ONLY")
+	if not recipe.required_atmosphere_gas.is_empty():
+		var share: Variant = atmosphere.get(recipe.required_atmosphere_gas)
+		var percent := 0.0
+		if typeof(share) == TYPE_FLOAT:
+			var fraction: float = share
+			percent = fraction * 100.0
+		return TranslationServer.translate("RECIPE_NEEDS_GAS").format({
+			"gas": Services.definitions.resource_name(recipe.required_atmosphere_gas),
+			"share": ("%.0f %%" % percent) if percent >= 1.0 else "< 1 %"})
+	if not recipe.required_tile_resource.is_empty():
+		return TranslationServer.translate("RECIPE_NEEDS_DEPOSIT").format({
+			"resource": Services.definitions.resource_name(recipe.required_tile_resource)})
+	return ""
 
 
 ## "2 Iron → 1 Iron Plate per hour" style text of a recipe.

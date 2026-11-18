@@ -26,6 +26,11 @@ var body_type := ""
 ## Light of this place: the star's surface temperature (Kelvin) and the air's density.
 var star_kelvin := 5800.0
 var atmosphere_density := 1.0
+## Gases of the air → share 0..1 (`Environment.atmosphere`); empty without air.
+var atmosphere: Dictionary = {}
+## Where the sun stands over this body at a game time; null until the server sends orbit and
+## rotation (then the sun stays fixed).
+var sun: SunPosition = null
 ## Width of the body in cells; the surface wraps around in x.
 var size_x := 0
 var layout := StructureLayout.new()
@@ -85,9 +90,19 @@ func load_home() -> void:
 	body_type = Wire.as_string(body.data.get("type"))
 	size_x = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeX"))
 	surface = SurfaceBlocks.new(size_x)
-	var air: Variant = Wire.as_dict(body.data.get("environment")).get("atmosphereDensity")
+	var environment := Wire.as_dict(body.data.get("environment"))
+	var air: Variant = environment.get("atmosphereDensity")
 	if typeof(air) == TYPE_FLOAT:
 		atmosphere_density = air
+	atmosphere = Wire.as_dict(environment.get("atmosphere"))
+	# A moon sees its star along its planet's orbit.
+	var parent := {}
+	var parent_id := Wire.as_string(body.data.get("parentBodyId"))
+	if not parent_id.is_empty():
+		var planet := await Services.api.get_json("/v2/bodies/" + parent_id.uri_encode())
+		if planet.is_ok():
+			parent = planet.data
+	sun = SunPosition.from_body(body.data, parent)
 	var system := await Services.api.get_json("/v2/systems/" + Wire.as_string(body.data.get("systemId")).uri_encode())
 	if system.is_ok():
 		var kelvin: Variant = Wire.as_dict(system.data.get("star")).get("temperature")

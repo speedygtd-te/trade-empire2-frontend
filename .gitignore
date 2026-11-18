@@ -29,6 +29,7 @@ keystore.properties
 # Claude Code workspace artefacts
 .claude/settings.local.json
 .claude/logcat-*.txt
+.claude/worktrees/
 
 # Local development backend (copy of ted, build output, world data)
 /.local-backend/
