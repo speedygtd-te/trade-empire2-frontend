@@ -61,6 +61,8 @@ var open_id := 0
 
 var _camera: Camera3D
 var _ground: Node3D
+## Trees, stones, ice … on the surface (PropLayer).
+var _props: PropLayer
 var _hulls: Node3D
 var _modules: Node3D
 var _preview: Node3D
@@ -89,6 +91,9 @@ func setup(colony: ColonyModel) -> void:
 func _ready() -> void:
 	_add_environment()
 	_ground = _child("Ground")
+	_props = PropLayer.new()
+	_props.name = "Props"
+	add_child(_props)
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_preview = _child("Preview")
@@ -108,6 +113,8 @@ func _ready() -> void:
 	_tile_mesh = PlaneMesh.new()
 	_tile_mesh.size = Vector2.ONE
 	_tile_mesh.material = _ground_material
+	if model != null:
+		_props.setup(self)
 	_update_camera()
 
 
@@ -331,6 +338,7 @@ func _rebuild_all() -> void:
 		_ground.remove_child(child)
 		child.queue_free()
 	_redraw_ground()
+	_props.rebuild()
 	_rebuild_structure()
 
 
@@ -675,6 +683,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	_sun.shadow_enabled = tier != DetailGovernor.Tier.SLOW
 	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
 	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
+	_props.apply_detail(tier)
 
 
 func _child(node_name: String) -> Node3D:
