@@ -62,6 +62,16 @@ func _build() -> void:
 	_game_time_value = _row(live_rows, "HOME_GAME_TIME")
 	_events_value = _row(live_rows, "HOME_EVENTS_RECEIVED")
 	_events_value.text = "0"
+	var version := _row(live_rows, "HOME_CLIENT_VERSION")
+	match Services.contract_status:
+		0:
+			version.text = tr("HOME_VERSION_CURRENT")
+			version.add_theme_color_override("font_color", AppTheme.COLOR_OK)
+		1:
+			version.text = tr("HOME_VERSION_OUTDATED")
+			version.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+		_:
+			version.text = tr("HOME_VERSION_UNKNOWN")
 
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL

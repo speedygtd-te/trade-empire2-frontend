@@ -42,8 +42,18 @@ async function signIn(server) {
     account.token = JSON.parse(created.text).token;
   } else {
     const login = await call(server, 'POST', '/v2/auth/login', { email: account.email, password: account.password });
-    if (login.status !== 200) throw new Error(`login: ${login.status} ${login.text}`);
-    account.token = JSON.parse(login.text).token;
+    if (login.status === 401 || login.status === 400) {
+      // The account is gone (world reset): found it again with the same credentials.
+      const created = await call(server, 'POST', '/v2/auth/register',
+        { email: account.email, password: account.password, playerName: account.playerName });
+      if (created.status !== 201 && created.status !== 200) throw new Error(`register after reset: ${created.status} ${created.text}`);
+      account.token = JSON.parse(created.text).token;
+      console.log('# account was gone (world reset?) and has been created again');
+    } else if (login.status !== 200) {
+      throw new Error(`login: ${login.status} ${login.text}`);
+    } else {
+      account.token = JSON.parse(login.text).token;
+    }
   }
   fs.mkdirSync(path.dirname(FILE), { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify(account, null, 2));

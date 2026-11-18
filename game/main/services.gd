@@ -18,6 +18,8 @@ var clock: GameClock
 var session: SessionController
 ## The static game data; null until the first load finished with a result.
 var definitions: GameDefinitions
+## How the server's contract relates to the client's (Contract.compare); 2 until known.
+var contract_status := 2
 var _definitions_source: DefinitionsSource
 
 
@@ -48,6 +50,19 @@ func _ready() -> void:
 	events.ready_received.connect(_on_stream_ready)
 	events.state_changed.connect(_on_stream_state_changed)
 	load_definitions.call_deferred()
+	check_contract.call_deferred()
+
+
+## Asks the server which contract it implements. A newer one may mean this build is outdated
+## (after a breaking change the backend resets the world).
+func check_contract() -> void:
+	var health := await api.get_json("/v2/health", false)
+	if not health.is_ok():
+		return
+	contract_status = Contract.compare(Wire.as_string(health.data.get("apiVersion")))
+	if contract_status != 0:
+		push_warning("Server contract %s, client built for %s" % [
+			Wire.as_string(health.data.get("apiVersion")), Contract.VERSION])
 
 
 ## Loads the game data (public, no sign-in needed). A failed load keeps what is there.

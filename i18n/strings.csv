@@ -172,3 +172,7 @@ STORE_DISCARD_NOTHING,There is nothing left to discard.
 STORE_DISCARDED,{count} {name} discarded.
 ERROR_INSUFFICIENT_STOCK,There is not that much in the store any more.
 ERROR_INVALID_RESOURCE,This cannot be discarded.
+HOME_CLIENT_VERSION,App version
+HOME_VERSION_CURRENT,Up to date
+HOME_VERSION_OUTDATED,Update available
+HOME_VERSION_UNKNOWN,Unknown
