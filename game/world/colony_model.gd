@@ -22,6 +22,10 @@ signal load_failed(error: ApiError)
 signal ready_to_show
 ## A guest was founded or removed, or its name arrived.
 signal guests_changed
+## Research, labs or their progress changed (also when loading research failed).
+signal research_changed
+## A research of the player is done: the tech key.
+signal research_completed(tech: String)
 
 ## How many surface blocks around the camera are kept loaded.
 const SURFACE_RADIUS := 2
@@ -55,6 +59,10 @@ var inventory: Inventory = null
 var surface := SurfaceBlocks.new()
 ## Recipe keys the player may use (basis or researched) → true.
 var usable_blueprints: Dictionary = {}
+## The player's research and labs; null until loaded.
+var research: ResearchState = null
+## Why research could not be loaded; null when it could.
+var research_error: ApiError = null
 ## Module id → why an active module produces nothing ("NO_BLUEPRINT", "LOCATION").
 var idle_reasons: Dictionary = {}
 ## Energy and life support of the last rate solution, micro-units per hour: [production, consumption].
@@ -188,20 +196,51 @@ func activate() -> void:
 	reload_production()
 
 
-## Loads which recipes the player may use (a guest shares the home structure's).
-func reload_research() -> void:
+## Loads the player's research: researched techs, usable recipes, labs. Returns why it failed.
+## Research belongs to the player: the home structure keeps it, a guest shares its recipes.
+func reload_research() -> ApiError:
 	if is_guest():
-		return
+		return null
 	var answer := await Services.api.get_json("/v2/research")
 	if not answer.is_ok():
-		return
+		research_error = answer.error
+		research_changed.emit()
+		return answer.error
+	research_error = null
+	research = ResearchState.from_wire(answer.data)
 	usable_blueprints.clear()
-	var entries: Array = answer.data.get("blueprints") if typeof(answer.data.get("blueprints")) == TYPE_ARRAY else []
-	for entry: Variant in entries:
-		var key := Wire.as_string(Wire.as_dict(entry).get("blueprint"))
-		if not key.is_empty():
-			usable_blueprints[key] = true
+	for key: String in research.blueprints.keys():
+		usable_blueprints[key] = true
 	production_changed.emit()
+	research_changed.emit()
+	return null
+
+
+## Loads the labs of this structure again (status, slots, progress). Returns why it failed.
+func reload_labs() -> ApiError:
+	if structure_id == 0 or research == null:
+		return null
+	var answer := await Services.api.get_json("/v2/structures/%d/labs" % structure_id)
+	if not answer.is_ok():
+		return answer.error
+	research.replace_labs(structure_id, ResearchState.labs_from_wire(answer.data.get("labs")))
+	research_changed.emit()
+	return null
+
+
+## Sets the input slots of a lab of this structure: one entry per slot, {resource,
+## ratePerHour} with integer rate or null. confirm_loss lets running progress go.
+func set_lab_slots(module_id: int, slots: Array, confirm_loss: bool) -> ApiResult:
+	var body := {"slots": slots}
+	if confirm_loss:
+		body["confirmProgressLoss"] = true
+	var result := await Services.api.put_json("/v2/structures/%d/labs/%d/slots" % [structure_id, module_id], body)
+	if result.is_ok():
+		if research != null:
+			research.apply_lab(ResearchState.Lab.from_wire(Wire.as_dict(result.data.get("lab"))))
+			research_changed.emit()
+		reload_production()
+	return result
 
 
 ## Loads the rate solution soon; several requests within a short time become one.
@@ -442,9 +481,28 @@ func _load_surface(request: SurfaceBlocks.Request) -> void:
 
 func _on_event(event: SseEvent) -> void:
 	var data := Wire.parse_object(event.data)
-	if event.type == "research.completed":
-		reload_research()
-		return
+	match event.type:
+		"research.completed":
+			if research != null:
+				research.apply_completed(data)
+			research_completed.emit(Wire.as_string(data.get("tech")))
+			reload_research()
+			return
+		"research.interrupted":
+			reload_research()
+			return
+		"lab.changed":
+			if research != null:
+				research.apply_lab(ResearchState.Lab.from_wire(Wire.as_dict(data.get("lab"))))
+				research_changed.emit()
+			return
+		"research.hint":
+			var lab := research.lab(Wire.as_int(data.get("moduleId"))) if research != null else null
+			if lab != null:
+				lab.hint_category = Wire.as_string(data.get("category"))
+				lab.hint_at = Wire.as_int(data.get("gameTime"), -1)
+				research_changed.emit()
+			return
 	if is_queued_for_deletion():
 		return
 	if Wire.as_int(data.get("structureId")) != structure_id or structure_id == 0:
@@ -454,10 +512,12 @@ func _on_event(event: SseEvent) -> void:
 			if Wire.as_int(data.get("rev")) > layout.rev:
 				reload_layout()
 			reload_production()
+			reload_labs()
 		"module.completed":
 			layout.complete_module(Wire.as_int(data.get("moduleId")))
 			layout_changed.emit()
 			reload_production()
+			reload_labs()
 		"structure.ratesChanged":
 			if inventory != null and typeof(data.get("changed")) == TYPE_ARRAY:
 				var changed: Array = data.get("changed")
@@ -470,3 +530,4 @@ func _on_resync(_rev: int) -> void:
 	if structure_id != 0:
 		reload_layout()
 		reload_inventory()
+		reload_research()

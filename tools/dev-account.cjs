@@ -1,7 +1,8 @@
 // A fixed development account on the server, for looking at real answers and for the scene
 // tools. Credentials live in .local/dev-account.json (ignored by git), created on first use.
+// `--account <name>` uses another one (.local/<name>-account.json), e.g. the showcase account.
 //
-//   node tools/dev-account.cjs [server] [path ...]      prints the JSON answers of GET <path>
+//   node tools/dev-account.cjs [--account name] [server] [path ...]   prints the answers of GET <path>
 //   node tools/dev-account.cjs https://trade-empire.net /v2/me /v2/structures
 //
 // NDJSON answers (layout, surface) are printed line by line, long lines shortened.
@@ -12,17 +13,29 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
-const FILE = path.join(ROOT, '.local', 'dev-account.json');
+// The credentials file of an account name ("dev" is the default account).
+function accountFile(name = 'dev') {
+  return path.join(ROOT, '.local', `${name}-account.json`);
+}
 
 async function call(server, method, route, body, token) {
   const headers = { Accept: 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(server + route, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const request = { method, headers, body: body ? JSON.stringify(body) : undefined };
+  let response;
+  try {
+    response = await fetch(server + route, request);
+  } catch (error) {
+    // Now and then a kept-alive connection was already closed by the server ("fetch failed");
+    // one more try on a fresh one.
+    response = await fetch(server + route, request);
+  }
   return { status: response.status, type: response.headers.get('content-type') || '', text: await response.text() };
 }
 
-async function signIn(server) {
+async function signIn(server, name = 'dev') {
+  const FILE = accountFile(name);
   let account = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, 'utf8')) : null;
   if (account && account.server === server && account.token) {
     const me = await call(server, 'GET', '/v2/me', null, account.token);
@@ -62,8 +75,11 @@ async function signIn(server) {
 
 async function main() {
   const args = process.argv.slice(2);
+  let name = 'dev';
+  const named = args.indexOf('--account');
+  if (named !== -1) name = args.splice(named, 2)[1] || 'dev';
   const server = args[0] && args[0].startsWith('http') ? args.shift() : 'https://trade-empire.net';
-  const account = await signIn(server);
+  const account = await signIn(server, name);
   console.log(`# account ${account.playerName} on ${server}`);
   for (const route of args) {
     const answer = await call(server, 'GET', route, null, account.token);
@@ -76,4 +92,8 @@ async function main() {
   }
 }
 
-main().catch((error) => { console.error('FAILED ' + error.message); process.exit(1); });
+module.exports = { ROOT, call, signIn, accountFile };
+
+if (require.main === module) {
+  main().catch((error) => { console.error('FAILED ' + error.message); process.exit(1); });
+}

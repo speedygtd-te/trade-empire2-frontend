@@ -8,6 +8,8 @@ extends RefCounted
 
 ## Minimum height (and width for icon-only controls) of anything tappable.
 const TOUCH_MIN := 88
+## Height of a progress bar.
+const BAR_HEIGHT := 16
 
 const FONT_SIZE := 30
 const FONT_SIZE_SMALL := 24
@@ -94,6 +96,10 @@ static func build() -> Theme:
 	theme.set_color("caret_color", "LineEdit", COLOR_ACCENT)
 
 	theme.set_stylebox("panel", "PanelContainer", _box(COLOR_PANEL, COLOR_PANEL_LIGHT, 28))
+
+	# Progress: a cyan fill on a dark track.
+	theme.set_stylebox("background", "ProgressBar", _bar(COLOR_PANEL_LIGHT))
+	theme.set_stylebox("fill", "ProgressBar", _bar(COLOR_ACCENT))
 	return theme
 
 
@@ -128,6 +134,13 @@ static func _underline(color: Color) -> StyleBoxFlat:
 	box.border_color = color
 	box.border_width_bottom = 4
 	box.set_content_margin_all(16)
+	return box
+
+
+static func _bar(color: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.set_corner_radius_all(8)
 	return box
 
 

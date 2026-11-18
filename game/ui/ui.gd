@@ -50,6 +50,19 @@ static func line_edit(placeholder_key: String) -> LineEdit:
 	return node
 
 
+## A bar for a share 0..1 (research progress). It shows no number itself; the text goes next to it.
+static func progress_bar() -> ProgressBar:
+	var node := ProgressBar.new()
+	node.min_value = 0.0
+	node.max_value = 1.0
+	node.step = 0.0
+	node.show_percentage = false
+	node.custom_minimum_size = Vector2(0, AppTheme.BAR_HEIGHT)
+	node.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return node
+
+
 static func spacer(height: float) -> Control:
 	var node := Control.new()
 	node.custom_minimum_size = Vector2(0, height)
