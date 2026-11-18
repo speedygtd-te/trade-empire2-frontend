@@ -28,6 +28,12 @@ const SKY_ENERGY := 0.6
 ## Shadow edge blur without air and with very thick air (Light3D.shadow_blur).
 const SHADOW_BLUR_AIRLESS := 0.2
 const SHADOW_BLUR_THICK := 3.0
+## Strength of lamps and windows (the models' glow masks) by bright day and at night or
+## without air (SkyLight.lamp_level).
+const LAMP_DAY := 0.25
+const LAMP_NIGHT := 1.5
+## How much darker the ground gets on an airless body, so the lit colony stands out (V1).
+const AIRLESS_GROUND_DARKENING := 0.45
 
 const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
@@ -54,6 +60,9 @@ var _scenes: Dictionary = {}
 var _hull_meshes: Dictionary = {}
 var _ground_material: StandardMaterial3D
 var _tile_mesh: PlaneMesh
+## Materials of the loaded models that glow (instance id → material), and their strength now.
+var _lamps: Dictionary = {}
+var _lamp_energy := LAMP_DAY
 
 
 func setup(colony: ColonyModel) -> void:
@@ -311,7 +320,25 @@ func _scene(key: String) -> PackedScene:
 
 func _instance(key: String) -> Node3D:
 	var scene := _scene(key)
-	return scene.instantiate() as Node3D if scene != null else null
+	if scene == null:
+		return null
+	var node := scene.instantiate() as Node3D
+	_collect_lamps(node)
+	return node
+
+
+## Remembers the glowing materials of a model and gives them the current lamp strength. The
+## instances of a model share its materials, so each is set once for all of them.
+func _collect_lamps(node: Node3D) -> void:
+	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh := (found as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		for surface: int in mesh.get_surface_count():
+			var material := mesh.surface_get_material(surface) as StandardMaterial3D
+			if material != null and material.emission_enabled and not _lamps.has(material.get_instance_id()):
+				_lamps[material.get_instance_id()] = material
+				material.emission_energy_multiplier = _lamp_energy
 
 
 func _hull_mesh(hull_type: String) -> Mesh:
@@ -476,6 +503,12 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 		environment.ambient_light_color = NIGHT_COLOR
 	# The floor keeps a dark scene readable; without air only the sun lights the ground.
 	environment.ambient_light_energy = maxf(NIGHT_AMBIENT, SKY_ENERGY * sky_strength)
+	# Lamps and windows light up at dusk, at night and on airless bodies.
+	_lamp_energy = lerpf(LAMP_DAY, LAMP_NIGHT, SkyLight.lamp_level(light, density))
+	for material: StandardMaterial3D in _lamps.values():
+		material.emission_energy_multiplier = _lamp_energy
+	var ground := 1.0 - AIRLESS_GROUND_DARKENING * SkyLight.airless(density)
+	_ground_material.albedo_color = Color(ground, ground, ground)
 
 
 ## Applies a detail tier: shadows, edge smoothing and render resolution (DetailGovernor).

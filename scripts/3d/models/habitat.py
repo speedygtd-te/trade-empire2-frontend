@@ -14,7 +14,7 @@ def build():
     model = kit.Builder("te_habitat")
     top = parts.room(model)
     # Door in the back wall, a window in the left wall.
-    parts.window(model, (0.12, 0.35 - 0.0006, top + 0.17), (0.14, 0.26), "-y", frame="blue_dark", pane="steel_dark")
+    parts.window(model, (0.12, 0.35 - 0.0006, top + 0.17), (0.14, 0.26), "-y", frame="blue_dark", pane="window")
     parts.window(model, (-0.35 + 0.0006, 0.05, top + 0.22), (0.20, 0.10), "+x")
     # Bed against the back wall.
     model.box((-0.12, 0.20, top + 0.05), (0.30, 0.16, 0.06), "steel")

@@ -24,7 +24,7 @@ BODY_TOP = 0.62
 
 def build():
     model = kit.Builder(NAME)
-    model.box((0.0, 0.0, BASE / 2.0), (0.84, 0.84, BASE), "blue_dark")
+    model.box((0.0, 0.0, BASE / 2.0), (0.84, 0.84, BASE), "floor")
     for sx in (-1, 1):
         for sy in (-1, 1):
             model.cylinder((sx * 0.37, sy * 0.37, BASE), (sx * 0.37, sy * 0.37, BASE + 0.008), 0.022,

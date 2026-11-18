@@ -14,7 +14,7 @@ import parts  # noqa: E402
 def build():
     model = kit.Builder("te_hydroponic_bay")
     base = 0.06
-    model.box((0.0, 0.0, base / 2.0), (0.84, 0.84, base), "blue_dark")
+    model.box((0.0, 0.0, base / 2.0), (0.84, 0.84, base), "floor")
     # Machine block at the back right with light strips.
     model.box((0.17, 0.24, base + 0.30), (0.40, 0.30, 0.60), "blue_dark")
     model.box((0.17, 0.24, base + 0.61), (0.42, 0.32, 0.02), "steel_dark")

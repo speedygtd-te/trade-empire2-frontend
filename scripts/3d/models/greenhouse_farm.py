@@ -25,7 +25,7 @@ def build():
     for x in (-0.55, 0.0, 0.55):
         model.plate((x, -half + 0.1 - 0.0012, 0.06 + height / 2.0), (0.012, height - 0.04), "-y", "blue_dark")
     parts.vent(model, (-0.30, -half + 0.1, 0.30), (0.16, 0.10), "-y")
-    parts.window(model, (0.30, -half + 0.1, 0.28), (0.14, 0.16), "-y", frame="steel_light", pane="dark")
+    parts.window(model, (0.30, -half + 0.1, 0.28), (0.14, 0.16), "-y", frame="steel_light", pane="window")
     parts.vent(model, (half, 0.30, 0.30), (0.16, 0.10), "+x")
     # Ladders at the front.
     for x in (0.62, -0.70):

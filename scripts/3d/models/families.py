@@ -23,7 +23,7 @@ BIG = 0.86  # half extent of a 2x2 model
 
 # --- Templates ---------------------------------------------------------------------------------
 
-def room(name, accent="yellow", wall="blue", floor="blue", fittings=None):
+def room(name, accent="yellow", wall="blue", floor="floor", fittings=None):
     """An open room (two walls) with fittings: desks, beds, beds-with-cross, benches …"""
     model = kit.Builder(name)
     cap = "concrete_dark" if wall == "concrete" else ("rust_brown_dark" if wall == "rust_brown" else "blue_dark")
@@ -142,7 +142,7 @@ def block(name, accent="yellow", body="blue", height=0.46, cells=(1, 1), roof=No
     model.plate((right_x + 0.0006, 0.04, top - 0.05), (body_half[1] * 2.0, 0.025), "+x", accent)
     parts.vent(model, (right_x, 0.04, base + height * 0.45), (0.14, 0.10), "+x")
     parts.window(model, (-body_half[0] * 0.45, front_y, base + height * 0.42), (0.14, height * 0.45), "-y",
-                 frame=accent, pane="dark")
+                 frame=accent, pane="window")
     for fitting in roof or []:
         fitting(model, top + 0.02, accent, body_half)
     for fitting in front or []:
@@ -453,10 +453,10 @@ MODELS = {
     # Colony: education and research.
     "basic_school": (lambda: room("te_basic_school", "yellow", fittings=[desks]), ONE),
     "advanced_school": (lambda: room("te_advanced_school", "glow_cyan", fittings=[desks]), ONE),
-    "academy": (lambda: room("te_academy", "white", wall="concrete", floor="concrete", fittings=[desks]), ONE),
-    "elite_academy": (lambda: room("te_elite_academy", "glow_purple", wall="concrete", floor="concrete", fittings=[desks, monument]), ONE),
-    "university": (lambda: room("te_university", "glow_orange", wall="concrete", floor="concrete", fittings=[desks]), ONE),
-    "research_institute": (lambda: room("te_research_institute", "glow_cyan", wall="concrete", floor="concrete", fittings=[lab_bench]), ONE),
+    "academy": (lambda: room("te_academy", "white", wall="concrete", floor="floor", fittings=[desks]), ONE),
+    "elite_academy": (lambda: room("te_elite_academy", "glow_purple", wall="concrete", floor="floor", fittings=[desks, monument]), ONE),
+    "university": (lambda: room("te_university", "glow_orange", wall="concrete", floor="floor", fittings=[desks]), ONE),
+    "research_institute": (lambda: room("te_research_institute", "glow_cyan", wall="concrete", floor="floor", fittings=[lab_bench]), ONE),
     "research_lab": (lambda: room("te_research_lab", "glow_cyan", fittings=[lab_bench]), ONE),
     "biology_lab": (lambda: room("te_biology_lab", "plant", fittings=[lab_bench]), ONE),
     "chemistry_lab": (lambda: room("te_chemistry_lab", "glow_orange", fittings=[lab_bench]), ONE),
@@ -466,19 +466,19 @@ MODELS = {
     "planetology_lab": (lambda: room("te_planetology_lab", "rust_brown", fittings=[lab_bench]), ONE),
     # Colony: health, housing, leisure, nature.
     "guard_post": (lambda: room("te_guard_post", "red", wall="steel", floor="steel", fittings=[guard]), ONE),
-    "security_center": (lambda: room("te_security_center", "red", wall="concrete", floor="concrete", fittings=[guard]), ONE),
+    "security_center": (lambda: room("te_security_center", "red", wall="concrete", floor="floor", fittings=[guard]), ONE),
     "hospital": (lambda: room("te_hospital", "red", wall="white", floor="white", fittings=[medical]), ONE),
     "medical_center": (lambda: room("te_medical_center", "glow_cyan", wall="white", floor="white", fittings=[medical]), ONE),
     "sanitation_station": (lambda: block("te_sanitation_station", "plant", body="steel", height=0.36, roof=[tanks]), ONE),
     "habitat_t2": (lambda: room("te_habitat_t2", "yellow", fittings=[beds]), ONE),
     "habitat_t3": (lambda: room("te_habitat_t3", "glow_cyan", wall="steel", floor="steel", fittings=[beds]), ONE),
-    "habitat_t4": (lambda: room("te_habitat_t4", "glow_orange", wall="concrete", floor="concrete", fittings=[beds]), ONE),
+    "habitat_t4": (lambda: room("te_habitat_t4", "glow_orange", wall="concrete", floor="floor", fittings=[beds]), ONE),
     "habitat_t5": (lambda: room("te_habitat_t5", "glow_purple", wall="white", floor="white", fittings=[beds, garden]), ONE),
-    "entertainment_center": (lambda: room("te_entertainment_center", "glow_purple", wall="concrete", floor="concrete", fittings=[stage]), ONE),
+    "entertainment_center": (lambda: room("te_entertainment_center", "glow_purple", wall="concrete", floor="floor", fittings=[stage]), ONE),
     "experience_arena": (lambda: room("te_experience_arena", "glow_cyan", wall="steel", floor="steel", fittings=[stage]), ONE),
-    "gallery": (lambda: room("te_gallery", "glow_orange", wall="white", floor="concrete", fittings=[monument]), ONE),
+    "gallery": (lambda: room("te_gallery", "glow_orange", wall="white", floor="floor", fittings=[monument]), ONE),
     "luxury_promenade": (lambda: room("te_luxury_promenade", "glow_orange", wall="white", floor="white", fittings=[garden]), ONE),
-    "monument": (lambda: room("te_monument", "yellow", wall="concrete", floor="concrete", fittings=[monument]), ONE),
+    "monument": (lambda: room("te_monument", "yellow", wall="concrete", floor="floor", fittings=[monument]), ONE),
     "biosphere": (lambda: room("te_biosphere", "plant", wall="glass", floor="soil", fittings=[garden]), ONE),
     "botanical_garden": (lambda: room("te_botanical_garden", "plant", wall="white", floor="soil", fittings=[garden]), ONE),
     "park_module": (lambda: room("te_park_module", "plant", wall="green", floor="green", fittings=[garden]), ONE),

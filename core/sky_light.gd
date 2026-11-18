@@ -13,6 +13,9 @@ extends RefCounted
 const ZENITH_DEPTH := Vector3(0.06, 0.13, 0.31)
 ## How far below the horizon the sky still glows (twilight), in radians per unit of density.
 const TWILIGHT_PER_DENSITY := deg_to_rad(9.0)
+## Air density from which a body is no longer airless for its lamps (V1: airless factor
+## 1 - density / 0.7, lit buildings from 0.5 on).
+const AIRLESS_DENSITY := 0.7
 
 
 class Light:
@@ -76,3 +79,17 @@ static func at(elevation: float, star_kelvin: float, density: float) -> Light:
 		var strength := clampf(strongest * 2.5, 0.0, 1.0) * glow
 		light.sky = Color(star.r * tint.r, star.g * tint.g, star.b * tint.b) * strength
 	return light
+
+
+## How much the colony's lamps and windows show: 0 by bright day under a lit sky, 1 at night.
+## A body without air keeps them on even by day, its sky is black (as in V1).
+static func lamp_level(light: Light, density: float) -> float:
+	var sun := maxf(light.sun.r, maxf(light.sun.g, light.sun.b))
+	var sky := maxf(light.sky.r, maxf(light.sky.g, light.sky.b))
+	var dark := 1.0 - clampf(sun * 0.6 + sky, 0.0, 1.0)
+	return maxf(dark, airless(density))
+
+
+## How airless a body is for its look: 1 without any air, 0 from AIRLESS_DENSITY on.
+static func airless(density: float) -> float:
+	return clampf(1.0 - maxf(density, 0.0) / AIRLESS_DENSITY, 0.0, 1.0)

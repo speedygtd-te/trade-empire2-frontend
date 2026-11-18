@@ -26,7 +26,7 @@ def build():
     model.box((0.10, -0.16, base + 0.245), (0.40, 0.26, 0.01), "blue_dark")
     model.plate((0.10, -0.16, base + 0.2512), (0.30, 0.17), "+z", "glow_orange")
     # Doors and a vent on the furnace, a pipe up the side.
-    parts.window(model, (0.10, -0.29, base + 0.12), (0.16, 0.12), "-y", frame="blue_dark", pane="dark")
+    parts.window(model, (0.10, -0.29, base + 0.12), (0.16, 0.12), "-y", frame="blue_dark", pane="window")
     parts.vent(model, (0.27, 0.14, base + 0.40), (0.16, 0.10), "+x", slats=4)
     parts.pipe(model, [(0.28, -0.04, base), (0.28, -0.04, base + 0.45), (0.28, 0.10, base + 0.45)],
                radius=0.016, color="steel")

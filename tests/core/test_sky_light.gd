@@ -59,3 +59,27 @@ func test_thin_air_sky_is_blue_at_noon() -> void:
 	var sky := SkyLight.at(deg_to_rad(60.0), SUN_LIKE, EARTH_AIR).sky
 
 	assert_float(sky.b).is_greater(sky.r)
+
+
+func test_lamps_are_off_by_day_and_on_at_night() -> void:
+	var noon := SkyLight.at(deg_to_rad(60.0), SUN_LIKE, EARTH_AIR)
+	var dusk := SkyLight.at(deg_to_rad(2.0), SUN_LIKE, EARTH_AIR)
+	var night := SkyLight.at(deg_to_rad(-30.0), SUN_LIKE, EARTH_AIR)
+
+	assert_float(SkyLight.lamp_level(noon, EARTH_AIR)).is_less(0.1)
+	assert_float(SkyLight.lamp_level(dusk, EARTH_AIR)).is_between(0.2, 0.9)
+	assert_float(SkyLight.lamp_level(night, EARTH_AIR)).is_equal_approx(1.0, 0.001)
+
+
+func test_lamps_stay_on_by_day_without_air() -> void:
+	var airless_noon := SkyLight.at(deg_to_rad(60.0), SUN_LIKE, 0.0)
+	var thin_noon := SkyLight.at(deg_to_rad(60.0), SUN_LIKE, 0.35)
+
+	assert_float(SkyLight.lamp_level(airless_noon, 0.0)).is_equal_approx(1.0, 0.001)
+	assert_float(SkyLight.lamp_level(thin_noon, 0.35)).is_greater_equal(0.5)
+
+
+func test_airless_runs_from_no_air_to_thin_air() -> void:
+	assert_float(SkyLight.airless(0.0)).is_equal(1.0)
+	assert_float(SkyLight.airless(0.35)).is_equal_approx(0.5, 0.001)
+	assert_float(SkyLight.airless(EARTH_AIR)).is_equal(0.0)

@@ -1,4 +1,4 @@
-﻿"""Starter hull (1x1, INDOOR slot): a rust-brown steel floor plate filling the whole cell, with a
+﻿"""Starter hull (1x1, INDOOR slot): a dirty concrete floor plate filling the whole cell, with a
 raised rim and corner posts. A module sits on top of it; neighbouring hulls join seamlessly.
 
 The V1 sprite (src/assets/hulls/starter/starter_0.webp) is a closed rusty container; in 3D the
@@ -16,7 +16,7 @@ import kit  # noqa: E402
 
 
 def build():
-    return hulls.floor_hull("te_hull_starter", plate="rust_brown", rim="rust_brown_dark",
+    return hulls.floor_hull("te_hull_starter", plate="floor", rim="concrete_dark",
                             accent="steel_dark", posts=True)
 
 

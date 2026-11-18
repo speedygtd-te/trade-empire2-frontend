@@ -47,16 +47,18 @@ PALETTE = {
     "steel": ((0.34, 0.44, 0.47), "metal", (0.45, 0.35)),
     "steel_dark": ((0.20, 0.27, 0.30), "metal", (0.50, 0.30)),
     "steel_light": ((0.55, 0.64, 0.66), "metal", (0.35, 0.60)),
-    "concrete": ((0.64, 0.64, 0.60), "concrete", _MATTE),
+    "concrete": ((0.54, 0.53, 0.50), "concrete", _MATTE),
     "concrete_dark": ((0.37, 0.36, 0.34), "concrete", _MATTE),
     "rust": ((0.60, 0.32, 0.17), "metal", (0.85, 0.10)),
     "red": ((0.74, 0.17, 0.12), "metal", _PAINT),
-    "yellow": ((0.93, 0.71, 0.16), "metal", _PAINT),
-    # A metal mirrors the surroundings in its own colour, so a dark colour turns almost black
-    # when it is made metallic (tried 2026-11-17). The blues are therefore lighter than the
-    # paint they stand for.
-    "blue": ((0.26, 0.45, 0.72), "metal", (0.28, 0.60)),
-    "blue_dark": ((0.17, 0.30, 0.52), "metal", (0.30, 0.60)),
+    "yellow": ((0.82, 0.62, 0.15), "metal", _PAINT),
+    # Old, dark, matt paint (Rudi, 2026-11-18: dark even in strong sun). A metal mirrors the
+    # surroundings in its own colour, so a dark colour turns almost black when it is made
+    # metallic (tried 2026-11-17): the blues stay mostly paint, with little metalness.
+    "blue": ((0.15, 0.24, 0.36), "metal", (0.62, 0.15)),
+    "blue_dark": ((0.10, 0.16, 0.25), "metal", (0.66, 0.12)),
+    # Floors and base plates: dirty exposed concrete.
+    "floor": ((0.44, 0.43, 0.40), "concrete", _MATTE),
     "rock": ((0.41, 0.36, 0.31), "concrete", _MATTE),
     "solar": ((0.06, 0.10, 0.24), "plain", (0.10, 0.30)),
     "glass": ((0.52, 0.72, 0.80), "plain", (0.06, 0.0)),
@@ -64,13 +66,22 @@ PALETTE = {
     "rust_brown": ((0.42, 0.24, 0.16), "metal", (0.70, 0.30)),
     "rust_brown_dark": ((0.28, 0.16, 0.11), "metal", (0.75, 0.25)),
     "green": ((0.30, 0.55, 0.25), "plain", (0.80, 0.0)),
-    "white": ((0.86, 0.88, 0.88), "metal", _PAINT),
-    # Bright colours of lit things (molten metal, grow lights, screens); not yet emissive.
+    "white": ((0.74, 0.75, 0.73), "metal", _PAINT),
+    # Lit things (molten metal, grow lights, screens) and windows: they glow, see GLOWS.
     "glow_orange": ((1.0, 0.55, 0.12), "plain", (0.40, 0.0)),
     "glow_purple": ((0.78, 0.35, 1.0), "plain", (0.40, 0.0)),
     "glow_cyan": ((0.35, 0.90, 0.90), "plain", (0.20, 0.0)),
+    "window": ((0.08, 0.09, 0.10), "plain", (0.12, 0.0)),
     "soil": ((0.36, 0.24, 0.16), "concrete", _MATTE),
     "plant": ((0.24, 0.62, 0.22), "plain", (0.85, 0.0)),
+}
+# Colours that give off light, and the sRGB colour of their light. Baked into a third texture
+# (the glow mask); the game turns it up at night and on airless worlds (ColonyView).
+GLOWS = {
+    "glow_orange": (1.0, 0.55, 0.12),
+    "glow_purple": (0.78, 0.35, 1.0),
+    "glow_cyan": (0.35, 0.90, 0.90),
+    "window": (1.0, 0.76, 0.45),
 }
 # How a surface kind is stored in the fourth channel of the face colour.
 _KINDS = {"concrete": 0.0, "plain": 0.5, "metal": 1.0}
@@ -85,7 +96,17 @@ SURFACE_STRENGTH = 1.2
 RUST_COLOR = (0.50, 0.25, 0.12)
 RUST_AMOUNT = 0.9
 # Brightness left in fully enclosed corners (1 = no dirt).
-CORNER_DARKNESS = 0.45
+CORNER_DARKNESS = 0.35
+# Grime at the foot of walls: how high it climbs (cells), its brightness at the very bottom.
+GROUND_GRIME_HEIGHT = 0.18
+GROUND_GRIME_DARKNESS = 0.55
+# Large blotches of grime on textured surfaces: their size (higher = smaller), how much of
+# the surface they cover (0..1) and the brightness left where they are thickest.
+GRIME_SCALE = 3.0
+GRIME_COVER = 0.62
+GRIME_DARKNESS = 0.45
+# Everything a little older and dirtier: the whole colour is multiplied with this.
+AGE_TINT = (0.80, 0.78, 0.74)
 # Worn edges: width in cells, how much of the edge colour shows, the colour itself.
 EDGE_WIDTH = 0.008
 EDGE_AMOUNT = 0.5
@@ -103,6 +124,7 @@ BAKE_SAMPLES = 24
 
 _TINT = "tint"
 _FINISH = "finish"
+_GLOW = "glow"
 _SURFACE_PIXELS = 512
 _FACINGS = {
     "+x": (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))),
@@ -127,6 +149,8 @@ class Builder:
         self._mesh = bmesh.new()
         self._tint = self._mesh.loops.layers.color.new(_TINT)
         self._finish = self._mesh.loops.layers.float_color.new(_FINISH)
+        self._glow = self._mesh.loops.layers.color.new(_GLOW)
+        self._glowing = False
         self._frame = Matrix.Identity(4)
 
     @contextmanager
@@ -199,7 +223,7 @@ class Builder:
         target = bpy.data.objects.new(self.name, mesh)
         scene.collection.objects.link(target)
         if bpy.app.background:
-            _bake_look(target)
+            _bake_look(target, self._glowing)
         else:
             mesh.color_attributes.active_color_name = _TINT
         return target
@@ -212,10 +236,13 @@ class Builder:
         # This kind of colour layer stores sRGB; Blender converts it for the shader itself.
         # Converting here as well made every colour far too dark (tried 2026-11-17).
         value = (*srgb, _KINDS[kind])
+        light = (*GLOWS.get(color, (0.0, 0.0, 0.0)), 1.0)
+        self._glowing = self._glowing or color in GLOWS
         for face in faces:
             for loop in face.loops:
                 loop[self._tint] = value
                 loop[self._finish] = (finish[0], finish[1], 0.0, 1.0)
+                loop[self._glow] = light
 
 
 def _along(start: Vector, end: Vector, width: float, depth: float) -> Matrix:
@@ -387,8 +414,29 @@ def _look_material() -> tuple:
     occlusion.inputs["Distance"].default_value = 0.3
     dirt = math_node("MULTIPLY_ADD", occlusion.outputs[1], 1.0 - CORNER_DARKNESS, CORNER_DARKNESS)
     color = mix("MULTIPLY", 1.0, color, dirt)
+    # Grime at the foot of walls (not on upward faces): darkest at the ground, fading upwards.
+    position = node("ShaderNodeSeparateXYZ")
+    link(coordinates.outputs["Object"], position.inputs[0])
+    upright = node("ShaderNodeSeparateXYZ")
+    link(node("ShaderNodeNewGeometry").outputs["Normal"], upright.inputs[0])
+    wall = math_node("SUBTRACT", 1.0, math_node("ABSOLUTE", upright.outputs[2]))
+    low = math_node("SUBTRACT", 1.0, math_node("DIVIDE", position.outputs[2], GROUND_GRIME_HEIGHT),
+                    clamp=True)
+    grime = math_node("MULTIPLY", wall, math_node("MULTIPLY", low, low))
+    grime = math_node("MULTIPLY_ADD", grime, GROUND_GRIME_DARKNESS - 1.0, 1.0)
+    color = mix("MULTIPLY", 1.0, color, grime)
+    # Blotches of grime on textured surfaces, soft-edged, from a coarse noise.
+    blotches = node("ShaderNodeTexNoise")
+    blotches.inputs["Scale"].default_value = GRIME_SCALE
+    blotches.inputs["Detail"].default_value = 6.0
+    link(coordinates.outputs["Object"], blotches.inputs["Vector"])
+    smear = math_node("MULTIPLY", math_node("SUBTRACT", blotches.outputs[0], 1.0 - GRIME_COVER), 5.0,
+                      clamp=True)
+    smear = math_node("MULTIPLY", smear, textured)
+    color = mix("MULTIPLY", 1.0, color, math_node("MULTIPLY_ADD", smear, GRIME_DARKNESS - 1.0, 1.0))
+    color = mix("MULTIPLY", 1.0, color, _linear(AGE_TINT))
 
-    bevel = node("ShaderNodeBevel", samples=6)
+    bevel =node("ShaderNodeBevel", samples=6)
     bevel.inputs[0].default_value = EDGE_WIDTH
     geometry = node("ShaderNodeNewGeometry")
     facing = node("ShaderNodeVectorMath", operation="DOT_PRODUCT")
@@ -439,9 +487,10 @@ def _look_material() -> tuple:
     return material, glow.inputs["Color"], color, packed.outputs[0]
 
 
-def _bake_look(target: bpy.types.Object) -> None:
-    """Unwraps the model, bakes the look into two textures (colour and finish) and leaves the
-    model with a plain material that shows them."""
+def _bake_look(target: bpy.types.Object, glowing: bool) -> None:
+    """Unwraps the model, bakes the look into two textures (colour and finish), and a third
+    one (the glow mask) when something on it glows, and leaves the model with a plain material
+    that shows them."""
     scene = target.users_scene[0]
     mesh = target.data
     look, glow_input, color_result, finish_result = _look_material()
@@ -475,6 +524,11 @@ def _bake_look(target: bpy.types.Object) -> None:
 
     color_image = bake(color_result, "_color", False)
     finish_image = bake(finish_result, "_finish", True)
+    glow_image = None
+    if glowing:
+        light = look.node_tree.nodes.new("ShaderNodeVertexColor")
+        light.layer_name = _GLOW
+        glow_image = bake(light.outputs[0], "_glow", False)
 
     final = bpy.data.materials.new(target.name)
     if final.node_tree is None:
@@ -492,10 +546,15 @@ def _bake_look(target: bpy.types.Object) -> None:
     links.new(finish_texture.outputs["Color"], split.inputs[0])
     links.new(split.outputs[1], shader.inputs["Roughness"])
     links.new(split.outputs[2], shader.inputs["Metallic"])
+    if glow_image is not None:
+        glow_texture = nodes.new("ShaderNodeTexImage")
+        glow_texture.image = glow_image
+        links.new(glow_texture.outputs["Color"], shader.inputs["Emission Color"])
+        shader.inputs["Emission Strength"].default_value = 1.0
     links.new(shader.outputs["BSDF"], output.inputs["Surface"])
     mesh.materials.clear()
     mesh.materials.append(final)
-    for name in (_TINT, _FINISH):
+    for name in (_TINT, _FINISH, _GLOW):
         mesh.color_attributes.remove(mesh.color_attributes[name])
 
 

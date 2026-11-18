@@ -2,9 +2,10 @@
 // (scripts/3d/models) their surface: kit.py reads only their brightness and rust and tints
 // them with the palette colours, so colour words in the prompts do not matter.
 //
-//   node scripts/3d/make-texture.cjs --preset metal [--model grok|flux] [--seed 7] [--out scripts/3d/textures]
+//   node scripts/3d/make-texture.cjs --preset metal [--model grok|flux] [--seed 7] [--out scripts/3d/textures] [--name file]
 //
-// Presets: metal, concrete. Output: <out>/<preset>.jpg (1024 x 1024). Every run costs credits.
+// Presets: see PRESETS. Output: <out>/<name or preset>.jpg (1024 x 1024). Every run costs credits.
+// In use since 2026-11-18: metal.jpg = metal_grimy, concrete.jpg = concrete_raw (darker, dirtier).
 // grok is the default: in the comparison of 2026-11-17 it filled the whole image evenly, while
 // flux left a rim, a vignette and a nearly empty middle.
 // The prompts follow Docs/LESSONS-asset-pipeline.md, section 3: no negative prompts, describe
@@ -41,6 +42,23 @@ const PRESETS = {
     'Extreme close-up of an old concrete floor seen from directly above, the concrete continues far beyond the image on all sides. ' +
     'Pores, hairline cracks, stains and mottling, evenly spread across the whole image. ' +
     'Texture for a video game.',
+  // Dirtier, older variants (Rudi, 2026-11-18: "in V1 war das alles sehr dreckig, alt, dunkel").
+  metal_dirty:
+    'Extreme close-up of the side of a very old industrial machine on a mining colony, flat frontal view, the painted steel continues far beyond the image on all sides. ' +
+    'Old worn paint covered in grime, soot and oil stains, dust settled in dents, many scratches, flaking paint, dark rust streaks running down and rust patches, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  metal_grimy:
+    'Extreme close-up of the hull of a decades-old cargo hauler, flat frontal view, the steel continues far beyond the image on all sides. ' +
+    'Heavily weathered dull paint, dark grease smears, soot, scuffs, chipped paint showing bare metal, brown rust bleeding from seams, uneven dirt, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  concrete_raw:
+    'Extreme close-up of an old weathered exposed concrete wall, raw beton brut seen straight on, the concrete continues far beyond the image on all sides. ' +
+    'Faint formwork board marks, small air pores, dark water stains and grime streaks running down, dust, hairline cracks, evenly spread across the whole image. ' +
+    'Texture for a video game.',
+  concrete_floor_dirty:
+    'Extreme close-up of an old dirty industrial concrete floor seen from directly above, the floor continues far beyond the image on all sides. ' +
+    'Raw grey concrete with oil stains, tyre and boot scuffs, dust, dark grime patches, small cracks and pores, evenly spread across the whole image. ' +
+    'Texture for a video game.',
 };
 
 function arg(name, fallback) {
@@ -61,7 +79,7 @@ async function main() {
   const result = await runQueued(model.endpoint, model.body(PRESETS[preset], Number(arg('seed', '7'))));
   const url = result?.images?.[0]?.url;
   if (!url) throw new Error(`no image in the response: ${JSON.stringify(result).slice(0, 400)}`);
-  const target = path.join(outDir, `${preset}.jpg`);
+  const target = path.join(outDir, `${arg('name', preset)}.jpg`);
   const bytes = await download(url, target);
   console.log(`${preset}: saved ${path.relative(ROOT, target)} (${Math.round(bytes / 1024)} KB) in ${Math.round((Date.now() - started) / 1000)} s`);
 }

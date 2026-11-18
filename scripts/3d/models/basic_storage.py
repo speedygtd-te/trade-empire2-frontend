@@ -23,7 +23,7 @@ HALF = 0.42
 
 def build():
     model = kit.Builder(NAME)
-    model.box((0.0, 0.0, FLOOR / 2.0), (HALF * 2.0, HALF * 2.0, FLOOR), "blue")
+    model.box((0.0, 0.0, FLOOR / 2.0), (HALF * 2.0, HALF * 2.0, FLOOR), "floor")
     model.plate((0.0, -HALF - 0.0006, FLOOR - 0.012), (HALF * 2.0, 0.012), "-y", "yellow")
     model.plate((HALF + 0.0006, 0.0, FLOOR - 0.012), (HALF * 2.0, 0.012), "+x", "yellow")
 

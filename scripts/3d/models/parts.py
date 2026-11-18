@@ -124,7 +124,7 @@ def vent(model, center, size, facing: str, slats: int = 4) -> None:
         model.plate(lifted, (size[0] * 0.9, size[1] / slats * 0.35), facing, "steel_light")
 
 
-def window(model, center, size, facing: str, frame: str = "yellow", pane: str = "dark") -> None:
+def window(model, center, size, facing: str, frame: str = "yellow", pane: str = "window") -> None:
     """A framed pane on a wall or roof looking along *facing*. *size* is (across, up)."""
     model.plate(_lifted(center, facing), size, facing, frame)
     model.plate(_lifted(center, facing, 2), (size[0] * 0.66, size[1] * 0.66), facing, pane)
@@ -141,7 +141,7 @@ def braced_frame(model, center, half: float, bottom: float, top: float, leg: flo
         model.beam((*following, bottom + 0.01), (*corner, top - 0.01), leg * 0.57, brace)
 
 
-def room(model, floor: str = "blue", wall: str = "blue", cap: str = "blue_dark",
+def room(model, floor: str = "floor", wall: str = "blue", cap: str = "blue_dark",
          height: float = 0.40, half: float = 0.42, trim: str = "yellow") -> float:
     """An open room: a floor plate and two walls meeting in the back left corner (+y, -x), the
     open sides towards the camera. Returns the height of the floor's top."""
