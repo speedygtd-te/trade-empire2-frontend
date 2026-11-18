@@ -25,6 +25,9 @@ const NIGHT_COLOR := Color(0.45, 0.55, 0.85)
 ## Light strengths at full sun and full skylight (SkyLight gives 0..1).
 const SUN_ENERGY := 1.25
 const SKY_ENERGY := 0.6
+## Shadow edge blur without air and with very thick air (Light3D.shadow_blur).
+const SHADOW_BLUR_AIRLESS := 0.2
+const SHADOW_BLUR_THICK := 3.0
 
 const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
@@ -457,6 +460,9 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 	var up := Vector3.UP if absf(to_sun.y) < 0.999 else Vector3.FORWARD
 	_sun.basis = Basis.looking_at(-to_sun, up)
 	var light := SkyLight.at(elevation, star_kelvin, density)
+	# Haze softens shadow edges a little; without air they stay crisp. A constant blur is all the
+	# Compatibility renderer offers (no PCSS).
+	_sun.shadow_blur = lerpf(SHADOW_BLUR_AIRLESS, SHADOW_BLUR_THICK, clampf(density / 2.0, 0.0, 1.0))
 	var strength := maxf(light.sun.r, maxf(light.sun.g, light.sun.b))
 	_sun.visible = strength > 0.001
 	if _sun.visible:

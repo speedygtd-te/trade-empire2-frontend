@@ -43,6 +43,9 @@ func _run() -> void:
 		["colony_sunset", 4.0, own_kelvin, own_air],
 		["airless_sunset", 4.0, 5800.0, 0.0],
 		["thick_air_sunset", 8.0, 5800.0, 2.5],
+		["shadow_airless", 30.0, 5800.0, 0.0],
+		["shadow_earth", 30.0, 5800.0, 1.0],
+		["shadow_thick", 30.0, 5800.0, 2.5],
 	]
 	for scene: Array in scenes:
 		var label: String = scene[0]
