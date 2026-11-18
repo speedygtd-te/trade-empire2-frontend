@@ -9,7 +9,7 @@ extends Node3D
 ## Height of a hull's floor plate: modules stand on top of it (scripts/3d/models/hulls.py).
 const HULL_FLOOR_HEIGHT := 0.06
 ## Roof height of a shut hull on a closed structure (scripts/3d/models/hulls.py).
-const HULL_CLOSED_HEIGHT := 0.56
+const HULL_CLOSED_HEIGHT := 0.72
 const MODELS := "res://game/world/models/"
 const CAMERA_PITCH_DEGREES := 35.0
 const CAMERA_YAW_DEGREES := 45.0

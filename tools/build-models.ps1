@@ -4,7 +4,8 @@
 #   powershell -File tools\build-models.ps1 [output folder] [-Only pump]
 #   powershell -File tools\build-models.ps1 -Only families [-Types academy,rtg]
 #
-# Every script builds one model (pump.py -> pump.glb), except families.py, which builds the
+# Every script builds one model (pump.py -> pump.glb), except families.py and hulls_closed.py,
+# which build several (-Types limits them); families.py builds the
 # module types without a script of their own from shared templates. kit.py, parts.py and
 # hulls.py are libraries. Default output: game\world\models (the models the game loads).
 # Look at them with
@@ -32,7 +33,7 @@ $models = Get-ChildItem -LiteralPath (Join-Path $root 'scripts\3d\models') -Filt
     Where-Object { $_.BaseName -notin @('kit', 'parts', 'hulls') -and (-not $Only -or $_.BaseName -eq $Only) } |
     Sort-Object Name
 foreach ($model in $models) {
-    if ($model.BaseName -eq 'families') {
+    if ($model.BaseName -in @('families', 'hulls_closed')) {
         $arguments = @('--output-dir', $Out)
         if ($Types) { $arguments += @('--only', $Types) }
     } else {

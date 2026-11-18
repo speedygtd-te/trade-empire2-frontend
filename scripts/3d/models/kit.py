@@ -72,6 +72,14 @@ PALETTE = {
     "glow_purple": ((0.78, 0.35, 1.0), "plain", (0.40, 0.0)),
     "glow_cyan": ((0.35, 0.90, 0.90), "plain", (0.20, 0.0)),
     "window": ((0.08, 0.09, 0.10), "plain", (0.12, 0.0)),
+    "glow_green": ((0.35, 0.95, 0.45), "plain", (0.30, 0.0)),
+    # See-through glass: these faces become a separate transparent surface (GLASS_*), not baked.
+    "pane": ((0.45, 0.60, 0.65), "plain", (0.05, 0.0)),
+    # Cleaner paints of hulls and housing (V1 hull sprites).
+    "paint_grey": ((0.60, 0.63, 0.64), "metal", _PAINT),
+    "navy": ((0.16, 0.22, 0.33), "metal", (0.45, 0.30)),
+    "blue_paint": ((0.22, 0.42, 0.68), "metal", _PAINT),
+    "black_metal": ((0.10, 0.10, 0.11), "metal", (0.50, 0.25)),
     "soil": ((0.36, 0.24, 0.16), "concrete", _MATTE),
     "plant": ((0.24, 0.62, 0.22), "plain", (0.85, 0.0)),
 }
@@ -82,7 +90,13 @@ GLOWS = {
     "glow_purple": (0.78, 0.35, 1.0),
     "glow_cyan": (0.35, 0.90, 0.90),
     "window": (1.0, 0.76, 0.45),
+    "glow_green": (0.35, 0.95, 0.45),
 }
+PANE = "pane"
+# The see-through glass: tint (sRGB), opacity, roughness.
+GLASS_COLOR = (0.62, 0.78, 0.84)
+GLASS_ALPHA = 0.28
+GLASS_ROUGHNESS = 0.05
 # How a surface kind is stored in the fourth channel of the face colour.
 _KINDS = {"concrete": 0.0, "plain": 0.5, "metal": 1.0}
 
@@ -142,16 +156,31 @@ def _linear(srgb) -> tuple:
 
 
 class Builder:
-    """Collects boxes, beams, cylinders and plates into one mesh."""
+    """Collects boxes, beams, cylinders and plates into one mesh. *wear* (0..1) is how old and
+    dirty the recipe makes it: 1 for industry and supply (rust, grime, dark corners), low for
+    hulls and housing (clean paint, a little dirt in the corners). Faces painted PANE become
+    see-through glass."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, wear: float = 1.0) -> None:
         self.name = name
-        self._mesh = bmesh.new()
-        self._tint = self._mesh.loops.layers.color.new(_TINT)
-        self._finish = self._mesh.loops.layers.float_color.new(_FINISH)
-        self._glow = self._mesh.loops.layers.color.new(_GLOW)
+        self.wear = wear
+        self._solid = bmesh.new()
+        self._tint = self._solid.loops.layers.color.new(_TINT)
+        self._finish = self._solid.loops.layers.float_color.new(_FINISH)
+        self._glow = self._solid.loops.layers.color.new(_GLOW)
+        self._glass = bmesh.new()
+        self._mesh = self._solid
         self._glowing = False
         self._frame = Matrix.Identity(4)
+
+    @contextmanager
+    def _into(self, color: str):
+        """Builds into the glass mesh while painting PANE."""
+        self._mesh = self._glass if color == PANE else self._solid
+        try:
+            yield
+        finally:
+            self._mesh = self._solid
 
     @contextmanager
     def placed(self, location=(0.0, 0.0, 0.0), turn: float = 0.0, tilt: float = 0.0):
@@ -170,23 +199,26 @@ class Builder:
         """A box with its centre at *center*; *turn* rotates it around Z (radians)."""
         matrix = (self._frame @ Matrix.Translation(Vector(center)) @ Matrix.Rotation(turn, 4, "Z")
                   @ Matrix.Diagonal((size[0], size[1], size[2], 1.0)))
-        self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
+        with self._into(color):
+            self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
 
     def beam(self, start, end, thickness: float, color: str) -> None:
         """A square bar from *start* to *end*."""
         matrix = _along(self._frame @ Vector(start), self._frame @ Vector(end), thickness, thickness)
-        self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
+        with self._into(color):
+            self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
 
     def cylinder(self, start, end, radius: float, color: str, segments: int = 10,
                  end_radius: float | None = None) -> None:
         """A round bar from *start* to *end*; *end_radius* makes it a cone or taper."""
         start, end = self._frame @ Vector(start), self._frame @ Vector(end)
-        created = bmesh.ops.create_cone(
-            self._mesh, cap_ends=True, cap_tris=False, segments=segments, radius1=radius,
-            radius2=radius if end_radius is None else end_radius, depth=1.0,
-            matrix=_along(start, end, 1.0, 1.0))
-        faces = self._faces(created)
-        self._paint(faces, color)
+        with self._into(color):
+            created = bmesh.ops.create_cone(
+                self._mesh, cap_ends=True, cap_tris=False, segments=segments, radius1=radius,
+                radius2=radius if end_radius is None else end_radius, depth=1.0,
+                matrix=_along(start, end, 1.0, 1.0))
+            faces = self._faces(created)
+            self._paint(faces, color)
         axis = (end - start).normalized()
         for face in faces:
             face.normal_update()
@@ -203,8 +235,9 @@ class Builder:
                    for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
         if across.cross(up).dot(normal) < 0.0:
             corners.reverse()
-        face = self._mesh.faces.new([self._mesh.verts.new(corner) for corner in corners])
-        self._paint({face}, color)
+        with self._into(color):
+            face = self._mesh.faces.new([self._mesh.verts.new(corner) for corner in corners])
+            self._paint({face}, color)
 
     def finish(self) -> bpy.types.Object:
         """Turns the parts into one object in the stage scene and returns it. An object of
@@ -218,20 +251,25 @@ class Builder:
             if previous_mesh.users == 0:
                 bpy.data.meshes.remove(previous_mesh)
         mesh = bpy.data.meshes.new(self.name)
-        self._mesh.to_mesh(mesh)
-        self._mesh.free()
+        self._solid.to_mesh(mesh)
+        self._solid.free()
         target = bpy.data.objects.new(self.name, mesh)
         scene.collection.objects.link(target)
         if bpy.app.background:
-            _bake_look(target, self._glowing)
+            _bake_look(target, self._glowing, self.wear)
         else:
             mesh.color_attributes.active_color_name = _TINT
+        if len(self._glass.faces) > 0:
+            _add_glass(target, self._glass)
+        self._glass.free()
         return target
 
     def _faces(self, created: dict) -> set:
         return {face for vert in created["verts"] for face in vert.link_faces}
 
     def _paint(self, faces: set, color: str) -> None:
+        if color == PANE:
+            return
         srgb, kind, finish = PALETTE[color]
         # This kind of colour layer stores sRGB; Blender converts it for the shader itself.
         # Converting here as well made every colour far too dark (tried 2026-11-17).
@@ -338,9 +376,10 @@ def _surface_image(kind: str) -> bpy.types.Image:
 
 # --- The baked look --------------------------------------------------------------------------
 
-def _look_material() -> tuple:
+def _look_material(wear: float = 1.0) -> tuple:
     """The recipe as a node graph: palette colour x surface texture, rust on metal, dirt in
-    corners, worn edges, and the finish (roughness, metalness). Returns the material, the
+    corners, worn edges, and the finish (roughness, metalness); *wear* (0..1) scales the age
+    and dirt (Builder). Returns the material, the
     input of its glow, and the two results to feed into it one after the other: the colour
     and the finish. A glowing surface is baked without lighting."""
     material = bpy.data.materials.get("te_look") or bpy.data.materials.new("te_look")
@@ -401,18 +440,20 @@ def _look_material() -> tuple:
     detail, rust = surface.outputs[0], surface.outputs[1]
     # detail is stored halved: 1 + strength * (2 * detail - 1), kept within sane bounds;
     # plain surfaces keep their flat colour.
-    shade = math_node("MULTIPLY_ADD", detail, 2.0 * SURFACE_STRENGTH, 1.0 - SURFACE_STRENGTH)
+    strength = SURFACE_STRENGTH * (0.2 + 0.8 * wear)
+    shade = math_node("MULTIPLY_ADD", detail, 2.0 * strength, 1.0 - strength)
     shade = math_node("MINIMUM", math_node("MAXIMUM", shade, 0.35), 1.6)
     shade = math_node("MULTIPLY_ADD", math_node("SUBTRACT", shade, 1.0), textured, 1.0)
 
     color = mix("MULTIPLY", 1.0, tint_color, shade)
     rusty = mix("MULTIPLY", 1.0, _linear(RUST_COLOR), shade)
-    rust_amount = math_node("MULTIPLY", math_node("MULTIPLY", rust, is_metal), RUST_AMOUNT)
+    rust_amount = math_node("MULTIPLY", math_node("MULTIPLY", rust, is_metal), RUST_AMOUNT * wear)
     color = mix("MIX", rust_amount, color, rusty)
 
     occlusion = node("ShaderNodeAmbientOcclusion", samples=16, only_local=True)
     occlusion.inputs["Distance"].default_value = 0.3
-    dirt = math_node("MULTIPLY_ADD", occlusion.outputs[1], 1.0 - CORNER_DARKNESS, CORNER_DARKNESS)
+    corner = 1.0 - (1.0 - CORNER_DARKNESS) * (0.35 + 0.65 * wear)
+    dirt = math_node("MULTIPLY_ADD", occlusion.outputs[1], 1.0 - corner, corner)
     color = mix("MULTIPLY", 1.0, color, dirt)
     # Grime at the foot of walls (not on upward faces): darkest at the ground, fading upwards.
     position = node("ShaderNodeSeparateXYZ")
@@ -423,7 +464,7 @@ def _look_material() -> tuple:
     low = math_node("SUBTRACT", 1.0, math_node("DIVIDE", position.outputs[2], GROUND_GRIME_HEIGHT),
                     clamp=True)
     grime = math_node("MULTIPLY", wall, math_node("MULTIPLY", low, low))
-    grime = math_node("MULTIPLY_ADD", grime, GROUND_GRIME_DARKNESS - 1.0, 1.0)
+    grime = math_node("MULTIPLY_ADD", grime, (GROUND_GRIME_DARKNESS - 1.0) * wear, 1.0)
     color = mix("MULTIPLY", 1.0, color, grime)
     # Blotches of grime on textured surfaces, soft-edged, from a coarse noise.
     blotches = node("ShaderNodeTexNoise")
@@ -433,10 +474,12 @@ def _look_material() -> tuple:
     smear = math_node("MULTIPLY", math_node("SUBTRACT", blotches.outputs[0], 1.0 - GRIME_COVER), 5.0,
                       clamp=True)
     smear = math_node("MULTIPLY", smear, textured)
-    color = mix("MULTIPLY", 1.0, color, math_node("MULTIPLY_ADD", smear, GRIME_DARKNESS - 1.0, 1.0))
-    color = mix("MULTIPLY", 1.0, color, _linear(AGE_TINT))
+    color = mix("MULTIPLY", 1.0, color, math_node("MULTIPLY_ADD", smear, (GRIME_DARKNESS - 1.0) * wear, 1.0))
+    age = tuple(1.0 - (1.0 - tone) * wear for tone in AGE_TINT)
+    color = mix("MULTIPLY", 1.0, color, _linear(age))
 
-    bevel =node("ShaderNodeBevel", samples=6)
+    edges = EDGE_AMOUNT * (0.4 + 0.6 * wear)
+    bevel = node("ShaderNodeBevel", samples=6)
     bevel.inputs[0].default_value = EDGE_WIDTH
     geometry = node("ShaderNodeNewGeometry")
     facing = node("ShaderNodeVectorMath", operation="DOT_PRODUCT")
@@ -448,9 +491,9 @@ def _look_material() -> tuple:
     noise.inputs["Scale"].default_value = 35.0
     link(coordinates.outputs["Object"], noise.inputs["Vector"])
     breakup = math_node("MULTIPLY_ADD", noise.outputs[0], 0.8, 0.2, clamp=True)
-    wear = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup),
-                     math_node("MULTIPLY_ADD", textured, 0.7 * EDGE_AMOUNT, 0.3 * EDGE_AMOUNT))
-    color = mix("MIX", wear, color, _linear(EDGE_COLOR))
+    worn = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup),
+                     math_node("MULTIPLY_ADD", textured, 0.7 * edges, 0.3 * edges))
+    color = mix("MIX", worn, color, _linear(EDGE_COLOR))
 
     # The finish starts from the palette colour. Rust is rough and dull, worn edges of metal
     # are bare and shiny, dirt in corners roughens.
@@ -487,13 +530,13 @@ def _look_material() -> tuple:
     return material, glow.inputs["Color"], color, packed.outputs[0]
 
 
-def _bake_look(target: bpy.types.Object, glowing: bool) -> None:
+def _bake_look(target: bpy.types.Object, glowing: bool, wear: float = 1.0) -> None:
     """Unwraps the model, bakes the look into two textures (colour and finish), and a third
     one (the glow mask) when something on it glows, and leaves the model with a plain material
     that shows them."""
     scene = target.users_scene[0]
     mesh = target.data
-    look, glow_input, color_result, finish_result = _look_material()
+    look, glow_input, color_result, finish_result = _look_material(wear)
     mesh.materials.append(look)
     if len(mesh.uv_layers) == 0:
         mesh.uv_layers.new(name="UVMap")
@@ -556,6 +599,36 @@ def _bake_look(target: bpy.types.Object, glowing: bool) -> None:
     mesh.materials.append(final)
     for name in (_TINT, _FINISH, _GLOW):
         mesh.color_attributes.remove(mesh.color_attributes[name])
+
+
+def _add_glass(target: bpy.types.Object, glass: bmesh.types.BMesh) -> None:
+    """Joins the see-through glass into the model as a second surface with its own transparent
+    material (glTF alphaMode BLEND); it is not baked, its tint is GLASS_COLOR."""
+    scene = target.users_scene[0]
+    mesh = bpy.data.meshes.new(target.name + "_glass")
+    glass.to_mesh(mesh)
+    for layer in target.data.uv_layers:
+        mesh.uv_layers.new(name=layer.name)
+    material = bpy.data.materials.new(target.name + "_glass")
+    if material.node_tree is None:
+        material.use_nodes = True
+    nodes = material.node_tree.nodes
+    nodes.clear()
+    shader = nodes.new("ShaderNodeBsdfPrincipled")
+    output = nodes.new("ShaderNodeOutputMaterial")
+    material.node_tree.links.new(shader.outputs["BSDF"], output.inputs["Surface"])
+    shader.inputs["Base Color"].default_value = (*_linear(GLASS_COLOR), 1.0)
+    shader.inputs["Alpha"].default_value = GLASS_ALPHA
+    shader.inputs["Roughness"].default_value = GLASS_ROUGHNESS
+    shader.inputs["Metallic"].default_value = 0.0
+    material.surface_render_method = "BLENDED"
+    mesh.materials.append(material)
+    holder = bpy.data.objects.new(target.name + "_glass", mesh)
+    scene.collection.objects.link(holder)
+    with bpy.context.temp_override(active_object=target, object=target,
+                                   selected_objects=[target, holder],
+                                   selected_editable_objects=[target, holder]):
+        bpy.ops.object.join()
 
 
 # --- Checking, showing, writing ---------------------------------------------------------------
@@ -638,10 +711,10 @@ def export_glb(target: bpy.types.Object, path: str) -> None:
         )
 
 
-def run_many_from_command_line(builders: dict) -> None:
+def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT) -> None:
     """Entry point of a script that builds several models: `builders` maps a file name (without
     .glb) to (build function, cells). Writes every model into --output-dir; --only limits it to
-    some names (comma separated)."""
+    some names (comma separated). Hulls pass footprint 1.0."""
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True)
@@ -655,7 +728,7 @@ def run_many_from_command_line(builders: dict) -> None:
         path = os.path.join(options.output_dir, name + ".glb")
         try:
             target = build()
-            facts = describe(target, FOOTPRINT, cells)
+            facts = describe(target, footprint, cells)
             export_glb(target, path)
             mesh = target.data
             bpy.data.objects.remove(target, do_unlink=True)

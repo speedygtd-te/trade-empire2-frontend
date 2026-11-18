@@ -64,10 +64,13 @@ verschärft, wenn es nötig wird.
 wenigen Materialtexturen und einem gemeinsamen Rezept in zwei Texturen je Modell gebacken:
 Farbe sowie Glanz und Metallanteil; leuchtet etwas (`GLOWS` in `kit.py`, z. B. Fenster), kommt
 eine Leuchtmaske dazu, die `ColonyView` in der Dämmerung, nachts und ohne Luft hochregelt.
-Der Look ist bewusst alt, dunkel und dreckig (wie V1); Böden und Grundplatten sind Sichtbeton.
+Industrie und Versorgung sehen alt, dunkel und dreckig aus (wie V1); Hüllen und später Wohnen
+bleiben sauberer — gesteuert über `kit.Builder(wear=…)`, nie über Farben einzelner Modelle.
+Böden und Grundplatten sind Sichtbeton. Glas (`kit.PANE`) wird eine eigene durchsichtige
+Fläche; hinter Glas stehen nur feste Requisiten, nie Module.
 Von außen ist eine Struktur geschlossen (`StructureLook`): Innenhüllen zeigen ihr Modell
-`hull_<typ>_closed` (sonst `hull_standard_closed`), nur Zellen mit Außenmodulen bleiben offen;
-erst Bearbeiten/Bauen öffnet sie an Ort und Stelle. Glänzende und metallische Flächen spiegeln die Umgebung —
+`hull_<typ>_closed` aus `hulls_closed.py` (sonst `hull_standard_closed`), nur Zellen mit
+Außenmodulen bleiben offen; erst Bearbeiten/Bauen öffnet sie an Ort und Stelle. Glänzende und metallische Flächen spiegeln die Umgebung —
 die Szene braucht dafür einen Himmel als Spiegelquelle (Muster: `smoke/model_preview.gd`),
 sonst werden sie dunkel.
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
