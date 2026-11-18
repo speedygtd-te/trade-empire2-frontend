@@ -8,7 +8,8 @@ extends Control
 ## Loading the systems: one `GET /v2/galaxy/systems` sphere around the camera (GalaxyCamera
 ## decides when and how large), at most one request at a time, sent once the camera has rested
 ## for DEBOUNCE seconds and only when no loaded sphere already covers the view. The answer is
-## parsed away from the main thread. Sector downloads (`/v2/galaxy/sectors/{id}`, cacheable)
+## parsed away from the main thread; it holds only the systems the player has discovered (SSE
+## `sight.discovered` reloads). Sector downloads (`/v2/galaxy/sectors/{id}`, cacheable)
 ## would take dozens of requests for one view of 200 ly; the sphere takes one.
 
 ## The player left the galaxy.
@@ -89,7 +90,17 @@ func _ready() -> void:
 	_debounce.timeout.connect(_load_systems)
 	add_child(_debounce)
 	_build_overlay()
+	if Services.events != null:
+		Services.events.event_received.connect(_on_event)
 	_load()
+
+
+## Only discovered systems come from the server (draft.25): when a telescope or an arrival
+## discovers more, the loaded spheres are stale.
+func _on_event(event: SseEvent) -> void:
+	if event.type == "sight.discovered":
+		_store.clear()
+		_debounce.start()
 
 
 func _exit_tree() -> void:

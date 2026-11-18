@@ -164,6 +164,12 @@ func describe(entry: StructureLog.Entry) -> String:
 			return tr("LOG_ROUTE_TRANSFER")
 		"routeFuelPaid":
 			return tr("LOG_ROUTE_FUEL_PAID")
+		"telescopeObserved":
+			return tr("LOG_TELESCOPE_OBSERVED")
+		"telescopeUpgradeStarted":
+			return tr("LOG_TELESCOPE_UPGRADE_STARTED")
+		"telescopeUpgraded":
+			return tr("LOG_TELESCOPE_UPGRADED")
 	return ""
 
 
