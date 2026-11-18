@@ -278,7 +278,10 @@ func _load() -> void:
 		_plane_z = from_entry.position.z
 
 	_state.visible = false
-	_subtitle.text = _shape.galaxy_name
+	# The server's name is generated from the seed ("Galaxy 1116014313"); a description of the
+	# shape says more to a player.
+	var across := AmountFormat.units(roundi(_shape.radius * 2.0))
+	_subtitle.text = tr("GALAXY_SUBTITLE_SPIRAL").format({"arms": _shape.arm_count, "across": across}) 		if _shape.arm_count > 0 else tr("GALAXY_SUBTITLE").format({"across": across})
 	_view.marks = marks
 	_view.home_id = _home_system
 	_home_button.disabled = _home == null
