@@ -20,6 +20,25 @@ class ModuleDef:
 	var item: String = ""
 	## Production comes from the blueprint set on the module.
 	var blueprint_driven := false
+	## Runs without workers (power plants, storage, habitats …).
+	var workforce_exempt := false
+	## Workers per module for full staffing, and the lowest tier that can staff it.
+	var required_workers := 0
+	var base_tier := 1
+	## Habitats only: the tier of their inhabitants and how many live in one; 0 otherwise.
+	var housing_tier := 0
+	var max_inhabitants := 0
+
+
+## What unlocks a housing tier (2–5): enough inhabitants of the tier below, and enough of
+## them living within reach of each emission (`emissionRequirements`).
+class HousingTierDef:
+	extends RefCounted
+	var tier := 0
+	var required_tier := 0
+	var min_population := 0
+	## Each entry: [emission key, share in micro-percent (100 000 000 = 100 %)].
+	var emissions: Array[Array] = []
 
 
 class BlueprintDef:
@@ -63,6 +82,8 @@ var fixed_point_scale: int = 0
 var bundle: Dictionary = {}
 ## Labs and techs (`research`); empty when the bundle has none.
 var research := ResearchCatalog.new()
+## Unlock conditions of the housing tiers 2–5, by tier.
+var housing_tiers: Dictionary = {}
 
 var _modules: Dictionary = {}
 var _hulls: Dictionary = {}
@@ -97,6 +118,16 @@ static func from_bundle(data: Dictionary) -> GameDefinitions:
 		if not blueprint.key.is_empty():
 			definitions._blueprints[blueprint.key] = blueprint
 	definitions.research = ResearchCatalog.from_wire(Wire.as_dict(data.get("research")))
+	for entry: Variant in _list(data.get("housingTiers")):
+		var row := Wire.as_dict(entry)
+		var tier := HousingTierDef.new()
+		tier.tier = Wire.as_int(row.get("tier"))
+		tier.required_tier = Wire.as_int(row.get("requiredTier"))
+		tier.min_population = Wire.as_int(row.get("minPopulation"))
+		for need: Variant in _list(row.get("emissionRequirements")):
+			var pair := Wire.as_dict(need)
+			tier.emissions.append([Wire.as_string(pair.get("emission")), Wire.as_int(pair.get("minCoveragePercent"))])
+		definitions.housing_tiers[tier.tier] = tier
 	return definitions
 
 
@@ -184,6 +215,13 @@ static func _read_module(data: Dictionary) -> ModuleDef:
 	module.positioning = _strings(data.get("positioning"))
 	module.item = Wire.as_string(data.get("item"), module.key + "_MODULE")
 	module.blueprint_driven = data.get("blueprintDriven") == true
+	module.workforce_exempt = data.get("workforceExempt") == true
+	var staff := Wire.as_dict(data.get("workforce"))
+	module.required_workers = Wire.as_int(staff.get("requiredWorkers"))
+	module.base_tier = maxi(1, Wire.as_int(staff.get("baseTier"), 1))
+	var housing := Wire.as_dict(data.get("housing"))
+	module.housing_tier = Wire.as_int(housing.get("housingTier"))
+	module.max_inhabitants = Wire.as_int(housing.get("maxInhabitants"))
 	return module
 
 

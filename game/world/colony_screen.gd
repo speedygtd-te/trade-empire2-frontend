@@ -55,6 +55,9 @@ var _log_tab: Button
 var _research: ResearchPanel
 var _research_tab: Button
 var _recipes: RecipePanel
+var _workforce_panel: WorkforcePanel
+## Opens the staffing of the inspected module's type.
+var _staff: Button
 var _actions: HBoxContainer
 var _loading: Control
 var _bottom: PanelContainer
@@ -139,6 +142,8 @@ func handle_back() -> void:
 		pass
 	elif _recipes.visible:
 		_close_recipes()
+	elif _workforce_panel.visible:
+		_close_workforce()
 	elif _opened and _cell != null:
 		_select(null)
 	elif _opened:
@@ -254,6 +259,11 @@ func _build_overlay() -> void:
 	_recipes.chosen.connect(_on_recipe_chosen)
 	_recipes.closed.connect(_close_recipes)
 	rows.add_child(_recipes)
+	_workforce_panel = WorkforcePanel.new()
+	_workforce_panel.visible = false
+	_workforce_panel.applied.connect(_on_workforce_applied)
+	_workforce_panel.closed.connect(_close_workforce)
+	rows.add_child(_workforce_panel)
 
 	_palette_scroll = ScrollContainer.new()
 	_palette_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -277,6 +287,11 @@ func _build_overlay() -> void:
 	_primary = Ui.primary_button("COLONY_BUILD_HERE")
 	_primary.pressed.connect(_on_primary)
 	_actions.add_child(_primary)
+	_staff = Ui.secondary_button("WORKFORCE_OPEN")
+	_staff.pressed.connect(_on_staff)
+	_staff.visible = false
+	_actions.add_child(_staff)
+	_actions.move_child(_staff, 0)
 
 	_loading = CenterContainer.new()
 	_loading.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -379,6 +394,8 @@ func _set_mode(mode: Mode) -> void:
 	_mode = mode
 	if _recipes != null and _recipes.visible:
 		_close_recipes()
+	if _workforce_panel != null and _workforce_panel.visible:
+		_close_workforce()
 	_view_tab.set_pressed_no_signal(mode == Mode.VIEW)
 	_build_tab.set_pressed_no_signal(mode == Mode.BUILD)
 	_store_tab.set_pressed_no_signal(mode == Mode.STORE)
@@ -462,6 +479,8 @@ func _choose_tool(tool: String) -> void:
 func _select(cell: Variant) -> void:
 	if _recipes.visible:
 		_close_recipes()
+	if _workforce_panel.visible:
+		_close_workforce()
 	_cell = cell
 	_armed = ""
 	_status.text = ""
@@ -524,6 +543,7 @@ func _close_structure() -> void:
 func _refresh() -> void:
 	if _view == null or _model.structure_id == 0:
 		return
+	_staff.visible = false
 	if not _opened:
 		_refresh_closed()
 		return
@@ -556,6 +576,9 @@ func _refresh_closed() -> void:
 	var building := StructureLook.modules_building(layout)
 	if building > 0:
 		lines.append(tr("COLONY_STRUCTURE_BUILDING").format({"count": building}))
+	var workforce := _focus.workforce
+	lines.append(tr("WORKFORCE_SUMMARY").format({"people": workforce.total_population(),
+		"assigned": workforce.assigned_total(), "needed": workforce.needed_total()}))
 	lines.append(StorePanel.balance_text(_focus))
 	_info.text = "\n".join(lines)
 	if StorePanel.is_short(_focus):
@@ -616,6 +639,12 @@ func _refresh_view() -> void:
 	if module_def != null and module_def.blueprint_driven and not placed.is_building():
 		_secondary.visible = true
 		_secondary.text = tr("COLONY_CHOOSE_RECIPE")
+	if _staffable(module_def) and not placed.is_building():
+		var group := _group_of(placed.module_type)
+		_info.text += "
+" + tr("WORKFORCE_LINE").format({"assigned": group.assigned(),
+			"needed": group.needed(), "modules": group.modules})
+		_staff.visible = true
 
 
 ## What the module makes, or why it stands still.
@@ -783,6 +812,68 @@ func _on_secondary() -> void:
 			_open_recipes(placed)
 		return
 	_set_mode(Mode.VIEW)
+
+
+## Whether a module needs workers (and so can be staffed).
+func _staffable(module_def: GameDefinitions.ModuleDef) -> bool:
+	return module_def != null and not module_def.workforce_exempt and module_def.required_workers > 0
+
+
+## The workforce group of a module type in the structure on screen; a type the rate solution
+## does not list yet (just finished) starts empty with its active modules.
+func _group_of(module_type: String) -> Workforce.Group:
+	var known: Variant = _focus.workforce.groups.get(module_type)
+	if known != null:
+		return known as Workforce.Group
+	var group := Workforce.Group.new()
+	group.module_type = module_type
+	var module_def := Services.definitions.module(module_type)
+	if module_def != null:
+		group.required_workers = module_def.required_workers
+		group.base_tier = module_def.base_tier
+	for placed: StructureLayout.Module in _focus.layout.modules():
+		if placed.module_type == module_type and not placed.is_building():
+			group.modules += 1
+	return group
+
+
+func _on_staff() -> void:
+	if _cell == null:
+		return
+	var placed := _focus.layout.module_at(_focus.layout.to_local(_target() as Vector3i))
+	if placed == null:
+		return
+	var module_def := Services.definitions.module(placed.module_type)
+	_workforce_panel.visible = true
+	_info.visible = false
+	_status.visible = false
+	_actions.visible = false
+	_workforce_panel.show_group(_group_of(placed.module_type), _focus.workforce, _focus.robots_in_store(),
+		module_def.display_name if module_def != null else "")
+
+
+func _close_workforce() -> void:
+	_workforce_panel.visible = false
+	_info.visible = true
+	_status.visible = true
+	_actions.visible = true
+	_refresh()
+
+
+func _on_workforce_applied(module_type: String, humans: Array[int], robots: Array[int], auto: Array[bool]) -> void:
+	if _busy:
+		return
+	_busy = true
+	_workforce_panel.set_busy(true)
+	var result := await _focus.set_workforce(module_type, humans, robots, auto)
+	_busy = false
+	_workforce_panel.set_busy(false)
+	if result.is_ok():
+		_close_workforce()
+		_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
+		_status.text = tr("COLONY_DONE")
+	else:
+		_workforce_panel.show_error(ErrorText.describe(result.error, self))
 
 
 func _open_recipes(placed: StructureLayout.Module) -> void:

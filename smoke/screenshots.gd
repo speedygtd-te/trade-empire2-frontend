@@ -117,6 +117,7 @@ func _run() -> void:
 	await get_tree().create_timer(2.0).timeout
 	await _capture("colony_log")
 	await _capture_research(colony)
+	await _capture_staff(colony)
 
 	colony._close_structure()
 	await _dock_screens(colony)
@@ -285,6 +286,31 @@ func _capture_research(colony: ColonyScreen) -> void:
 	await _capture("colony_research_sample_plan")
 	panel._lab_id = 0
 	await model.reload_research()
+
+
+## The staff of a module that needs workers: the line in Inspect, the panel, and a plan that
+## fills up with robots (not sent).
+func _capture_staff(colony: ColonyScreen) -> void:
+	colony._set_mode(ColonyScreen.Mode.VIEW)
+	var model := colony._model
+	var chosen: StructureLayout.Module = null
+	for placed: StructureLayout.Module in model.layout.modules():
+		if colony._staffable(Services.definitions.module(placed.module_type)) and not placed.is_building():
+			chosen = placed
+			if placed.module_type == "RESEARCH_LAB":
+				break
+	if chosen == null:
+		print("STAFF  no module that needs workers")
+		return
+	colony._select(model.layout.to_absolute(chosen.origin))
+	await _capture("colony_staff_line")
+	colony._on_staff()
+	await _capture("colony_staff_panel")
+	colony._workforce_panel._on_fill(false, true)
+	await _capture("colony_staff_plan")
+	print("STAFF  %s: %s" % [chosen.module_type, colony._workforce_panel._verdict.text])
+	colony._close_workforce()
+	colony._select(null)
 
 
 ## A free cell next to the structure, for the build preview.

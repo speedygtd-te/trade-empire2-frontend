@@ -120,9 +120,42 @@ func _run() -> void:
 
 	await _check_recipes(layout)
 	await _check_discard_and_log()
+	await _check_workforce()
 
 	print("COLONY SMOKE %s  (%d failed)" % ["GREEN" if _failures == 0 else "RED", _failures])
 	get_tree().quit(0 if _failures == 0 else 1)
+
+
+## Staffs the colony's mine with one more tier-1 robot from the store and puts the old
+## assignment back; on the way the preview must agree with the server about too many robots.
+func _check_workforce() -> void:
+	_model.reload_production()
+	await _wait_until(func() -> bool: return not _model.workforce.groups.is_empty(), 8000)
+	var group: Variant = _model.workforce.groups.get("MINE")
+	_check(group != null, "workforce: the mine has a staff group (%d groups)" % _model.workforce.groups.size())
+	if group == null:
+		return
+	var mine := group as Workforce.Group
+	var humans: Array[int] = mine.humans.duplicate()
+	var robots: Array[int] = mine.robots.duplicate()
+	var auto: Array[bool] = mine.auto.duplicate()
+	var store := _model.robots_in_store()
+	_check(store[0] > 0, "store has tier-1 robots (%d)" % store[0])
+	var more: Array[int] = robots.duplicate()
+	more[0] += 1
+	_check(_model.workforce.check(mine, humans, more, store).is_empty(), "preview: one more robot is fine")
+	var assigned := await _model.set_workforce("MINE", humans, more, auto)
+	_check(assigned.is_ok(), "assign one more robot -> ok (error: %s)" % _code(assigned))
+	var after: Variant = _model.workforce.groups.get("MINE")
+	_check(after != null and (after as Workforce.Group).robots[0] == robots[0] + 1, "workforce shows the robot")
+	_check(not _model.workforce.tiers.is_empty(), "answer has the tier unlocks (%d)" % _model.workforce.tiers.size())
+	var too_many: Array[int] = robots.duplicate()
+	too_many[0] = store[0] + robots[0] + 1000000
+	_check(_model.workforce.check(mine, humans, too_many, store) == "INSUFFICIENT_ROBOTS", "preview: far too many robots")
+	var refused := await _model.set_workforce("MINE", humans, too_many, auto)
+	_check(_code(refused) == "INSUFFICIENT_ROBOTS", "far too many robots -> INSUFFICIENT_ROBOTS (got %s)" % _code(refused))
+	var back := await _model.set_workforce("MINE", humans, robots, auto)
+	_check(back.is_ok(), "old assignment back -> ok (error: %s)" % _code(back))
 
 
 ## Switches the recipe of the colony's mine to another usable one and back.

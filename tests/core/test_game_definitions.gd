@@ -19,6 +19,20 @@ const BUNDLE := {
 			"key": "BIG_PUMP", "displayName": "Big Pump", "category": "PRODUCTION",
 			"size": {"x": 2.0, "y": 2.0, "z": 1.0}, "positioning": ["OUTDOOR"],
 		},
+		{
+			"key": "RESEARCH_LAB", "displayName": "Research Lab", "category": "PRODUCTION",
+			"size": {"x": 1.0, "y": 1.0, "z": 1.0}, "positioning": ["INDOOR"],
+			"workforceExempt": false, "workforce": {"requiredWorkers": 4.0, "baseTier": 2.0},
+		},
+		{
+			"key": "HABITAT", "displayName": "Habitat", "category": "COLONY",
+			"size": {"x": 1.0, "y": 1.0, "z": 1.0}, "positioning": ["INDOOR"], "workforceExempt": true,
+			"housing": {"housingTier": 1.0, "maxInhabitants": 50.0, "satisfactionBase": 250000.0},
+		},
+	],
+	"housingTiers": [
+		{"tier": 2.0, "requiredTier": 1.0, "minPopulation": 500.0,
+			"emissionRequirements": [{"emission": "ENTERTAINMENT", "minCoveragePercent": 70000000.0}]},
 	],
 	"hulls": [
 		{
@@ -101,7 +115,7 @@ func test_reads_modules_with_size_and_positioning() -> void:
 	assert_str(pump.category).is_equal("PRODUCTION")
 	assert_that(pump.size).is_equal(Vector3i(2, 2, 1))
 	assert_array(Array(pump.positioning)).contains_exactly(["OUTDOOR"])
-	assert_int(definitions.module_count()).is_equal(2)
+	assert_int(definitions.module_count()).is_equal(4)
 
 
 func test_reads_hulls_and_a_hull_without_module_slot() -> void:
@@ -154,3 +168,29 @@ func test_parses_from_text() -> void:
 
 	assert_str(definitions.module("PUMP").display_name).is_equal("Pump")
 	assert_that(definitions.module("PUMP").size).is_equal(Vector3i.ONE)
+
+
+func test_reads_staffing_and_housing_of_modules() -> void:
+	var definitions := GameDefinitions.from_bundle(BUNDLE)
+
+	var lab := definitions.module("RESEARCH_LAB")
+	assert_bool(lab.workforce_exempt).is_false()
+	assert_int(lab.required_workers).is_equal(4)
+	assert_int(lab.base_tier).is_equal(2)
+	var habitat := definitions.module("HABITAT")
+	assert_bool(habitat.workforce_exempt).is_true()
+	assert_int(habitat.housing_tier).is_equal(1)
+	assert_int(habitat.max_inhabitants).is_equal(50)
+	# Without a workforce block: no workers, base tier 1.
+	assert_int(definitions.module("PUMP").required_workers).is_equal(0)
+	assert_int(definitions.module("PUMP").base_tier).is_equal(1)
+
+
+func test_reads_housing_tier_conditions() -> void:
+	var definitions := GameDefinitions.from_bundle(BUNDLE)
+
+	var tier: GameDefinitions.HousingTierDef = definitions.housing_tiers[2]
+	assert_int(tier.required_tier).is_equal(1)
+	assert_int(tier.min_population).is_equal(500)
+	assert_array(tier.emissions).is_equal([["ENTERTAINMENT", 70000000]])
+	assert_bool(definitions.housing_tiers.has(3)).is_false()

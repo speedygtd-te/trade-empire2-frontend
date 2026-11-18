@@ -260,3 +260,23 @@ COLONY_FOUNDS_GUEST,{name} – founds a new vessel on the dock.
 COLONY_SUPPLY_FROM_HOST,Hulls and modules come from the store of {host}.
 COLONY_REMOVES_GUEST,This is the vessel's last hull: removing it removes the vessel.
 STORE_EMPTY,The store is empty.
+WORKFORCE_OPEN,Staff
+WORKFORCE_TITLE,Staff of {module}
+WORKFORCE_NEED,"Needs {needed} workers of tier {tier} or higher for {modules} module(s), {assigned} assigned."
+WORKFORCE_TIER,Tier {tier}
+WORKFORCE_PEOPLE_AT_HAND,{free} free · {robots} robots here
+WORKFORCE_ROBOTS_AT_HAND,{store} at hand · {people} people here
+WORKFORCE_PEOPLE,People
+WORKFORCE_ROBOTS,Robots
+WORKFORCE_FILL_PEOPLE,Fill: people
+WORKFORCE_FILL_ROBOTS,Fill: robots
+WORKFORCE_CLEAR,Clear
+WORKFORCE_APPLY,Apply
+WORKFORCE_FULL,Fully staffed.
+WORKFORCE_UNDERSTAFFED,"{missing} workers missing – the modules run slower, labs may not research."
+WORKFORCE_LINE,"Staff: {assigned} of {needed} for {modules} module(s) of this type."
+WORKFORCE_SUMMARY,"Inhabitants: {people} · Staff: {assigned} of {needed}"
+ERROR_TIER_TOO_LOW,Workers below the tier this module needs cannot work here.
+ERROR_INSUFFICIENT_WORKERS,There are not that many free people of this tier.
+ERROR_INSUFFICIENT_ROBOTS,There are not that many robots of this tier in the store.
+RESEARCH_NO_STAFF,"This lab has no staff: inspect it and assign workers with Staff."

@@ -70,6 +70,8 @@ var power: Array[int] = [0, 0]
 var life_support: Array[int] = [0, 0]
 var food_shortage := false
 var storage_full := false
+## Inhabitants per tier and who works where (from production, structure and PUT workforce).
+var workforce := Workforce.new()
 
 var _layout_loading := false
 var _layout_again := false
@@ -264,7 +266,39 @@ func reload_production() -> void:
 	for entry: Variant in idle:
 		var row := Wire.as_dict(entry)
 		idle_reasons[Wire.as_int(row.get("moduleId"))] = Wire.as_string(row.get("reason"))
+	workforce.apply_groups(answer.data.get("workforce"))
+	# Inhabitants are a flow per habitat; the structure counts them at the time of its answer.
+	var details := await Services.api.get_json("/v2/structures/%d" % structure_id)
+	if details.is_ok():
+		workforce.apply_population_by_tier(Wire.as_dict(details.data.get("aggregates")).get("populationByTier"))
 	production_changed.emit()
+
+
+## Assigns people and robots (five counts each, tiers 1–5) to a module type; `auto` marks the
+## tiers that fill up when a module of the type is finished. Robots come from and go back to the
+## store. On success the workforce is the one the server sends back.
+func set_workforce(module_type: String, humans: Array[int], robots: Array[int], auto: Array[bool]) -> ApiResult:
+	var result := await Services.api.put_json("/v2/structures/%d/workforce" % structure_id, {
+		"assignments": [{"moduleType": module_type, "humans": humans, "robots": robots, "auto": auto}],
+	})
+	if result.is_ok():
+		workforce.apply_response(result.data)
+		production_changed.emit()
+		reload_inventory()
+		reload_production()
+		reload_labs()
+	return result
+
+
+## Robots of each tier (1–5) in the store, whole units.
+func robots_in_store() -> Array[int]:
+	var counts: Array[int] = [0, 0, 0, 0, 0]
+	if inventory == null:
+		return counts
+	var now := Services.clock.now_ms()
+	for tier: int in range(1, Workforce.TIERS + 1):
+		counts[tier - 1] = inventory.units("ROBOT_T%d" % tier, now)
+	return counts
 
 
 ## Destroys `amount` micro-units of an item for good (way out of a full store). On success the

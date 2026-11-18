@@ -409,6 +409,12 @@ func _status_text(lab: ResearchState.Lab) -> String:
 	})
 	if not lab.hint_category.is_empty():
 		text += "\n" + tr("RESEARCH_HINT_FIELD").format({"field": _category_name(lab.hint_category)})
+	# A lab only researches with staff: the mean tier of its type's workers must reach the
+	# research's minimum (SPEC-forschung 1.2), so without anyone nothing fits.
+	if lab.status == "NO_TECH" and _model != null:
+		var group: Variant = _model.workforce.groups.get(lab.module_type)
+		if group == null or (group as Workforce.Group).assigned() == 0:
+			text += "\n" + tr("RESEARCH_NO_STAFF")
 	return text
 
 
