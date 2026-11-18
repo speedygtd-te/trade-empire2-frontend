@@ -167,8 +167,8 @@ func _measure(label: String) -> void:
 	props.visible = false
 	var without := await _frame_cost()
 	props.visible = true
-	print("MEASURE  %s: %d props built, %d drawn in %d MultiMeshes over %d blocks; draw calls %d (without props %d), primitives %d (without %d)" % [
-		label, stats["built"], stats["drawn"], stats["multimeshes"], stats["blocks"],
+	print("MEASURE  %s: %d props built, %d drawn in %d MultiMeshes over %d blocks (built in %d ms so far); draw calls %d (without props %d), primitives %d (without %d)" % [
+		label, stats["built"], stats["drawn"], stats["multimeshes"], stats["blocks"], stats["build_ms"],
 		with_props.x, without.x, with_props.y, without.y])
 
 
