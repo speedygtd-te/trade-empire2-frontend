@@ -148,10 +148,11 @@ func _tier_row(tier: int) -> Control:
 			"store": _store[tier - 1] + _group.robots[tier - 1], "people": _humans[tier - 1]})
 	names.add_child(at_hand)
 	row.add_child(names)
-	var less := Button.new()
+	# A swipe that starts on a stepper scrolls the list (ListButton).
+	var less := ListButton.new()
 	less.text = "−"
 	less.custom_minimum_size = Vector2(STEP_WIDTH, AppTheme.TOUCH_MIN)
-	less.pressed.connect(_on_step.bind(tier, -1))
+	less.tapped.connect(_on_step.bind(tier, -1))
 	row.add_child(less)
 	var count := Ui.dynamic_label()
 	count.custom_minimum_size = Vector2(COUNT_WIDTH, 0)
@@ -159,10 +160,10 @@ func _tier_row(tier: int) -> Control:
 	count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	count.text = str(_humans[tier - 1] if _people else _robots[tier - 1])
 	row.add_child(count)
-	var more := Button.new()
+	var more := ListButton.new()
 	more.text = "+"
 	more.custom_minimum_size = Vector2(STEP_WIDTH, AppTheme.TOUCH_MIN)
-	more.pressed.connect(_on_step.bind(tier, 1))
+	more.tapped.connect(_on_step.bind(tier, 1))
 	row.add_child(more)
 	return row
 

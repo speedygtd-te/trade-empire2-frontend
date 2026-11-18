@@ -32,7 +32,7 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 		child.queue_free()
 	var definitions := Services.definitions
 	var none := _entry(tr("RECIPE_NONE"), "", current.is_empty(), true)
-	none.pressed.connect(func() -> void: chosen.emit(""))
+	none.tapped.connect(func() -> void: chosen.emit(""))
 	_list.add_child(none)
 	for recipe: GameDefinitions.BlueprintDef in definitions.blueprints_for(module_type):
 		var allowed := usable.has(recipe.key)
@@ -43,7 +43,7 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 		if not allowed:
 			text += "\n" + tr("RECIPE_LOCKED")
 		var button := _entry(text, recipe.key, recipe.key == current, allowed)
-		button.pressed.connect(func() -> void: chosen.emit(recipe.key))
+		button.tapped.connect(func() -> void: chosen.emit(recipe.key))
 		_list.add_child(button)
 
 
@@ -89,14 +89,12 @@ static func _flows(flows: Array[Array], scale: int) -> String:
 	return ", ".join(parts)
 
 
-func _entry(text: String, _key: String, selected: bool, enabled: bool) -> Button:
-	var button := Button.new()
+## One recipe in the list; a swipe on it scrolls the list (ListButton).
+func _entry(text: String, _key: String, selected: bool, enabled: bool) -> ListButton:
+	var button := ListButton.new()
 	button.text = text
-	button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN)
-	button.toggle_mode = true
-	button.button_pressed = selected
+	button.set_chosen(selected)
 	button.disabled = not enabled
 	return button

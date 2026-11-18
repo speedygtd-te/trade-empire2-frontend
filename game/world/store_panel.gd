@@ -19,7 +19,6 @@ var _list: VBoxContainer
 var _inventory: Inventory
 ## Item → [amount label, rate label].
 var _rows: Dictionary = {}
-var _group := ButtonGroup.new()
 ## The item chosen for discarding; "" when none.
 var _selected := ""
 ## The amount waiting for its second tap (DISCARD_AMOUNTS entry); -1 when none.
@@ -147,13 +146,12 @@ func show_inventory(inventory: Inventory) -> void:
 	for entry: Array in entries:
 		# The whole row is a button: tapping it chooses the item for discarding.
 		var key: String = entry[1]
-		var row_button := Button.new()
-		row_button.toggle_mode = true
-		row_button.button_group = _group
+		# A swipe that starts on a row scrolls the list (ListButton).
+		var row_button := ListButton.new()
 		row_button.flat = true
-		row_button.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN)
-		row_button.button_pressed = key == _selected
-		row_button.pressed.connect(_select.bind(key))
+		row_button.set_chosen(key == _selected)
+		row_button.tapped.connect(_select.bind(key))
+		row_button.set_meta("item", key)
 		var row := HBoxContainer.new()
 		row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -187,6 +185,11 @@ func show_inventory(inventory: Inventory) -> void:
 
 func _select(item: String) -> void:
 	_selected = item
+	for child: Node in _list.get_children():
+		if child is ListButton:
+			var row := child as ListButton
+			var tagged: String = row.get_meta("item", "")
+			row.set_chosen(tagged == item)
 	_armed = -1
 	_discard_status.remove_theme_color_override("font_color")
 	_discard_status.text = ""

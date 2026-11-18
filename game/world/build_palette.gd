@@ -98,20 +98,14 @@ func _rebuild() -> void:
 		button.button_pressed = category == _category
 		button.pressed.connect(_on_category.bind(category))
 		_grid.add_child(button)
-	var items := ButtonGroup.new()
 	for entry: BuildCatalog.Entry in BuildCatalog.in_category(_entries, _category):
-		var row := Button.new()
-		row.toggle_mode = true
-		row.button_group = items
+		# A swipe that starts on a row scrolls the list (ListButton).
+		var row := ListButton.new()
 		row.text = tr("COLONY_ITEM_COUNT").format({"name": entry.display_name, "count": entry.count})
-		row.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		row.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN)
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.button_pressed = entry.tool == _tool
-		# Let a swipe that starts on a row scroll the list (touch screens).
-		row.mouse_filter = Control.MOUSE_FILTER_PASS
-		row.pressed.connect(_on_item.bind(entry.tool))
+		row.set_chosen(entry.tool == _tool)
+		row.tapped.connect(_on_item.bind(entry.tool))
 		_list.add_child(row)
 	_scroll.scroll_vertical = 0
 

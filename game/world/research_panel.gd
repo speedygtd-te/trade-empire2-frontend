@@ -210,15 +210,16 @@ func _error_state(error: ApiError) -> Control:
 	return column
 
 
-func _lab_card(lab: ResearchState.Lab, index: int, count: int, group: ButtonGroup) -> Control:
+func _lab_card(lab: ResearchState.Lab, index: int, count: int, _group: ButtonGroup) -> Control:
 	var card := Ui.column(6)
-	var header := Ui.tab_button("", group)
-	header.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	# A swipe that starts on the header scrolls the list (ListButton).
+	var header := ListButton.new()
+	header.theme_type_variation = AppTheme.VARIATION_TAB_BUTTON
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	var lab_name := _module_name(lab.module_type)
 	header.text = tr("RESEARCH_LAB_NUMBERED").format({"name": lab_name, "number": index + 1}) if count > 1 else lab_name
-	header.button_pressed = lab.module_id == _lab_id
-	header.pressed.connect(_choose_lab.bind(lab.module_id))
+	header.set_chosen(lab.module_id == _lab_id)
+	header.tapped.connect(_choose_lab.bind(lab.module_id))
 	card.add_child(header)
 	var status := Ui.dynamic_label()
 	status.text = _status_text(lab)
@@ -247,7 +248,7 @@ func _lab_card(lab: ResearchState.Lab, index: int, count: int, group: ButtonGrou
 	return card
 
 
-func _tech_entry(entry: ResearchCatalog.Tech, enabled: bool, group: ButtonGroup) -> Button:
+func _tech_entry(entry: ResearchCatalog.Tech, enabled: bool, _group: ButtonGroup) -> Button:
 	var lines := PackedStringArray([tr("RESEARCH_TECH_TITLE").format({
 		"name": entry.display_name, "tier": entry.tier,
 		"duration": TimeFormat.duration(entry.base_time_seconds * 1000)})])
@@ -261,17 +262,15 @@ func _tech_entry(entry: ResearchCatalog.Tech, enabled: bool, group: ButtonGroup)
 		lines.append(tr("RESEARCH_TECH_UNLOCKS").format({"things": unlocks}))
 	if entry.min_worker_tier > 1:
 		lines.append(tr("RESEARCH_TECH_WORKERS").format({"tier": entry.min_worker_tier}))
-	var button := Button.new()
+	# A swipe that starts on an entry scrolls the list (ListButton).
+	var button := ListButton.new()
 	button.text = "\n".join(lines)
-	button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.custom_minimum_size = Vector2(0, AppTheme.TOUCH_MIN)
-	button.toggle_mode = true
-	button.button_group = group
-	button.button_pressed = entry.key == _target
+	button.set_chosen(entry.key == _target)
+	button.set_meta("tech", entry.key)
 	button.disabled = not enabled
-	button.pressed.connect(_choose_target.bind(entry.key))
+	button.tapped.connect(_choose_target.bind(entry.key))
 	return button
 
 
@@ -289,6 +288,10 @@ func _choose_lab(module_id: int) -> void:
 
 func _choose_target(key: String) -> void:
 	_target = key
+	for child: Node in _list.get_children():
+		if child is ListButton and child.has_meta("tech"):
+			var tagged: String = child.get_meta("tech")
+			(child as ListButton).set_chosen(tagged == key)
 	_armed = ""
 	_show_status("", AppTheme.COLOR_MUTED)
 	_update_actions()
