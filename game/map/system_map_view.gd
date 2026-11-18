@@ -1,0 +1,435 @@
+class_name SystemMapView
+extends Control
+## Draws a star system from above (SystemMap) and lets the player pan, zoom and tap bodies.
+##
+## Bodies are drawn, not sprites: a disc in the colour of its type, lit from the star's side, so
+## every marker scales cleanly from the overview to a single moon system and costs no assets.
+## V1 had only one generic planet sprite, which would not tell the types apart.
+##
+## The view keeps a centre (map point in the middle of the free area) and a zoom (canvas pixels
+## per map unit). Moons appear once their rings are far enough apart to be told from each other;
+## before that a faint ring around the planet says it has moons. Names are placed greedily by
+## importance and left out where they would overlap.
+
+## A body was tapped; "" for a tap beside every body.
+signal body_tapped(body_id: String)
+
+## Pointer travel (canvas px) below which a press counts as a tap, not a drag.
+const TAP_SLOP := 18.0
+## Moons show once their rings are this many pixels apart.
+const MOON_SHOW_PX := 6.0
+## Smallest drawn marker radius (px) per kind, so even a tiny body stays visible.
+const MIN_PLANET_PX := 6.0
+const MIN_MOON_PX := 3.0
+const MIN_BELT_BODY_PX := 4.0
+## Zoom limits: from a bit more than the whole system to moon rings this far apart (px).
+const MAX_MOON_STEP_PX := 72.0
+const LABEL_FONT_SIZE := 22
+## Dots that draw an asteroid belt's band.
+const BELT_DOTS := 420
+## Colour of each body type on the map (depiction only, not a UI meaning).
+const BODY_COLORS := {
+	"EARTH_LIKE": Color(0.36, 0.72, 0.48),
+	"DESERT": Color(0.85, 0.62, 0.30),
+	"OCEAN": Color(0.26, 0.48, 0.86),
+	"ICE": Color(0.66, 0.80, 0.94),
+	"VOLCANIC": Color(0.78, 0.36, 0.24),
+	"BARREN": Color(0.58, 0.58, 0.60),
+	"TOXIC": Color(0.64, 0.76, 0.28),
+	"GAS_GIANT": Color(0.78, 0.62, 0.46),
+	"ICE_GIANT": Color(0.46, 0.76, 0.84),
+	"ASTEROID_M": Color(0.62, 0.60, 0.58),
+	"ASTEROID_C": Color(0.42, 0.40, 0.38),
+	"ASTEROID_S": Color(0.58, 0.50, 0.42),
+	"MOON_ROCKY": Color(0.64, 0.62, 0.60),
+	"MOON_ICY": Color(0.74, 0.86, 0.94),
+	"MOON_VOLCANIC": Color(0.86, 0.56, 0.30),
+}
+const UNKNOWN_COLOR := Color(0.6, 0.6, 0.6)
+
+var map: SystemMap = null
+## Game time (seconds) the map shows.
+var time_s := 0.0
+## The selected body; "" when none.
+var selected := ""
+## The player's home body and the bodies with own structures (id → true).
+var home_body := ""
+var marked: Dictionary = {}
+
+var _centre := Vector2.ZERO
+var _zoom := 1.0
+var _fit_zoom := 1.0
+## Part of the view not covered by the screen's bars, in view coordinates.
+var _free := Rect2()
+var _font: Font
+var _touches: Dictionary = {}
+var _press_travel := 0.0
+var _mouse_down := false
+var _backdrop := PackedVector2Array()
+var _belt_dots := PackedVector2Array()
+
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
+	_font = get_theme_default_font()
+	var random := RandomNumberGenerator.new()
+	random.seed = 7
+	for index: int in 160:
+		_backdrop.append(Vector2(random.randf(), random.randf()))
+	# The belt band: an angle and a spread (−1..1) per dot.
+	for index: int in BELT_DOTS:
+		_belt_dots.append(Vector2(random.randf() * TAU, random.randf_range(-1.0, 1.0)))
+
+
+## Shows a system; the view fits it into the free area.
+func show_map(system: SystemMap) -> void:
+	map = system
+	fit()
+
+
+## The part of the view the map may use (between the screen's bars), in view coordinates.
+func set_free_area(area: Rect2) -> void:
+	var first := _free.size == Vector2.ZERO
+	_free = area
+	_fit_zoom = _zoom_to_fit()
+	if first:
+		fit()
+	queue_redraw()
+
+
+## Shows the whole system.
+func fit() -> void:
+	_fit_zoom = _zoom_to_fit()
+	_zoom = _fit_zoom
+	_centre = Vector2.ZERO
+	queue_redraw()
+
+
+## Centres a body and zooms so its moon system fills about the free area.
+func focus_body(body_id: String, close: bool = true) -> void:
+	if map == null or map.body(body_id) == null:
+		return
+	var body := map.body(body_id)
+	var host := map.body(body.parent_id) if body.is_moon() else body
+	if close:
+		var span := maxf(host.reach(), host.marker * 4.0) * 3.0
+		_zoom = _clamp_zoom(minf(_area().size.x, _area().size.y) / maxf(span, 1.0))
+	_centre = map.position(body_id, time_s)
+	queue_redraw()
+
+
+## Keeps the view on a body while it moves: shifts the centre by the body's motion.
+func follow(body_id: String, before_s: float) -> void:
+	if map == null or map.body(body_id) == null:
+		return
+	_centre += map.position(body_id, time_s) - map.position(body_id, before_s)
+
+
+## Map point → view position.
+func to_view(point: Vector2) -> Vector2:
+	return _area().get_center() + (point - _centre) * _zoom
+
+
+## View position → map point.
+func to_map(at: Vector2) -> Vector2:
+	return _centre + (at - _area().get_center()) / _zoom
+
+
+## Zooms by `factor` (>1 = closer) keeping the map point under `at` in place.
+func zoom_at(factor: float, at: Vector2) -> void:
+	var anchor := to_map(at)
+	_zoom = _clamp_zoom(_zoom * factor)
+	_centre = anchor - (at - _area().get_center()) / _zoom
+	_clamp_centre()
+	queue_redraw()
+
+
+func pan(by: Vector2) -> void:
+	_centre -= by / _zoom
+	_clamp_centre()
+	queue_redraw()
+
+
+func moons_visible() -> bool:
+	return _zoom * SystemMap.MOON_STEP >= MOON_SHOW_PX
+
+
+func zoom() -> float:
+	return _zoom
+
+
+## The body under a tap at `at` (view coordinates); generous, so small markers stay tappable.
+func body_at(at: Vector2) -> String:
+	if map == null:
+		return ""
+	return map.pick(to_map(at), time_s, AppTheme.TOUCH_MIN * 0.5 / _zoom, moons_visible())
+
+
+func _area() -> Rect2:
+	return _free if _free.size != Vector2.ZERO else Rect2(Vector2.ZERO, size)
+
+
+func _zoom_to_fit() -> float:
+	if map == null:
+		return 1.0
+	var area := _area().size
+	return maxf(minf(area.x, area.y) / (map.extent * 2.1), 0.0001)
+
+
+func _clamp_zoom(value: float) -> float:
+	return clampf(value, _fit_zoom * 0.8, maxf(MAX_MOON_STEP_PX / SystemMap.MOON_STEP, _fit_zoom))
+
+
+func _clamp_centre() -> void:
+	if map != null and _centre.length() > map.extent:
+		_centre = _centre.normalized() * map.extent
+
+
+# --- drawing --------------------------------------------------------------------------------
+
+func _draw() -> void:
+	_draw_backdrop()
+	if map == null:
+		return
+	var star_at := to_view(Vector2.ZERO)
+	var star_color := SkyLight.star_color(map.star_kelvin)
+	var orbit_color := Color(AppTheme.COLOR_BORDER, 0.7)
+	for body: SystemMap.Body in map.star_orbits():
+		var color := Color(AppTheme.COLOR_ACCENT, 0.6) if _orbit_selected(body) else orbit_color
+		if body.is_belt():
+			_draw_belt(body, star_at)
+		else:
+			_draw_ring(star_at, body.ring * _zoom, color, 2.0)
+	_draw_star(star_at, star_color)
+
+	var show_moons := moons_visible()
+	var labels: Array[Array] = []
+	for body: SystemMap.Body in map.bodies:
+		if body.is_moon():
+			continue
+		var at := to_view(map.position(body.id, time_s))
+		if not body.moons.is_empty():
+			if show_moons:
+				for moon_id: String in body.moons:
+					var moon := map.body(moon_id)
+					var ring_color := Color(AppTheme.COLOR_ACCENT, 0.6) if moon_id == selected else Color(AppTheme.COLOR_BORDER, 0.45)
+					_draw_ring(at, moon.ring * _zoom, ring_color, 1.5)
+			else:
+				_draw_ring(at, body.reach() * _zoom, Color(AppTheme.COLOR_BORDER, 0.5), 1.5)
+		_draw_body(body, at, star_at)
+		labels.append([body, at])
+		if show_moons:
+			for moon_id: String in body.moons:
+				var moon := map.body(moon_id)
+				var moon_at := to_view(map.position(moon_id, time_s))
+				_draw_body(moon, moon_at, star_at)
+				labels.append([moon, moon_at])
+	_draw_labels(labels, star_at)
+
+
+func _draw_backdrop() -> void:
+	var dim := Color(AppTheme.COLOR_TEXT, 0.18)
+	for point: Vector2 in _backdrop:
+		draw_circle(point * size, 1.2, dim)
+
+
+func _draw_star(at: Vector2, color: Color) -> void:
+	var radius := maxf(SystemMap.STAR_RADIUS * _zoom, 10.0)
+	# The glow grows with the star only so far: up close it would cover the inner planets.
+	var glow := minf(radius, 30.0)
+	for step: int in 5:
+		draw_circle(at, radius + glow * 0.6 * (5 - step), Color(color, 0.06))
+	draw_circle(at, radius, color)
+	draw_circle(at, radius * 0.7, color.lightened(0.5))
+
+
+func _draw_ring(at: Vector2, radius: float, color: Color, width: float) -> void:
+	if radius < 1.0:
+		return
+	var points := clampi(int(radius / 3.0), 48, 720)
+	draw_arc(at, radius, 0.0, TAU, points, color, width, true)
+
+
+## An asteroid belt: a band of dots that turns with the belt's body.
+func _draw_belt(body: SystemMap.Body, star_at: Vector2) -> void:
+	var turn := SystemMap.orbit_angle(body.phase0, body.period_s, time_s)
+	var color := Color(_color_of(body.type), 0.55)
+	if _orbit_selected(body):
+		color = Color(AppTheme.COLOR_ACCENT, 0.7)
+	var dot := clampf(1.6 * _zoom, 1.2, 3.0)
+	var half_width := SystemMap.BELT_HALF_WIDTH
+	for entry: Vector2 in _belt_dots:
+		var radius := (body.ring + entry.y * half_width) * _zoom
+		draw_circle(star_at + SystemMap.on_ring(radius, entry.x + turn), dot, color)
+
+
+## A body: a disc lit from the star's side, with rings for home, own structures and selection.
+func _draw_body(body: SystemMap.Body, at: Vector2, star_at: Vector2) -> void:
+	var radius := _drawn_radius(body)
+	var color := _color_of(body.type)
+	var to_star := (star_at - at).normalized() if star_at.distance_to(at) > 0.5 else Vector2.ZERO
+	draw_circle(at, radius, color.darkened(0.6))
+	draw_circle(at + to_star * radius * 0.18, radius * 0.82, color)
+	draw_circle(at + to_star * radius * 0.42, radius * 0.35, color.lightened(0.25))
+	if body.id == home_body:
+		_draw_ring(at, radius + 7.0, AppTheme.COLOR_OK, 3.0)
+	elif marked.has(body.id):
+		_draw_ring(at, radius + 7.0, Color(AppTheme.COLOR_OK, 0.8), 2.0)
+	if body.id == selected:
+		_draw_ring(at, radius + 14.0, AppTheme.COLOR_ACCENT, 3.0)
+
+
+## Radius of a body's disc on screen: its marker at this zoom, never below the kind's minimum.
+func _drawn_radius(body: SystemMap.Body) -> float:
+	var minimum := MIN_PLANET_PX
+	if body.is_moon():
+		minimum = MIN_MOON_PX
+	elif body.is_belt():
+		minimum = MIN_BELT_BODY_PX
+	return maxf(body.marker * _zoom, minimum)
+
+
+## Names next to the bodies, below or else above. The selected body's name always shows; the
+## others keep off the star, every disc and each other, placed by importance: home and marked
+## bodies, planets and belts, moons. A name that fits nowhere is left out.
+func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
+	var obstacles: Array[Rect2] = []
+	var star_radius := maxf(SystemMap.STAR_RADIUS * _zoom, 10.0)
+	obstacles.append(Rect2(star_at - Vector2.ONE * star_radius, Vector2.ONE * star_radius * 2.0))
+	for entry: Array in entries:
+		var disc_at: Vector2 = entry[1]
+		var radius := _drawn_radius(entry[0] as SystemMap.Body)
+		obstacles.append(Rect2(disc_at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0))
+	var candidates: Array[Array] = []
+	var owners: Array[SystemMap.Body] = []
+	for rank: int in 4:
+		for entry: Array in entries:
+			var body: SystemMap.Body = entry[0]
+			if _label_rank(body) != rank:
+				continue
+			var at: Vector2 = entry[1]
+			var below := _label_box(body, at, true)
+			if body.id == selected:
+				_draw_label(body, below)
+				obstacles.append(below)
+				continue
+			candidates.append([below, _label_box(body, at, false)])
+			owners.append(body)
+	var placed := SystemMap.place_labels(candidates, obstacles)
+	for index: int in candidates.size():
+		if placed[index] >= 0:
+			_draw_label(owners[index], candidates[index][placed[index]] as Rect2)
+
+
+## The box of a body's name centred below (or above) its disc, clear of the rings around it.
+func _label_box(body: SystemMap.Body, at: Vector2, below: bool) -> Rect2:
+	var text := SystemMap.short_name(body.name, map.star_name)
+	var width := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE).x
+	var height := LABEL_FONT_SIZE + 4.0
+	var gap := _drawn_radius(body) + (18.0 if body.id == selected else 6.0)
+	var top := at.y + gap if below else at.y - gap - height
+	return Rect2(at.x - width * 0.5 - 4.0, top, width + 8.0, height)
+
+
+func _draw_label(body: SystemMap.Body, box: Rect2) -> void:
+	var color := AppTheme.COLOR_MUTED
+	if body.id == selected:
+		color = AppTheme.COLOR_ACCENT
+	elif body.id == home_body or marked.has(body.id):
+		color = AppTheme.COLOR_OK
+	elif not body.is_moon():
+		color = AppTheme.COLOR_TEXT
+	var text := SystemMap.short_name(body.name, map.star_name)
+	var spot := Vector2(box.position.x + 4.0, box.position.y + 2.0 + _font.get_ascent(LABEL_FONT_SIZE))
+	draw_string_outline(_font, spot, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, 6, AppTheme.COLOR_BACKGROUND)
+	draw_string(_font, spot, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, color)
+
+
+func _label_rank(body: SystemMap.Body) -> int:
+	if body.id == selected:
+		return 0
+	if body.id == home_body or marked.has(body.id):
+		return 1
+	return 3 if body.is_moon() else 2
+
+
+func _orbit_selected(body: SystemMap.Body) -> bool:
+	return body.id == selected
+
+
+func _color_of(type: String) -> Color:
+	var found: Variant = BODY_COLORS.get(type)
+	if found == null:
+		return UNKNOWN_COLOR
+	var color: Color = found
+	return color
+
+
+# --- input ----------------------------------------------------------------------------------
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			_touches[touch.index] = touch.position
+			if _touches.size() == 1:
+				_press_travel = 0.0
+		else:
+			var was_single := _touches.size() == 1
+			_touches.erase(touch.index)
+			if was_single and _press_travel < TAP_SLOP:
+				body_tapped.emit(body_at(touch.position))
+		accept_event()
+	elif event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if _touches.size() >= 2 and _touches.has(drag.index):
+			var other := Vector2.ZERO
+			for index: int in _touches.keys():
+				if index != drag.index:
+					other = _touches[index]
+					break
+			var before: Vector2 = _touches[drag.index]
+			var old_distance := before.distance_to(other)
+			var new_distance := drag.position.distance_to(other)
+			if old_distance > 1.0 and new_distance > 1.0:
+				zoom_at(new_distance / old_distance, (drag.position + other) * 0.5)
+			_touches[drag.index] = drag.position
+			_press_travel = TAP_SLOP
+		else:
+			_touches[drag.index] = drag.position
+			_press_travel += drag.relative.length()
+			pan(drag.relative)
+		accept_event()
+	elif event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		if button.device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		match button.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				if button.pressed:
+					zoom_at(1.15, button.position)
+			MOUSE_BUTTON_WHEEL_DOWN:
+				if button.pressed:
+					zoom_at(1.0 / 1.15, button.position)
+			MOUSE_BUTTON_LEFT:
+				if button.pressed:
+					_mouse_down = true
+					_press_travel = 0.0
+				else:
+					_mouse_down = false
+					if _press_travel < TAP_SLOP:
+						body_tapped.emit(body_at(button.position))
+		accept_event()
+	elif event is InputEventMouseMotion:
+		var motion := event as InputEventMouseMotion
+		if motion.device == InputEvent.DEVICE_ID_EMULATION or not _mouse_down:
+			return
+		_press_travel += motion.relative.length()
+		pan(motion.relative)
+		accept_event()
+	elif event is InputEventMagnifyGesture:
+		var gesture := event as InputEventMagnifyGesture
+		zoom_at(gesture.factor, gesture.position)
+		accept_event()

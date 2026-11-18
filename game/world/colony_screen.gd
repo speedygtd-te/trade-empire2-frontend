@@ -63,6 +63,10 @@ var _loading: Control
 var _bottom: PanelContainer
 var _menu: Control
 var _menu_button: Button
+## Opens the system map; shown while no structure is open.
+var _map_button: Button
+## The system map over the colony while it is open; null otherwise.
+var _map: MapScreen = null
 var _tabs: HBoxContainer
 
 ## Whether the structure is open for building and editing; closed it shows from outside.
@@ -136,7 +140,9 @@ func _process(delta: float) -> void:
 ## Android back: close the menu or the recipes, clear the selected field, shut the open
 ## structure, clear the selected structure — never quit.
 func handle_back() -> void:
-	if _menu != null and _menu.visible:
+	if _map != null:
+		_map.handle_back()
+	elif _menu != null and _menu.visible:
 		_menu.visible = false
 	elif _opened and _mode == Mode.RESEARCH and _research.handle_back():
 		pass
@@ -209,6 +215,11 @@ func _build_overlay() -> void:
 	_subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	names.add_child(_subtitle)
+	_map_button = Ui.secondary_button("MAP_OPEN")
+	_map_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_map_button.visible = false
+	_map_button.pressed.connect(_open_map)
+	top_row.add_child(_map_button)
 	_menu_button = Ui.secondary_button("COLONY_MENU")
 	_menu_button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_menu_button.pressed.connect(_on_menu)
@@ -309,6 +320,7 @@ func _on_definitions_loaded() -> void:
 
 func _on_ready_to_show() -> void:
 	_loading.visible = false
+	_map_button.visible = not _opened
 	_title.text = _model.structure_name
 	_subtitle.text = _model.body_name
 	_view.look_at_cell(_model.centre_cell())
@@ -381,6 +393,7 @@ func _on_guests_changed() -> void:
 			_view.open_structure(0)
 			_view.show_preview([], false)
 			_menu_button.text = tr("COLONY_MENU")
+			_map_button.visible = true
 			_select(null)
 			_set_mode(Mode.VIEW)
 		_select_structure(false)
@@ -513,6 +526,7 @@ func _open_structure(mode: Mode) -> void:
 	_store.setup(_focus)
 	_log.setup(_focus)
 	_menu_button.text = tr("COLONY_CLOSE_STRUCTURE")
+	_map_button.visible = false
 	_show_names()
 	_set_mode(mode)
 
@@ -534,6 +548,7 @@ func _close_structure() -> void:
 	_view.open_structure(0)
 	_view.show_preview([], false)
 	_menu_button.text = tr("COLONY_MENU")
+	_map_button.visible = _model.structure_id != 0
 	_select(null)
 	_set_mode(Mode.VIEW)
 	_select_structure(true)
@@ -952,6 +967,26 @@ func _on_menu() -> void:
 		_menu = _build_menu()
 		add_child(_menu)
 	_menu.visible = true
+
+
+## Opens the system map over the colony; the colony stops drawing while it is covered.
+func _open_map() -> void:
+	if _map != null:
+		return
+	_map = MapScreen.new()
+	var account := Services.session.account
+	_map.setup(_model.system_id, account.home_body_id if account != null else "")
+	_map.closed.connect(_close_map)
+	add_child(_map)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+
+
+func _close_map() -> void:
+	if _map == null:
+		return
+	_map.queue_free()
+	_map = null
+	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 
 
 func _build_menu() -> Control:
