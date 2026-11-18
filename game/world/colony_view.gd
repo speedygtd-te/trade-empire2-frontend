@@ -23,8 +23,6 @@ const ZOOM_MIN := 3.0
 const ZOOM_MAX := 40.0
 ## Distance in cells from the origin after which the origin follows the camera.
 const REBASE_DISTANCE := 512
-## The V1 tile colours are graded dark for 2D; lit in 3D they need lifting.
-const GROUND_BRIGHTNESS := 1.9
 ## Ambient light that stays at night, so the colony is still readable, and its colour.
 const NIGHT_AMBIENT := 0.28
 const NIGHT_COLOR := Color(0.45, 0.55, 0.85)
@@ -60,7 +58,7 @@ var opened := false
 var open_id := 0
 
 var _camera: Camera3D
-var _ground: Node3D
+var _ground: GroundLayer
 var _hulls: Node3D
 var _modules: Node3D
 var _preview: Node3D
@@ -69,8 +67,6 @@ var _sun: DirectionalLight3D
 var _world: WorldEnvironment
 var _scenes: Dictionary = {}
 var _hull_meshes: Dictionary = {}
-var _ground_material: StandardMaterial3D
-var _tile_mesh: PlaneMesh
 ## Materials of the loaded models that glow (instance id → material), and their strength now.
 var _lamps: Dictionary = {}
 var _lamp_energy := LAMP_DAY
@@ -88,7 +84,9 @@ func setup(colony: ColonyModel) -> void:
 
 func _ready() -> void:
 	_add_environment()
-	_ground = _child("Ground")
+	_ground = GroundLayer.new()
+	_ground.name = "Ground"
+	add_child(_ground)
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_preview = _child("Preview")
@@ -102,12 +100,6 @@ func _ready() -> void:
 	_camera.far = 400.0
 	add_child(_camera)
 
-	_ground_material = StandardMaterial3D.new()
-	_ground_material.vertex_color_use_as_albedo = true
-	_ground_material.roughness = 0.95
-	_tile_mesh = PlaneMesh.new()
-	_tile_mesh.size = Vector2.ONE
-	_tile_mesh.material = _ground_material
 	_update_camera()
 
 
@@ -327,9 +319,7 @@ func _update_camera() -> void:
 
 
 func _rebuild_all() -> void:
-	for child: Node in _ground.get_children():
-		_ground.remove_child(child)
-		child.queue_free()
+	_ground.clear()
 	_redraw_ground()
 	_rebuild_structure()
 
@@ -428,36 +418,9 @@ func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) ->
 		_add_ground_block(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
 
 
-## One MultiMesh of BLOCK × BLOCK coloured tiles.
+## One textured quad of BLOCK × BLOCK cells (GroundLayer).
 func _add_ground_block(x0: int, y0: int) -> void:
-	var multimesh := MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.use_colors = true
-	multimesh.mesh = _tile_mesh
-	multimesh.instance_count = SurfaceBlocks.BLOCK * SurfaceBlocks.BLOCK
-	var index := 0
-	for dy: int in SurfaceBlocks.BLOCK:
-		for dx: int in SurfaceBlocks.BLOCK:
-			var cell := model.surface.cell(x0 + dx, y0 + dy)
-			var at := WorldGrid.to_scene(Vector3i(x0 + dx, y0 + dy, 0), origin, model.size_x)
-			multimesh.set_instance_transform(index, Transform3D(Basis.IDENTITY, at))
-			multimesh.set_instance_color(index, _ground_color(cell))
-			index += 1
-	var instance := MultiMeshInstance3D.new()
-	instance.multimesh = multimesh
-	_ground.add_child(instance)
-
-
-func _ground_color(cell: SurfacePatch.Cell) -> Color:
-	if cell == null:
-		return BiomeColors.FALLBACK
-	# The variants of a biome differ strongly as tiles; as flat colours they would form a
-	# chequerboard, so they only tint the biome's mean colour.
-	var mean := BiomeColors.mean(cell.biome)
-	var color := mean.lerp(BiomeColors.of(cell.biome, cell.variant), 0.35) * GROUND_BRIGHTNESS
-	# Vegetation darkens slightly, elevation lightens slightly: a little life in flat areas.
-	var shade := 1.0 - cell.vegetation * 0.025 + (cell.elevation - 500) * 0.00012
-	return Color(color.r * shade, color.g * shade, color.b * shade, 1.0)
+	_ground.add_block(model.surface, x0, y0, origin, model.size_x)
 
 
 func _footprint_centre(cells: Array[Vector3i]) -> Vector3:
@@ -666,13 +629,15 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 	for material: StandardMaterial3D in _lamps.values():
 		material.emission_energy_multiplier = _lamp_energy
 	var ground := 1.0 - AIRLESS_GROUND_DARKENING * SkyLight.airless(density)
-	_ground_material.albedo_color = Color(ground, ground, ground)
+	_ground.set_tint(Color(ground, ground, ground))
 
 
 ## Applies a detail tier: shadows, edge smoothing and render resolution (DetailGovernor).
 func apply_detail(tier: DetailGovernor.Tier) -> void:
 	var viewport := get_viewport()
 	_sun.shadow_enabled = tier != DetailGovernor.Tier.SLOW
+	# Soft biome borders cost up to four texture reads per ground pixel.
+	_ground.set_soft(tier != DetailGovernor.Tier.SLOW)
 	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
 	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
 
