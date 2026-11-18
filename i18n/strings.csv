@@ -343,3 +343,11 @@ MAP_STAR_TYPE_RED_GIANT,Red giant
 MAP_STAR_TYPE_NEUTRON,Neutron star
 MAP_STAR_TYPE_UNKNOWN,Star
 LOGIN_SESSION_ENDED,"The server ended your session. During the test phase this happens when the game world is reset: then your account is gone too, so create a new one."
+COLONY_CATEGORY_HULLS,Hulls
+COLONY_CATEGORY_PRODUCTION,Production
+COLONY_CATEGORY_COLONY,Colony
+COLONY_CATEGORY_LOGISTICS,Logistics
+COLONY_CATEGORY_TRANSPORT,Transport
+COLONY_CATEGORY_MILITARY,Military
+COLONY_CATEGORY_OTHER,Other
+COLONY_BUILD_CHANGE,Change

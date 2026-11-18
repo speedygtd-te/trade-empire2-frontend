@@ -112,6 +112,9 @@ func _run() -> void:
 			break
 
 	colony._set_mode(ColonyScreen.Mode.BUILD)
+	await _capture("colony_build_palette")
+	colony._palette._on_category("PRODUCTION")
+	await _capture("colony_build_palette_production")
 	colony._choose_tool("hull:STARTER")
 	var free_cell := _free_neighbour(layout)
 	colony._select(layout.to_absolute(free_cell))

@@ -68,6 +68,16 @@ func test_every_build_verdict_has_a_text() -> void:
 		).is_true()
 
 
+func test_every_build_category_has_a_text() -> void:
+	# The build palette builds these keys from the category names.
+	var categories := Array(BuildCatalog.ORDER)
+	categories.append(BuildCatalog.OTHER)
+	for category: String in categories:
+		assert_bool(_has_text("COLONY_CATEGORY_" + category)).override_failure_message(
+			"no translation for COLONY_CATEGORY_" + category
+		).is_true()
+
+
 func test_every_module_slot_has_a_text() -> void:
 	for slot: String in ["INDOOR", "OUTDOOR", "UNDER_WATER"]:
 		assert_bool(_has_text("SLOT_" + slot)).override_failure_message("no translation for SLOT_" + slot).is_true()
