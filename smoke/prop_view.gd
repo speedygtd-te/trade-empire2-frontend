@@ -4,7 +4,7 @@ extends Control
 ## afar (zoom 40), by day and at night, and the cost: props built and drawn, MultiMeshes, draw
 ## calls and primitives with and without props, per detail tier. Uses the development account
 ## (.local/dev-account.json, node tools/dev-account.cjs). Root script of smoke/prop_view.tscn:
-##   godot --path . --resolution 720x1280 res://smoke/prop_view.tscn -- --out=<folder>
+##   godot --path . --resolution 720x1280 res://smoke/prop_view.tscn -- --out=<folder> [--samples]
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 ## Cells on the development account's home body (EARTH_LIKE, sizeY 706860) with other biomes:
@@ -23,9 +23,14 @@ const SAMPLES := [
 	["GLACIER", "ICE_SHELF", "TUNDRA", "CREVASSE"],
 	["CRATER", "REGOLITH", "SWAMP", "OASIS"],
 	["ASH_FIELD", "OBSIDIAN_RIDGE", "PERMAFROST", "PLAINS"],
+	# Also here, so every account shows them (another body may lack them).
+	["FOREST", "DESERT_PATCH", "BEACH", "MOUNTAIN"],
+	["SNOW_PEAK", "ROCKY_DESERT", "FOREST", "PLAINS"],
 ]
 
 var _out_dir := "user://props"
+## --samples: only the made-up sample (quicker; the same on every account).
+var _samples_only := false
 var _colony: ColonyScreen
 
 
@@ -39,6 +44,8 @@ func _run() -> void:
 	for argument: String in OS.get_cmdline_user_args():
 		if argument.begins_with("--out="):
 			_out_dir = argument.trim_prefix("--out=")
+		elif argument == "--samples":
+			_samples_only = true
 	DirAccess.make_dir_recursive_absolute(_out_dir)
 	var account := Wire.parse_object(FileAccess.get_file_as_string(ProjectSettings.globalize_path(DEV_ACCOUNT)))
 	var error := await Services.session.login(Wire.as_string(account.get("email")), Wire.as_string(account.get("password")))
@@ -57,6 +64,10 @@ func _run() -> void:
 	var view := _colony._view
 	view.apply_detail(DetailGovernor.Tier.FAST)
 	_day()
+	if _samples_only:
+		await _samples()
+		get_tree().quit()
+		return
 
 	var spots := {"home": _colony._model.centre_cell()}
 	spots.merge(SPOTS)
@@ -97,7 +108,8 @@ func _samples() -> void:
 	patch.x0 = SAMPLE_ORIGIN.x
 	patch.y0 = SAMPLE_ORIGIN.y
 	patch.x1 = SAMPLE_ORIGIN.x + 2 * SurfaceBlocks.BLOCK - 1
-	patch.y1 = SAMPLE_ORIGIN.y + 2 * SurfaceBlocks.BLOCK - 1
+	@warning_ignore("integer_division")
+	patch.y1 = SAMPLE_ORIGIN.y + (SAMPLES.size() + 1) / 2 * SurfaceBlocks.BLOCK - 1
 	request.x0 = patch.x0
 	request.y0 = patch.y0
 	request.x1 = patch.x1
@@ -130,12 +142,27 @@ func _samples() -> void:
 			SAMPLE_ORIGIN.y + SurfaceBlocks.BLOCK * (index / 2) + 8, 0)
 		await _look(corner, 9.0)
 		await _capture("sample_%s" % name_of)
-		if index == 0 or index == 1:
+		if index == 0 or index == 1 or index == 4:
 			_night()
 			await _capture("sample_%s_night" % name_of)
 			_day()
+	# Close up (zoom 4): a forest by day, burnt and glowing trees on lava by day and night.
+	await _look(Vector3i(SAMPLE_ORIGIN.x + 4, SAMPLE_ORIGIN.y + 36, 0), 4.0)
+	await _capture("sample_close_forest")
+	await _look(Vector3i(SAMPLE_ORIGIN.x + 20, SAMPLE_ORIGIN.y + 20, 0), 4.0)
+	await _capture("sample_close_ash_field")
+	await _look(Vector3i(SAMPLE_ORIGIN.x + 8, SAMPLE_ORIGIN.y + 6, 0), 4.0)
+	await _capture("sample_close_lava")
+	_night()
+	await _capture("sample_close_lava_night")
+	_day()
 	await _look(Vector3i(SAMPLE_ORIGIN.x + 16, SAMPLE_ORIGIN.y + 16, 0), 24.0)
 	await _capture("sample_all_zoom24")
+	await _look(Vector3i(SAMPLE_ORIGIN.x + 16, SAMPLE_ORIGIN.y + 24, 0), 40.0)
+	await _capture("sample_all_zoom40")
+	await _measure("sample zoom 40")
+	await _look(Vector3i(SAMPLE_ORIGIN.x + 8, SAMPLE_ORIGIN.y + 40, 0), 9.0)
+	await _measure("sample forest zoom 9")
 
 
 func _look(cell: Vector3i, zoom: float) -> void:
