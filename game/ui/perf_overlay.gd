@@ -72,7 +72,8 @@ func _process(delta: float) -> void:
 	_text.text = tr("PERF_BOX").format({
 		"fps": "%.0f" % summary.fps, "ms": "%.1f" % summary.frame_ms_avg, "worst": "%.0f" % summary.frame_ms_max,
 		"draws": "%.0f" % summary.draw_calls_avg, "primitives": _thousands(summary.primitives_avg),
-		"memory": "%.0f" % summary.memory_mb_max, "tier": tier_name(_tier(), self)})
+		"memory": "%.0f" % summary.memory_mb_max if summary.memory_mb_max > 0.0 else "–",
+		"tier": tier_name(_tier(), self)})
 
 
 ## The report of the last minute with this device's details, for sharing.

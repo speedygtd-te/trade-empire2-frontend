@@ -105,5 +105,7 @@ static func report(device: Array[Array], labels: Dictionary, stats: Summary) -> 
 	lines.append("%s: %.0f %%" % [labels.get("slow", "slow"), stats.slow_share * 100.0])
 	lines.append("%s: %.0f" % [labels.get("draws", "draws"), stats.draw_calls_avg])
 	lines.append("%s: %.0f" % [labels.get("primitives", "primitives"), stats.primitives_avg])
-	lines.append("%s: %.0f MB" % [labels.get("memory", "memory"), stats.memory_mb_max])
+	# Release builds do not count memory (0): left out then.
+	if stats.memory_mb_max > 0.0:
+		lines.append("%s: %.0f MB" % [labels.get("memory", "memory"), stats.memory_mb_max])
 	return "\n".join(lines)
