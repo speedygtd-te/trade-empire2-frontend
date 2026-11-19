@@ -389,7 +389,7 @@ func test_the_paths_are_worked_out_once_per_state() -> void:
 func test_the_ground_level_of_a_base_is_absolute_level_0() -> void:
 	# A base whose local level 0 lies two levels below the surface: the ground is its local level 2.
 	var base := _build({0: ["###"], 1: ["###"], 2: ["###"]},
-		',"kind":"BASE","anchor":{"type":"surface","offset":{"x":0,"y":0,"z":-2}}')
+		',"kind":"base","anchor":{"type":"surface","offset":{"x":0,"y":0,"z":-2}}')
 	var access := PathAccess.of(base, _definitions)
 	assert_int(access.ground()).is_equal(2)
 	assert_array(access.entrances).contains_exactly([Vector3i(0, 0, 2), Vector3i(1, 0, 2), Vector3i(2, 0, 2)])
@@ -398,7 +398,7 @@ func test_the_ground_level_of_a_base_is_absolute_level_0() -> void:
 		.is_equal(BuildRules.Verdict.LEVEL_NOT_CONNECTED)
 
 	# A ship, a vehicle, a station or a guest: its own local level 0.
-	var ship := _build({0: ["###"], 1: ["###"]}, ',"kind":"SHIP","anchor":{"type":"surface","offset":{"x":0,"y":0,"z":-1}}')
+	var ship := _build({0: ["###"], 1: ["###"]}, ',"kind":"ship","anchor":{"type":"surface","offset":{"x":0,"y":0,"z":-1}}')
 	assert_int(PathAccess.of(ship, _definitions).ground()).is_equal(0)
 	var guest := _build({0: ["###"]}, ',"anchor":{"type":"docked","hostId":5,"offset":{"x":0,"y":0,"z":1}}')
 	assert_int(PathAccess.of(guest, _definitions).ground()).is_equal(0)

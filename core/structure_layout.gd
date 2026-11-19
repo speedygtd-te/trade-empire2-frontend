@@ -392,7 +392,7 @@ static func read_access(value: Variant) -> Access:
 func ground_level() -> int:
 	if access != null:
 		return access.ground
-	if anchor_type == "surface" and not ["SHIP", "VEHICLE", "STATION"].has(kind):
+	if anchor_type == "surface" and not ["SHIP", "VEHICLE", "STATION"].has(kind.to_upper()):
 		return -(offset.z + base.z)
 	return 0
 
