@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Base: a dome with an antenna mast on a ground plate -->
+  <path d="M33 13 L33 5" stroke="#e3b341" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="33" cy="5" r="2.6" fill="#e3b341"/>
+  <path d="M9 36 A15 15 0 0 1 39 36 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M17 36 L17 30 A7 7 0 0 1 31 30 L31 36" fill="none" stroke="#e3b341" stroke-width="2.5"/>
+  <rect x="4" y="36" width="40" height="6" rx="2" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+</svg>

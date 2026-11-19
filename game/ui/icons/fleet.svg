@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Fleet: a ship seen from above, flying up and to the right -->
+  <g transform="rotate(45 24 24)">
+    <path d="M24 3 L31 17 L31 33 L39 41 L39 44 L9 44 L9 41 L17 33 L17 17 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M24 9 L28 18 L20 18 Z" fill="#e3b341"/>
+    <path d="M20 44 L22 47 L26 47 L28 44" fill="#e3b341"/>
+  </g>
+</svg>

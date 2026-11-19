@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Profile: head and shoulders with a collar badge -->
+  <circle cx="24" cy="15" r="9" fill="#24345e" stroke="#e3b341" stroke-width="3"/>
+  <path d="M6 44 Q6 28 24 28 Q42 28 42 44 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="31" cy="35" r="3" fill="#e3b341"/>
+</svg>
