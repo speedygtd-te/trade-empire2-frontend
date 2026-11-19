@@ -482,6 +482,9 @@ func _show_status() -> void:
 			"ly": AmountFormat.units(roundi(_last.covered * _shape.ly_per_unit))})
 		color = AppTheme.COLOR_PENDING
 	else:
-		_status.text = tr("GALAXY_STATUS_STARS").format({"count": AmountFormat.units(_last.entries.size()),
+		# Only discovered systems come (fog of war, draft.25); the hint above says telescopes
+		# discover more.
+		var key := "GALAXY_STATUS_STARS_ONE" if _last.entries.size() == 1 else "GALAXY_STATUS_STARS"
+		_status.text = tr(key).format({"count": AmountFormat.units(_last.entries.size()),
 			"ly": AmountFormat.units(roundi(_last.radius * _shape.ly_per_unit))})
 	_status.add_theme_color_override("font_color", color)
