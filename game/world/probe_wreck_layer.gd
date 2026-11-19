@@ -48,9 +48,15 @@ func redraw() -> void:
 		if absi(WorldGrid.wrapped_delta(origin.x, cell.x, size_x)) > REACH or absi(cell.y - origin.y) > REACH:
 			continue
 		var wreck := _wreck()
-		wreck.position = WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), origin, size_x)
-		# Each lies its own way: a quarter turn by its cell.
-		wreck.rotation.y = float(GroundTiles.cell_hash(cell.x, cell.y) % 4) * PI * 0.5
+		# On the ground as drawn, along its slope (TerrainRelief); each lies its own way: a quarter
+		# turn by its cell.
+		var at := _view.on_ground(WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), origin, size_x))
+		var normal := _view.ground_normal(at, 0.4)
+		var tilt := Basis.IDENTITY
+		if normal.y < 0.9999:
+			tilt = Basis(Vector3.UP.cross(normal).normalized(), Vector3.UP.angle_to(normal))
+		var turn := Basis(Vector3.UP, float(GroundTiles.cell_hash(cell.x, cell.y) % 4) * PI * 0.5)
+		wreck.transform = Transform3D(tilt * turn, at)
 		add_child(wreck)
 		# Its beacon and band glow like the lamps of the colony, brighter at night.
 		_view._collect_lamps(wreck)

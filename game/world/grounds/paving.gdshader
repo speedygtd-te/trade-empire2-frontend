@@ -1,9 +1,10 @@
 shader_type spatial;
-// The concrete around a large base (BaseGroundsLayer): one quad per cell, a slab of dirty exposed
-// concrete with joints at its edges. Per instance: CUSTOM.xy the cell (mod 64, for the grime that
-// runs on across slabs), CUSTOM.zw where in the texture this slab cuts its window; COLOR.r its
-// brightness, COLOR.g its quarter turn (0, 1/3, 2/3, 1), COLOR.b · 255 the sides facing the open land
-// (BaseGrounds.Plan.outward bits): there the slab stops at the cell's middle, under the fence.
+// The concrete around a large base (BaseGroundsLayer): one quad per cell lying on the relief, a slab
+// of dirty exposed concrete with joints at its edges. Per vertex: CUSTOM0.xy the cell (mod 64, for the
+// grime that runs on across slabs), CUSTOM0.zw where in the texture this slab cuts its window;
+// CUSTOM1.r its brightness, CUSTOM1.g its quarter turn (0, 1/3, 2/3, 1), CUSTOM1.b · 255 the sides
+// facing the open land (BaseGrounds.Plan.outward bits): there the slab stops at the cell's middle,
+// under the fence.
 
 uniform sampler2D paving : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D noise : filter_linear, repeat_enable;
@@ -21,8 +22,8 @@ varying vec4 slab;
 varying vec3 shade_turn;
 
 void vertex() {
-	slab = INSTANCE_CUSTOM;
-	shade_turn = COLOR.rgb;
+	slab = CUSTOM0;
+	shade_turn = CUSTOM1.rgb;
 }
 
 void fragment() {

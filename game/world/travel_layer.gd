@@ -12,8 +12,9 @@ const COLOR_RESERVED := Color(0.984, 0.749, 0.141, 0.55)
 const COLOR_ROUTE := Color(0.133, 0.827, 0.933, 0.95)
 ## Height of a ghost box (a shut hull is about this high).
 const GHOST_HEIGHT := 0.72
-## Height of the drive line above the ground.
+## Height of the drive line above the ground, and the length of its pieces over the hills.
 const ROUTE_LIFT := 0.08
+const ROUTE_STEP := 0.5
 
 var _view: ColonyView
 var _ghost_cells: Array[Vector3i] = []
@@ -84,12 +85,20 @@ func _draw_ghost() -> void:
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.albedo_color = _ghost_color
 	box.material = material
+	# The structure would stand at the mean elevation of the ground under its lowest cells, as a
+	# resting one does (ColonyView.lift_of, TerrainRelief).
+	var lowest := _lowest(_ghost_cells)
+	var footprint: Array[Vector2i] = []
+	for cell: Vector3i in _ghost_cells:
+		if cell.z == lowest:
+			footprint.append(Vector2i(cell.x, cell.y))
+	var lift := _site_lift(footprint)
 	var multimesh := MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.mesh = box
 	multimesh.instance_count = _ghost_cells.size()
 	for index: int in _ghost_cells.size():
-		var at := _scene(_ghost_cells[index]) + Vector3(0.0, GHOST_HEIGHT * 0.5 + 0.01, 0.0)
+		var at := _scene(_ghost_cells[index]) + Vector3(0.0, GHOST_HEIGHT * 0.5 + 0.01 + lift, 0.0)
 		multimesh.set_instance_transform(index, Transform3D(Basis.IDENTITY, at))
 	var instance := MultiMeshInstance3D.new()
 	instance.multimesh = multimesh
@@ -97,10 +106,10 @@ func _draw_ghost() -> void:
 	_ghost.add_child(instance)
 	# A bright frame around each cell on the ground, so the site reads on any terrain.
 	for cell: Vector3i in _ghost_cells:
-		if cell.z != _lowest(_ghost_cells):
+		if cell.z != lowest:
 			continue
 		var frame := _square(Color(_ghost_color, 0.95), false)
-		frame.position = _scene(cell) + Vector3(0.0, 0.02, 0.0)
+		frame.position = _view.on_ground(_scene(cell)) + Vector3(0.0, 0.02, 0.0)
 		_ghost.add_child(frame)
 
 
@@ -120,17 +129,22 @@ func _draw_route() -> void:
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var mesh := ImmediateMesh.new()
 	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
-	# A flat band a fifth of a cell wide along each piece.
+	# A band a fifth of a cell wide along each piece, over the hills of the ground as drawn: cut
+	# into steps of about half a cell.
 	var lift := Vector3(0.0, ROUTE_LIFT, 0.0)
 	for index: int in _route.size() - 1:
-		var a := _scene_xy(_route[index]) + lift
-		var b := _scene_xy(_route[index + 1]) + lift
+		var a := _scene_xy(_route[index])
+		var b := _scene_xy(_route[index + 1])
 		var along := (b - a)
 		if along.length() < 0.001:
 			continue
 		var side := along.cross(Vector3.UP).normalized() * 0.1
-		for corner: Vector3 in [a - side, a + side, b + side, a - side, b + side, b - side]:
-			mesh.surface_add_vertex(corner)
+		var steps := maxi(1, ceili(along.length() / ROUTE_STEP))
+		for step: int in steps:
+			var from := _on_route(a + along * (float(step) / steps)) + lift
+			var to := _on_route(a + along * (float(step + 1) / steps)) + lift
+			for corner: Vector3 in [from - side, from + side, to + side, from - side, to + side, to - side]:
+				mesh.surface_add_vertex(corner)
 	mesh.surface_end()
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
@@ -138,7 +152,7 @@ func _draw_route() -> void:
 	_line.add_child(instance)
 	for index: int in range(1, _route.size() - 1):
 		var mark := _square(COLOR_ROUTE, true, 0.4)
-		mark.position = _scene_xy(_route[index]) + lift
+		mark.position = _on_route(_scene_xy(_route[index])) + lift
 		_line.add_child(mark)
 
 
@@ -151,12 +165,31 @@ func _draw_reserved() -> void:
 		return
 	for cell: Vector3i in _reserved:
 		var mark := _square(COLOR_RESERVED, false)
-		mark.position = _scene(cell) + Vector3(0.0, 0.03, 0.0)
+		# On the ground as drawn; on a dock's pad its host's floor.
+		mark.position = _scene(cell) + Vector3(0.0, 0.03 + _view.floor_lift(cell, false), 0.0)
 		_marks.add_child(mark)
 
 
 func _scene(cell: Vector3i) -> Vector3:
 	return WorldGrid.to_scene(cell, _view.origin, _view.model.size_x)
+
+
+## A point of a drive on the ground as drawn (on the ground level; elsewhere as it is).
+func _on_route(point: Vector3) -> Vector3:
+	if _route_level != 0:
+		return point
+	return _view.on_ground(point)
+
+
+## Scene height a structure on a site would stand at: the mean elevation of the ground under its
+## footprint (TerrainRelief.base_of), else the ground as drawn under its first cell.
+func _site_lift(footprint: Array[Vector2i]) -> float:
+	if footprint.is_empty() or _view.relief == null:
+		return 0.0
+	var base := _view.relief.base_of(footprint)
+	if is_nan(base):
+		return _view.cell_ground(footprint[0].x, footprint[0].y) + float(_view.origin.z)
+	return _view.relief.scene_height(base)
 
 
 func _scene_xy(point: Vector2i) -> Vector3:

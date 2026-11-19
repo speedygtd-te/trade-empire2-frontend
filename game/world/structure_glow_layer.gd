@@ -126,26 +126,44 @@ func _texture(key: int, field: GlowField.Field) -> ImageTexture:
 	return _textures[key] as ImageTexture
 
 
-## The quad over the field's cells, in the scene around the view's origin. UV (0, 0) is the field's
-## low corner (smallest cell x and y), so texture rows run along cell y.
+## The sheet over the field's cells, in the scene around the view's origin, lying on the ground as
+## drawn: a point on every corner of the cells at the relief's height (TerrainRelief), split as the
+## ground is. UV (0, 0) is the field's low corner (smallest cell x and y), so texture rows run along
+## cell y.
 func _quad(field: GlowField.Field, material: Material) -> ArrayMesh:
 	var corner := WorldGrid.to_scene(Vector3i(field.low.x, field.low.y, 0), _view.origin, _view.model.size_x)
-	# to_scene gives the cell's centre; cell y runs along scene ???Z.
+	# to_scene gives the cell's centre; cell y runs along scene −Z.
 	var x0 := corner.x - 0.5
 	var z0 := corner.z + 0.5
-	var y := LIFT - float(_view.origin.z)
-	var width := float(field.cells.x)
-	var depth := float(field.cells.y)
-	var vertices := PackedVector3Array([Vector3(x0, y, z0), Vector3(x0 + width, y, z0),
-		Vector3(x0 + width, y, z0 - depth), Vector3(x0, y, z0 - depth)])
-	var normals := PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
-	var uvs := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+	var columns := field.cells.x
+	var rows := field.cells.y
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	for j: int in rows + 1:
+		for i: int in columns + 1:
+			var point := Vector3(x0 + i, 0.0, z0 - j)
+			point.y = _view.ground_height(point) + LIFT
+			vertices.append(point)
+			normals.append(Vector3.UP)
+			uvs.append(Vector2(float(i) / columns, float(j) / rows))
+	var indices := PackedInt32Array()
+	for j: int in rows:
+		for i: int in columns:
+			var a := j * (columns + 1) + i
+			var b := a + 1
+			var c := a + columns + 1
+			var d := c + 1
+			if TerrainRelief.split(vertices[a].y, vertices[b].y, vertices[c].y, vertices[d].y):
+				indices.append_array(PackedInt32Array([a, c, d, a, d, b]))
+			else:
+				indices.append_array(PackedInt32Array([a, c, b, b, c, d]))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(0, material)

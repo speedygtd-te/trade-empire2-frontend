@@ -67,6 +67,7 @@ verschärft, wenn es nötig wird.
 | Masten, Radar und Lichtkegel um die Basis ansehen | `godot --path . --resolution 720x1280 res://smoke/perimeter_view.tscn -- --out=build/perimeter` (Modelle: `tools\build-models.ps1 -Only perimeter`) |
 | Bewegte Modulteile ansehen (Rotoren, Lüfter, Schüsseln, Solarpanels; Showcase-Konto) | `godot --path . --resolution 720x1280 res://smoke/motion_view.tscn -- --out=build/motion` (Bildfolgen je Typ, Kosten je Frame) |
 | Gelände um wachsende Basen ansehen (Rodung, Zaun, Beton, Mauer; nur im Client vergrößert) | `godot --path . --resolution 720x1280 res://smoke/grounds_view.tscn -- --out=build/grounds` (Schwellen in `core/base_grounds.gd`; Modelle: `tools\build-models.ps1 -Only grounds`; Beton: `python -I tools/paving_texture.py`) |
+| Relief ansehen (Hügel, Struktur am Hang mit Fundament und Einschnitt, Nähte, Treffer, Kosten flach/Relief) | `godot --path . --resolution 720x1280 res://smoke/relief_view.tscn -- --out=build/relief` (Entwicklerkonto; Strukturen am Hang nur im Client; Maßstab und Rand in `core/terrain_relief.gd`) |
 | Basis bei Nacht ansehen (Lampen, Lichtschein, Kosten) | `godot --path . --resolution 720x1280 res://smoke/night_view.tscn -- --out=build/night [--account=showcase]` (Modelle nachts: `smoke/model_preview.tscn` mit `--night`) |
 | Entwicklerkonto, echte Antworten ansehen | `node tools/dev-account.cjs /v2/structures` (Zugang in `.local/`, nie committen) |
 | Lokales Backend (nur Ausnahme) | `powershell -File tools\dev-backend.ps1 start` (auch `stop`, `status`, `sync`, `build`, `reset`) |
@@ -108,6 +109,10 @@ Bewegte Teile baut `kit.Builder.moving("<rolle>", drehpunkt)`: Sie werden Kindkn
 panel) so schnell, wie das Modul laut Raten-Lösung arbeitet — im Bau, aus oder untätig stehen
 sie still. Eine neue Rolle braucht einen Eintrag in `ModuleMotion.ROLES`, sonst schlägt der
 Modelltest an.
+Der Boden hat Relief (nur Anzeige, `core/terrain_relief.gd`: 1 Einheit `e` = 0,1 Zelle,
+Bezug ist die Basis der Heimatstruktur): Eine Struktur steht flach auf dem Mittel ihres
+Grundrisses (`ColonyView.lift_of`), höherer Boden wird abgetragen, unter tieferem steht ein
+Betonfundament; alles auf dem Boden folgt `ColonyView.ground_height`, nie y = 0.
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
 am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine Hülle füllt ihre

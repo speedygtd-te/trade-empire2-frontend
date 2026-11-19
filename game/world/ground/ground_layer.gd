@@ -1,10 +1,14 @@
 class_name GroundLayer
 extends Node3D
-## The ground under a colony: one flat quad per loaded surface block (SurfaceBlocks.BLOCK cells
-## square, one draw call), textured per cell from the biome atlas by ground.gdshader. Each block
-## has a small cell texture (GroundTiles.cell_image) with the ring of its neighbours, so borders
-## blend across blocks too; when a block arrives, the blocks beside it renew their ring.
+## The ground under a colony: one mesh per loaded surface block (SurfaceBlocks.BLOCK cells square,
+## one draw call), textured per cell from the biome atlas by ground.gdshader. Each block has a
+## small cell texture (GroundTiles.cell_image) with the ring of its neighbours, so borders blend
+## across blocks too; when a block arrives, the blocks beside it renew their ring.
 ## Unexplored cells (draft.31) are drawn as fog, with a soft, noisy edge toward the explored ground.
+##
+## With a `relief` (TerrainRelief) a block is a grid of two triangles per cell through the corner
+## heights of the relief, lit by their normals; neighbouring blocks share their edge corners, so no
+## crack opens between them. Without one (the rock floor of the cutaway) a block is a flat quad.
 
 const SHADER := preload("res://game/world/ground/ground.gdshader")
 const ATLAS := preload("res://game/world/ground/ground_atlas.webp")
@@ -12,6 +16,8 @@ const NOISE := preload("res://game/world/ground/ground_noise.png")
 ## The V1 tile colours are graded dark for 2D; lit in 3D they need lifting.
 const BRIGHTNESS := 1.9
 
+## The heights of the ground; null draws flat blocks.
+var relief: TerrainRelief = null
 var _tiles := GroundTiles.new(GroundAtlas.FIRST_LAYER, GroundAtlas.VARIANTS, GroundAtlas.FALLBACK_LAYER, GroundAtlas.MIRROR)
 var _mesh: PlaneMesh
 var _tint := Color.WHITE
@@ -35,8 +41,10 @@ func clear() -> void:
 	_blocks.clear()
 
 
-## Draws the block whose first cell is (x0, y0), placed relative to `origin`.
-func add_block(surface: SurfaceBlocks, x0: int, y0: int, origin: Vector3i, size_x: int) -> void:
+## Draws the block whose first cell is (x0, y0), placed relative to `origin`. The blocks beside it
+## renew their cell texture; with a relief their meshes change too: those blocks are returned
+## (block → true) for the caller to build again (refresh_heights), a few per frame.
+func add_block(surface: SurfaceBlocks, x0: int, y0: int, origin: Vector3i, size_x: int) -> Dictionary:
 	_surface = surface
 	_size_x = size_x
 	var key := _key(x0, y0)
@@ -53,9 +61,8 @@ func add_block(surface: SurfaceBlocks, x0: int, y0: int, origin: Vector3i, size_
 	material.set_shader_parameter("tint", Vector3(_tint.r, _tint.g, _tint.b))
 	material.set_shader_parameter("soft", _soft)
 	var instance := MeshInstance3D.new()
-	instance.mesh = _mesh
 	instance.material_override = material
-	# Flat ground throws no shadow worth a shadow pass.
+	# The gentle hills throw no shadow worth a shadow pass over the whole ground.
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	instance.set_meta("x0", x0)
 	instance.set_meta("y0", y0)
@@ -65,11 +72,33 @@ func add_block(surface: SurfaceBlocks, x0: int, y0: int, origin: Vector3i, size_
 	add_child(instance)
 	_blocks[key] = instance
 	_update_cells(instance)
+	_update_mesh(instance)
+	var renewed := {}
 	for dy: int in [-1, 0, 1]:
 		for dx: int in [-1, 0, 1]:
 			var beside := _key(x0 + dx * SurfaceBlocks.BLOCK, y0 + dy * SurfaceBlocks.BLOCK)
 			if beside != key and _blocks.has(beside):
 				_update_cells(_blocks[beside] as MeshInstance3D)
+				if relief != null:
+					renewed[beside] = true
+	return renewed
+
+
+## Builds the meshes of the drawn blocks among `blocks` (block → true, wrapped as SurfaceBlocks
+## counts them) again from the relief; returns how many were drawn.
+func refresh_heights(blocks: Dictionary) -> int:
+	var count := 0
+	for block: Vector2i in blocks.keys():
+		var instance := _blocks.get(block) as MeshInstance3D
+		if instance != null:
+			_update_mesh(instance)
+			count += 1
+	return count
+
+
+## Whether a block (first cell) is drawn.
+func has_block(x0: int, y0: int) -> bool:
+	return _blocks.has(_key(x0, y0))
 
 
 ## Tint over the whole ground (1 = as lit; darker on airless bodies).
@@ -107,6 +136,67 @@ func _update_cells(instance: MeshInstance3D) -> void:
 		material.set_shader_parameter("cells", ImageTexture.create_from_image(image))
 	else:
 		texture.update(image)
+
+
+## The block's mesh: flat, or through the relief's corner heights (local to the block's middle,
+## the cells' corners at whole numbers; two triangles per cell, split as TerrainRelief.split).
+func _update_mesh(instance: MeshInstance3D) -> void:
+	if relief == null:
+		instance.mesh = _mesh
+		return
+	var x0: int = instance.get_meta("x0")
+	var y0: int = instance.get_meta("y0")
+	var block := _key(x0, y0)
+	var heights := relief.block_heights(block)
+	var cells := SurfaceBlocks.BLOCK
+	var side := cells + 1
+	var stride := TerrainRelief.SIDE
+	var half := cells * 0.5
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	vertices.resize(side * side)
+	normals.resize(side * side)
+	var reference := relief.reference
+	# Lit as a hillshade: the slopes read steeper than drawn (TerrainRelief.HILLSHADE).
+	var slope := TerrainRelief.SCALE * 0.5 * TerrainRelief.HILLSHADE
+	for j: int in side:
+		var row := (j + 1) * stride + 1
+		for i: int in side:
+			var h := row + i
+			# Cell y runs along scene −Z.
+			vertices[j * side + i] = Vector3(i - half, (heights[h] - reference) * TerrainRelief.SCALE, half - j)
+			normals[j * side + i] = Vector3((heights[h - 1] - heights[h + 1]) * slope, 1.0,
+				(heights[h + stride] - heights[h - stride]) * slope).normalized()
+	var indices := PackedInt32Array()
+	indices.resize(cells * cells * 6)
+	var at := 0
+	for j: int in cells:
+		for i: int in cells:
+			var a := j * side + i
+			var c := a + side
+			var h := (j + 1) * stride + i + 1
+			# Clockwise seen from above (Godot's front faces); the diagonal as TerrainRelief.split.
+			indices[at] = a
+			indices[at + 1] = c
+			if absf(heights[h] - heights[h + stride + 1]) <= absf(heights[h + 1] - heights[h + stride]):
+				indices[at + 2] = c + 1
+				indices[at + 3] = a
+				indices[at + 4] = c + 1
+				indices[at + 5] = a + 1
+			else:
+				indices[at + 2] = a + 1
+				indices[at + 3] = a + 1
+				indices[at + 4] = c
+				indices[at + 5] = c + 1
+			at += 6
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	instance.mesh = mesh
 
 
 func _key(x0: int, y0: int) -> Vector2i:

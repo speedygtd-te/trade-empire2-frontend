@@ -5,10 +5,19 @@ extends Node3D
 ##
 ## Everything is placed relative to an origin cell (floating origin, see WorldGrid). When the
 ## camera wanders far from it, the origin moves and the scene is rebuilt around the new one.
+##
+## The ground has relief (TerrainRelief, display only): every structure stands flat at the mean
+## elevation of its ground footprint (lift_of), cuts the ground down where it is higher and stands
+## on a concrete foundation where it is lower; whatever stands on the ground follows its height
+## (ground_height), and taps on the ground hit the relief (cell_at). The home structure's base is
+## the reference: it keeps scene height 0 (for levels, camera and picking).
 
 ## The origin moved and the scene was rebuilt: marks placed from outside (selection, preview)
 ## have to be placed again.
 signal origin_moved
+## The ground's heights changed in some blocks (block → true, as SurfaceBlocks counts them): a
+## block loaded beside them or a structure's pad changed. Whatever stands there is placed again.
+signal relief_changed(blocks: Dictionary)
 
 ## Height of a hull's floor plate: modules stand on top of it (scripts/3d/models/hulls.py).
 const HULL_FLOOR_HEIGHT := 0.06
@@ -89,6 +98,20 @@ const COLOR_PATH_UNCONNECTED := Color(0.973, 0.443, 0.443, 0.95)
 const LANDING_HEIGHT := 12.0
 ## How often (seconds) the view checks whether a trip changed what is drawn (a phase began).
 const TRAVEL_CHECK_SECONDS := 0.5
+## Ground blocks whose relief mesh is built again per frame (cheaper than a new block).
+const RELIEF_BLOCKS_PER_FRAME := 2
+## How long a loaded block waits for the blocks beside it that are still on their way, before it is
+## built anyway (ms): built earlier, its edge would be built again when they arrive.
+const SETTLE_MS := 1500
+## A tap on the ground is followed down the ray this far above and below the camera's focus
+## (cells), in steps of this much ground.
+const RAY_SPAN := 24.0
+const RAY_STEP := 0.3
+## Marks lying on the ground float this much above it (cells), over the creases of the relief.
+const MARK_LIFT := 0.03
+## Concrete of the foundations under structures on a slope.
+const FOUNDATION_TEXTURE := preload("res://game/world/grounds/paving.webp")
+const FOUNDATION_COLOR := Color(0.62, 0.61, 0.58)
 
 ## How a drawn structure takes part in a trip right now.
 enum Trip {
@@ -176,10 +199,28 @@ var _trip_left := 0.0
 var _sightings: SightingLayer
 ## Landed probes lying where they came down (draft.31), hidden under hulls.
 var _wrecks: ProbeWreckLayer
+## The ground's heights (display only).
+var relief: TerrainRelief
+## Scene height of each structure's floor (its base elevation; guests take their host's), by
+## structure id, and the base elevation (NAN while its ground is not loaded).
+var _lifts: Dictionary = {}
+var _bases: Dictionary = {}
+## The concrete foundations under the structures standing on a slope.
+var _foundations: Node3D
+var _foundation_material: StandardMaterial3D
+## Ground blocks whose relief mesh waits to be built again (block → true).
+var _relief_queue: Dictionary = {}
+## Loaded blocks waiting for the blocks beside them (settled): block → since when (ms).
+var _waiting_since: Dictionary = {}
+## Layers standing on the ground wait to be placed again (heights changed).
+var _followers_due := false
+## Footprint middles (scene, at their site) of the structures driving here: they follow the ground.
+var _drive_centres: Dictionary = {}
 
 
 func setup(colony: ColonyModel) -> void:
 	model = colony
+	relief = TerrainRelief.new(colony.surface, colony.size_x)
 	model.layout_changed.connect(_rebuild_structure)
 	model.guests_changed.connect(_rebuild_structure)
 	model.surface_loaded.connect(_on_surface_loaded)
@@ -191,6 +232,7 @@ func _ready() -> void:
 	_add_environment()
 	_ground = GroundLayer.new()
 	_ground.name = "Ground"
+	_ground.relief = relief
 	add_child(_ground)
 	_props = PropLayer.new()
 	_props.name = "Props"
@@ -203,6 +245,7 @@ func _ready() -> void:
 	add_child(_underground)
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
+	_foundations = _child("Foundations")
 	_preview = _child("Preview")
 	_shape = _child("Shape")
 	_paths = _child("Paths")
@@ -235,11 +278,14 @@ func _ready() -> void:
 	_update_camera()
 
 
-## Centres the view on an absolute cell and makes it the origin.
+## Centres the view on an absolute cell and makes it the origin: on the floor of the structure
+## standing there, else on the ground as drawn.
 func look_at_cell(cell: Vector3i) -> void:
 	origin = Vector3i(cell.x, cell.y, 0)
 	focus = WorldGrid.to_scene(cell, origin, model.size_x)
 	_rebuild_all()
+	if cell.z == 0:
+		focus.y += floor_lift(cell, false)
 	_update_camera()
 	model.ensure_surface(focus_cell())
 
@@ -263,16 +309,82 @@ func zoom_by(factor: float) -> void:
 
 
 ## The absolute cell under a point of the view, or null when the ray misses. `height` is the
-## level the ray is cut at: 0 for the ground, HULL_CLOSED_HEIGHT for the roofs of shut hulls.
-func cell_at(screen_point: Vector2, height: float = 0.0) -> Variant:
+## scene height the ray is cut at (a structure's floor, the roofs of shut hulls); NAN (the default)
+## follows the ray down to the ground as drawn, over its hills.
+func cell_at(screen_point: Vector2, height: float = NAN) -> Variant:
 	var from := _camera.project_ray_origin(screen_point)
 	var direction := _camera.project_ray_normal(screen_point)
+	var hit: Variant = _ground_hit(from, direction) if is_nan(height) else _plane_hit(from, direction, height)
+	if hit == null:
+		return null
+	var point: Vector3 = hit
+	return _hit_cell(point)
+
+
+## The absolute cell of level `z` under a point of the view (the ray cut at that level's floor
+## plates, at the open structure's base), or null when the ray misses. On the ground level a ray
+## that meets no hull of the open structure there goes on to the ground as drawn.
+func cell_on_level(screen_point: Vector2, z: int) -> Variant:
+	var structure := _open_structure()
+	var from := _camera.project_ray_origin(screen_point)
+	var direction := _camera.project_ray_normal(screen_point)
+	var plane := float(z - origin.z) + lift_of(structure) + HULL_FLOOR_HEIGHT
+	var hit: Variant = _plane_hit(from, direction, plane)
+	if hit == null:
+		return null
+	var point: Vector3 = hit
+	var cell := _hit_cell(point)
+	cell.z = z
+	if z != 0 or _hull_of_drawn(cell) != null:
+		return cell
+	var ground: Variant = _ground_hit(from, direction)
+	if ground == null:
+		return cell
+	var ground_point: Vector3 = ground
+	var found := _hit_cell(ground_point)
+	return Vector3i(found.x, found.y, z)
+
+
+## Where a ray meets the plane at scene height `height`; null when it does not.
+func _plane_hit(from: Vector3, direction: Vector3, height: float) -> Variant:
 	if absf(direction.y) < 0.0001:
 		return null
 	var distance := (height - from.y) / direction.y
 	if distance < 0.0:
 		return null
-	var hit := from + direction * distance
+	return from + direction * distance
+
+
+## Where a ray (from above) first meets the ground as drawn; null when it does not near the focus.
+func _ground_hit(from: Vector3, direction: Vector3) -> Variant:
+	if direction.y > -0.0001 or relief == null:
+		return null
+	var start := maxf((focus.y + RAY_SPAN - from.y) / direction.y, 0.0)
+	var end := (focus.y - RAY_SPAN - from.y) / direction.y
+	var step := RAY_STEP / maxf(sqrt(1.0 - direction.y * direction.y), 0.05)
+	var before := start
+	var distance := start
+	while distance <= end:
+		var point := from + direction * distance
+		if point.y <= ground_height(point):
+			# Between the last step above the ground and this one.
+			var low := before
+			var high := distance
+			for _index: int in 12:
+				var middle := (low + high) * 0.5
+				var probe := from + direction * middle
+				if probe.y <= ground_height(probe):
+					high = middle
+				else:
+					low = middle
+			return from + direction * high
+		before = distance
+		distance += step
+	return null
+
+
+## The absolute cell (x next to the origin) of a scene point.
+func _hit_cell(hit: Vector3) -> Vector3i:
 	hit.y = 0.0
 	var cell := WorldGrid.to_cell(hit, origin, model.size_x)
 	# Structures keep their absolute cells next to the origin; the grid wraps.
@@ -280,14 +392,208 @@ func cell_at(screen_point: Vector2, height: float = 0.0) -> Variant:
 	return cell
 
 
-## The absolute cell of level `z` under a point of the view (the ray cut at that level's floor
-## plates), or null when the ray misses.
-func cell_on_level(screen_point: Vector2, z: int) -> Variant:
-	var found: Variant = cell_at(screen_point, float(z - origin.z) + HULL_FLOOR_HEIGHT)
-	if found == null:
+## The drawn structure with a hull on an absolute cell; null when none.
+func _hull_of_drawn(cell: Vector3i) -> ColonyModel:
+	if model == null:
 		return null
-	var cell: Vector3i = found
-	return Vector3i(cell.x, cell.y, z)
+	for structure: ColonyModel in model.drawn_structures():
+		if not structure.layout.hull_at(structure.layout.to_local(cell)).is_empty():
+			return structure
+	return null
+
+
+# --- relief ---------------------------------------------------------------------------------
+
+## Scene height of the ground as drawn under a scene point (x, z).
+func ground_height(point: Vector3) -> float:
+	if relief == null or model == null:
+		return 0.0
+	return relief.scene_height(relief.height(origin.x + point.x, origin.y - point.z)) - origin.z
+
+
+## A scene point (x, z) put on the ground as drawn.
+func on_ground(point: Vector3) -> Vector3:
+	return Vector3(point.x, ground_height(point), point.z)
+
+
+## The ground's normal under a scene point (x, z), from the slope across `reach` cells.
+func ground_normal(point: Vector3, reach: float = 0.5) -> Vector3:
+	if relief == null or model == null:
+		return Vector3.UP
+	return relief.normal(origin.x + point.x, origin.y - point.z, reach)
+
+
+## Scene height of the ground under the middle of an absolute cell.
+func cell_ground(x: int, y: int) -> float:
+	return ground_height(WorldGrid.to_scene(Vector3i(x, y, origin.z), origin, model.size_x))
+
+
+## The four corners of an absolute cell on the ground as drawn, shrunk towards its middle by
+## `inset` and `lift` above it, as scene points (south-west, south-east, north-east, north-west).
+func ground_quad(x: int, y: int, inset: float = 0.0, lift: float = MARK_LIFT) -> PackedVector3Array:
+	var centre := WorldGrid.to_scene(Vector3i(x, y, origin.z), origin, model.size_x)
+	var half := 0.5 - inset
+	var result := PackedVector3Array()
+	for offset: Vector2 in [Vector2(-half, half), Vector2(half, half), Vector2(half, -half), Vector2(-half, -half)]:
+		var point := centre + Vector3(offset.x, 0.0, offset.y)
+		point.y = ground_height(point) + lift
+		result.append(point)
+	return result
+
+
+## Scene height of the home structure's floor (of the open one's home): scene 0 at first.
+func home_lift() -> float:
+	return _base_lift(_open_structure().home())
+
+
+## The structure the levels and the build tools work on: the open one, else the loaded one.
+func _open_structure() -> ColonyModel:
+	if open_id != 0 and model.structure(open_id) != null:
+		return model.structure(open_id)
+	return model
+
+
+## Scene height of a structure's floor from its base elevation (a guest stands on its host's).
+func _base_lift(structure: ColonyModel) -> float:
+	var id := structure.host.structure_id if structure.is_guest() else structure.structure_id
+	return _lifts.get(id, 0.0)
+
+
+## The cells of a structure's ground footprint (x, y): its hulls on the ground level, else on its
+## lowest level from the ground up.
+static func footprint_of(layout: StructureLayout) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var levels := layout.absolute_levels()
+	if levels.is_empty():
+		return result
+	var ground := levels[0]
+	for z: int in levels:
+		if z >= 0:
+			ground = z
+			break
+	for local: Vector3i in layout.hull_cells():
+		var cell := layout.to_absolute(local)
+		if cell.z == ground:
+			result.append(Vector2i(cell.x, cell.y))
+	return result
+
+
+## The relief follows the model's surface (a new one comes with the body).
+func _sync_relief() -> void:
+	if relief == null:
+		relief = TerrainRelief.new(model.surface if model != null else SurfaceBlocks.new())
+		if _ground != null:
+			_ground.relief = relief
+	if model != null and (relief.surface != model.surface or relief.size_x != model.size_x):
+		relief.surface = model.surface
+		relief.size_x = model.size_x
+		relief.clear()
+
+
+## Sets the reference elevation (scene height 0) once: the home structure's base, or without a
+## home the ground under the camera. False while the ground it needs is not loaded.
+func _ensure_reference() -> bool:
+	if relief.has_reference():
+		return true
+	var cells := footprint_of(model.layout)
+	if not cells.is_empty():
+		var base := relief.base_of(cells)
+		if not is_nan(base):
+			relief.set_reference(base)
+			return true
+		for cell: Vector2i in cells:
+			if not model.surface.is_loaded(model.surface.block_of(cell.x, cell.y)):
+				return false
+	var cell := WorldGrid.to_cell(focus, origin, model.size_x)
+	var block := model.surface.block_of(cell.x, cell.y)
+	if not model.surface.is_loaded(block):
+		return false
+	var around: Array[Vector2i] = []
+	for dy: int in range(-4, 5):
+		for dx: int in range(-4, 5):
+			around.append(Vector2i(cell.x + dx, cell.y + dy))
+	var found := relief.base_of(around)
+	relief.set_reference(found if not is_nan(found) else relief.reference)
+	return true
+
+
+## Base elevations, floors and pads of the drawn structures (after travellers took their sites):
+## resting ones stand on a pad (the ground cut and filled to their base); guests stand on their
+## host, a structure landing on a dock on that dock's host; one driving follows the ground.
+func _update_relief() -> void:
+	_sync_relief()
+	_lifts.clear()
+	_bases.clear()
+	_drive_centres.clear()
+	if model == null:
+		return
+	_ensure_reference()
+	var now := Services.clock.now_ms()
+	var pads: Array[TerrainRelief.Pad] = []
+	var docking: Array[ColonyModel] = []
+	for structure: ColonyModel in _structures():
+		if structure.is_guest():
+			continue
+		var trip := trip_of(structure, now)
+		var entry := _trip_entry(structure)
+		if trip == Trip.LANDING and entry != null and entry.motion != null and entry.motion.target_type() == "dock":
+			docking.append(structure)
+			continue
+		var cells := footprint_of(structure.layout)
+		var base := relief.base_of(cells)
+		_bases[structure.structure_id] = base
+		if is_nan(base):
+			# Its ground is not loaded: on the ground as drawn until then.
+			var first := cells[0] if not cells.is_empty() else Vector2i(structure.layout.offset.x, structure.layout.offset.y)
+			_lifts[structure.structure_id] = relief.scene_height(relief.height(first.x + 0.5, first.y + 0.5))
+		else:
+			_lifts[structure.structure_id] = relief.scene_height(base)
+			if (trip == Trip.RESTING or trip == Trip.LAUNCHING) and not cells.is_empty():
+				pads.append(TerrainRelief.Pad.new(cells, base))
+		if trip == Trip.DRIVING and not cells.is_empty():
+			var flat: Array[Vector3i] = []
+			for cell: Vector2i in cells:
+				flat.append(Vector3i(cell.x, cell.y, origin.z))
+			_drive_centres[structure.structure_id] = _footprint_centre(flat)
+	for structure: ColonyModel in docking:
+		var host := model.structure(_trip_entry(structure).motion.target_host_id())
+		_lifts[structure.structure_id] = _base_lift(host) if host != null else 0.0
+	var touched := relief.set_pads(pads)
+	if not touched.is_empty():
+		_heights_changed(touched)
+
+
+## Whether the base elevation of a drawn structure changed (its ground loaded meanwhile).
+func _bases_changed() -> bool:
+	for structure: ColonyModel in _structures():
+		if structure.is_guest() or not _bases.has(structure.structure_id):
+			continue
+		var before: float = _bases[structure.structure_id]
+		var now := relief.base_of(footprint_of(structure.layout))
+		if is_nan(before) != is_nan(now) or (not is_nan(now) and not is_equal_approx(before, now)):
+			return true
+	return false
+
+
+## The ground's heights changed in some blocks: their meshes are built again (a few per frame;
+## `meshes` false when the blocks are built anyway) and whatever stands on the ground is placed
+## again.
+func _heights_changed(blocks: Dictionary, meshes: bool = true) -> void:
+	if meshes:
+		_relief_queue.merge(blocks)
+	_followers_due = true
+	relief_changed.emit(blocks)
+
+
+## Places the layers that stand on the ground again: masts, fences and concrete, the glow, the
+## foundations, wrecks, ghosts and marks.
+func _place_followers() -> void:
+	_followers_due = false
+	_perimeter.rebuild()
+	_build_foundations()
+	_wrecks.redraw()
+	_sightings.redraw()
+	_travel.redraw()
 
 
 ## Sets the active level (absolute z) and whether it cuts the open structure (see `level`). Below
@@ -299,7 +605,7 @@ func set_level(z: int, cut: bool) -> void:
 	level = z
 	level_cut = cut
 	# The camera rises and sinks with the level, so the active floor stays in place on screen.
-	focus.y = float(z - origin.z) if cut else 0.0
+	focus.y = (float(z - origin.z) if cut else 0.0) + home_lift()
 	_update_camera()
 	_apply_cutaway(was_cutaway)
 	_rebuild_structure()
@@ -330,6 +636,7 @@ func shows_level(structure: ColonyModel, z: int) -> bool:
 func _apply_cutaway(was_cutaway: bool) -> void:
 	var below := cutaway()
 	_ground.visible = not below
+	_foundations.visible = not below
 	_props.visible = not below
 	_perimeter.visible = not below
 	_travel.visible = not below
@@ -454,13 +761,27 @@ func roof_point(structure: ColonyModel) -> Vector2:
 func cell_point(cell: Vector3i, guest: bool = false) -> Vector2:
 	if _camera == null:
 		return Vector2.ZERO
-	var drop := GUEST_DROP if guest else 0.0
-	return _camera.unproject_position(WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, 0.9 - drop, 0.0))
+	return _camera.unproject_position(WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift(cell, guest) + 0.9, 0.0))
 
 
-## How much lower than its grid level a structure is drawn: guests stand on their docks.
+## How much higher than its grid level a structure is drawn: it stands at the base elevation of
+## its footprint (TerrainRelief); guests stand on their host's docks, lower than their grid level.
 func lift_of(structure: ColonyModel) -> float:
-	return -GUEST_DROP if structure.is_guest() else 0.0
+	return _base_lift(structure) - (GUEST_DROP if structure.is_guest() else 0.0)
+
+
+## Scene height added to a cell's grid level (absolute) for what lies on it (a mark, a module):
+## the floor of the structure it belongs to (a guest's — or one being founded — on the home's
+## docks); on free ground of the ground level the ground as drawn under the cell's middle.
+func floor_lift(cell: Vector3i, guest: bool) -> float:
+	if guest:
+		return home_lift() - GUEST_DROP
+	if cell.z != 0:
+		return home_lift()
+	var owner := _hull_of_drawn(cell)
+	if owner != null:
+		return lift_of(owner)
+	return cell_ground(cell.x, cell.y) + float(origin.z)
 
 
 func _apply_highlight() -> void:
@@ -597,10 +918,18 @@ func _trip_shift(structure: ColonyModel, now: int) -> Vector3:
 			var here := TravelTrack.ground_point(motion, now)
 			var whole := floori(here.x)
 			var dx := WorldGrid.wrapped_delta(end.x, whole, model.size_x) + (here.x - whole)
-			# On the ground all the way (its lowest level at z = 0), also towards a dock.
+			# On the ground all the way (its lowest level at z = 0), also towards a dock, over the
+			# hills: its floor follows the ground under its footprint's middle.
 			var levels := structure.layout.levels()
 			var ground := -levels[0] if not levels.is_empty() else 0
-			return Vector3(dx, float(ground - end.z), -(here.y - end.y))
+			var shift := Vector3(dx, float(ground - end.z), -(here.y - end.y))
+			# Guests travelling along move with their host.
+			var centre: Variant = _drive_centres.get(entry.structure_id)
+			if centre != null:
+				var middle: Vector3 = centre
+				var mover_lift: float = _lifts.get(entry.structure_id, 0.0)
+				shift.y += ground_height(middle + shift) - mover_lift
+			return shift
 		Trip.LANDING:
 			var span := maxf(motion.arrival_at - motion.cruise_end_at, 1.0)
 			var left := clampf(float(motion.arrival_at - now) / span, 0.0, 1.0)
@@ -654,9 +983,19 @@ func _level_y(structure: ColonyModel, level: int) -> float:
 	return float(structure.layout.to_absolute(Vector3i(0, 0, level)).z - origin.z) + lift_of(structure)
 
 
-## Absolute cell under the camera focus.
+## Absolute cell under the camera focus: the cell of the ground as drawn in the middle of the view
+## (where the ground lies higher or lower than the focus, it shows a little off along the view).
 func focus_cell() -> Vector3i:
-	return WorldGrid.to_cell(focus, origin, model.size_x)
+	var point := focus
+	if relief != null and relief.has_reference() and not cutaway():
+		var pitch := deg_to_rad(CAMERA_PITCH_DEGREES)
+		var yaw := deg_to_rad(CAMERA_YAW_DEGREES)
+		# Along the view, per cell of height.
+		var toward := Vector3(sin(yaw), 0.0, cos(yaw)) * (cos(pitch) / sin(pitch))
+		for _index: int in 3:
+			point = focus + toward * (ground_height(point) - focus.y)
+	point.y = focus.y - home_lift()
+	return WorldGrid.to_cell(point, origin, model.size_x)
 
 
 ## Marks a cell (absolute) as selected; null hides the mark. `guest`: the cell belongs to a
@@ -667,8 +1006,7 @@ func select_cell(cell: Variant, guest: bool = false) -> void:
 		return
 	var at: Vector3i = cell
 	_selection.visible = true
-	var drop := GUEST_DROP if guest else 0.0
-	_selection.position = WorldGrid.to_scene(at, origin, model.size_x) + Vector3(0.0, HULL_FLOOR_HEIGHT + 0.01 - drop, 0.0)
+	_selection.position = WorldGrid.to_scene(at, origin, model.size_x) + Vector3(0.0, floor_lift(at, guest) + HULL_FLOOR_HEIGHT + 0.01, 0.0)
 
 
 ## Shows what a build would look like: `cells` (absolute) tinted by whether it can work, and
@@ -680,16 +1018,20 @@ func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rota
 		child.queue_free()
 	if cells.is_empty():
 		return
-	var drop := GUEST_DROP if guest else 0.0
 	var marked: Array[Vector3i] = []
 	marked.append_array(cells)
 	marked.append_array(extra)
+	var color := COLOR_OK if ok else COLOR_BAD
 	for cell: Vector3i in marked:
-		var mark := _outline(COLOR_OK if ok else COLOR_BAD, true)
+		if not guest and cell.z == 0 and _hull_of_drawn(cell) == null:
+			# Free ground: the mark lies on the ground as drawn, over its slope.
+			_preview.add_child(_ground_mark(cell, color))
+			continue
+		var mark := _outline(color, true)
 		# A mark above the ground lies on the floor plate below it (a dock or a lower level); on
 		# and under the ground on the ground or the rock.
-		var floor_lift := 0.004 if cell.z <= origin.z else HULL_FLOOR_HEIGHT + 0.004
-		mark.position = WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift - drop, 0.0)
+		var plate := 0.004 if cell.z <= origin.z else HULL_FLOOR_HEIGHT + 0.004
+		mark.position = WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, plate + floor_lift(cell, guest), 0.0)
 		_preview.add_child(mark)
 	if scene_key.is_empty():
 		return
@@ -697,9 +1039,11 @@ func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rota
 	if ghost == null:
 		return
 	_tint(ghost, COLOR_OK if ok else COLOR_BAD)
-	# Modules stand on a hull; a hull itself lies on the ground.
+	# Modules stand on a hull; a hull itself lies on the ground — at the floor of the structure it
+	# joins (the open one's home, or as a guest on its docks).
 	var lift := 0.0 if scene_key.begins_with("hull_") else HULL_FLOOR_HEIGHT
-	ghost.position = _footprint_centre(cells) + Vector3(0.0, lift - drop, 0.0)
+	var base := home_lift() - (GUEST_DROP if guest else 0.0)
+	ghost.position = _footprint_centre(cells) + Vector3(0.0, lift + base, 0.0)
 	ghost.rotation.y = -deg_to_rad(rotation)
 	_preview.add_child(ghost)
 
@@ -726,10 +1070,17 @@ func show_shape(good: Array[Vector3i], bad: Array[Vector3i], on_hulls: bool = fa
 		material.cull_mode = BaseMaterial3D.CULL_DISABLED
 		var mesh := ImmediateMesh.new()
 		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
+		var lift := home_lift()
 		for cell: Vector3i in cells:
+			if cell.z == 0 and not on_hulls and _hull_of_drawn(cell) == null:
+				# Free ground: over the slope of the ground as drawn.
+				var quad := ground_quad(cell.x, cell.y, 0.04, MARK_LIFT)
+				for index: int in [0, 1, 2, 0, 2, 3]:
+					mesh.surface_add_vertex(quad[index])
+				continue
 			# As in show_preview: on the ground or the rock, or on the floor plate below.
-			var floor_lift := 0.006 if cell.z <= origin.z and not on_hulls else HULL_FLOOR_HEIGHT + 0.006
-			var centre := WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift, 0.0)
+			var plate := 0.006 if cell.z <= origin.z and not on_hulls else HULL_FLOOR_HEIGHT + 0.006
+			var centre := WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, plate + lift, 0.0)
 			for corner: Vector3 in [Vector3(-0.46, 0, -0.46), Vector3(0.46, 0, -0.46), Vector3(0.46, 0, 0.46),
 					Vector3(-0.46, 0, -0.46), Vector3(0.46, 0, 0.46), Vector3(-0.46, 0, 0.46)]:
 				mesh.surface_add_vertex(centre + corner)
@@ -749,7 +1100,7 @@ func show_paths(near: Array[Vector3i], cut: Array[Vector3i], entrances: Array[Ve
 		unconnected: Array[Vector3i]) -> void:
 	for child: Node in _paths.get_children():
 		child.queue_free()
-	var lift := Vector3(0.0, HULL_FLOOR_HEIGHT + 0.004, 0.0)
+	var lift := Vector3(0.0, HULL_FLOOR_HEIGHT + 0.004 + lift_of(_open_structure()), 0.0)
 	for part: Array in [[near, COLOR_PATH_NEAR], [cut, COLOR_PATH_CUT]]:
 		var cells: Array[Vector3i] = []
 		cells.assign(part[0] as Array)
@@ -846,8 +1197,10 @@ func _update_camera() -> void:
 
 
 func _rebuild_all() -> void:
+	_sync_relief()
 	_ground.clear()
 	_ground_queue.clear()
+	_relief_queue.clear()
 	_redraw_ground()
 	_props.rebuild()
 	_underground.redraw()
@@ -881,6 +1234,7 @@ func impacts_at(x: int, y: int) -> Array:
 func _on_surface_reset() -> void:
 	if not is_inside_tree():
 		return
+	relief.clear()
 	_rebuild_all()
 	model.ensure_surface(focus_cell())
 
@@ -895,20 +1249,30 @@ func _rebuild_structure() -> void:
 	_mover.clear()
 	_travelling.clear()
 	var now := Services.clock.now_ms()
-	for structure: ColonyModel in _structures():
+	var structures := _structures()
+	for structure: ColonyModel in structures:
 		var trip := trip_of(structure, now)
 		var entry := _trip_entry(structure)
 		if (trip == Trip.DRIVING or trip == Trip.LANDING) and entry != null and entry.structure_id == structure.structure_id:
 			_place_on_site(structure, entry)
 		if trip != Trip.RESTING:
 			_travelling[structure.structure_id] = structure
+	# Bases and pads from where everything stands now.
+	_update_relief()
+	for structure: ColonyModel in structures:
 		_build_structure(structure)
+	_build_foundations()
 	_perimeter.rebuild()
 	# A hull placed or removed over a wreck hides or shows it.
 	_wrecks.redraw()
 	_apply_highlight()
 	_travel.show_reserved(_reserved_cells(now))
 	_apply_trips(now)
+	if _followers_due:
+		# Pads changed the ground: what was not placed again above follows it now.
+		_followers_due = false
+		_sightings.redraw()
+		_travel.redraw()
 
 
 ## Hulls and modules of one structure, each in a group tagged with the structure's id (for the
@@ -1008,6 +1372,88 @@ func _build_structure(structure: ColonyModel) -> void:
 		module_group.add_child(landing)
 
 
+## The concrete foundations of the structures standing on the ground (resting, or launching from
+## it): a wall along every side of a footprint whose ground lies lower than its floor, from the
+## floor down to the ground as drawn (TerrainRelief.foundation); one mesh for all.
+func _build_foundations() -> void:
+	if _foundations == null:
+		return
+	for child: Node in _foundations.get_children():
+		child.queue_free()
+	if model == null or relief == null or not relief.has_reference():
+		return
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var colors := PackedColorArray()
+	var now := Services.clock.now_ms()
+	var to_corner := Vector3(-0.5, 0.0, 0.5)
+	for structure: ColonyModel in _structures():
+		if structure.is_guest() or not _bases.has(structure.structure_id):
+			continue
+		var trip := trip_of(structure, now)
+		var base: float = _bases[structure.structure_id]
+		if (trip != Trip.RESTING and trip != Trip.LAUNCHING) or is_nan(base):
+			continue
+		for wall: TerrainRelief.Wall in relief.foundation(footprint_of(structure.layout), base):
+			var a := WorldGrid.to_scene(Vector3i(wall.a.x, wall.a.y, origin.z), origin, model.size_x) + to_corner
+			var b := WorldGrid.to_scene(Vector3i(wall.b.x, wall.b.y, origin.z), origin, model.size_x) + to_corner
+			var top := relief.scene_height(wall.top) - origin.z
+			# A hair into the ground, so no seam shows along the foot.
+			var foot_a := relief.scene_height(wall.bottom_a) - origin.z - 0.01
+			var foot_b := relief.scene_height(wall.bottom_b) - origin.z - 0.01
+			var normal := Vector3(wall.outward.x, 0.0, -wall.outward.y)
+			# Along the wall the texture runs on from cell to cell.
+			var along_a := float(wall.a.x if wall.outward.y != 0 else wall.a.y) * 0.5
+			var along_b := float(wall.b.x if wall.outward.y != 0 else wall.b.y) * 0.5
+			# Seen from outside: a on the left, b on the right; clockwise.
+			var points: Array[Vector3] = [Vector3(a.x, top, a.z), Vector3(b.x, top, b.z), Vector3(b.x, foot_b, b.z),
+				Vector3(a.x, top, a.z), Vector3(b.x, foot_b, b.z), Vector3(a.x, foot_a, a.z)]
+			var texture_points: Array[Vector2] = [Vector2(along_a, 0.0), Vector2(along_b, 0.0), Vector2(along_b, (top - foot_b) * 0.5),
+				Vector2(along_a, 0.0), Vector2(along_b, (top - foot_b) * 0.5), Vector2(along_a, (top - foot_a) * 0.5)]
+			for index: int in 6:
+				var point: Vector3 = points[index]
+				vertices.append(point)
+				normals.append(normal)
+				uvs.append(texture_points[index])
+				# Darker towards the ground: damp and dirty at the foot.
+				var shade := lerpf(1.0, 0.72, clampf((top - point.y) / 1.2, 0.0, 1.0))
+				colors.append(Color(shade, shade, shade))
+	if vertices.is_empty():
+		return
+	if _foundation_material == null:
+		_foundation_material = StandardMaterial3D.new()
+		_foundation_material.albedo_texture = FOUNDATION_TEXTURE
+		_foundation_material.albedo_color = FOUNDATION_COLOR
+		_foundation_material.vertex_color_use_as_albedo = true
+		_foundation_material.roughness = 0.92
+		_foundation_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, _foundation_material)
+	var instance := MeshInstance3D.new()
+	instance.name = "Foundation"
+	instance.mesh = mesh
+	_foundations.add_child(instance)
+
+
+## Walls of foundations drawn now (for measuring).
+func foundation_walls() -> int:
+	var count := 0
+	for child: Node in _foundations.get_children():
+		var instance := child as MeshInstance3D
+		if instance != null and not instance.is_queued_for_deletion() and instance.mesh != null:
+			@warning_ignore("integer_division")
+			count += instance.mesh.surface_get_array_len(0) / 6
+	return count
+
+
 ## Draws every loaded ground block near the camera (after the origin moved).
 func _redraw_ground() -> void:
 	if model == null:
@@ -1021,12 +1467,23 @@ func _redraw_ground() -> void:
 				_queue_ground(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)
 
 
-func _on_surface_loaded(request: SurfaceBlocks.Request, patch: SurfacePatch) -> void:
+func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) -> void:
+	if _ground == null:
+		return
+	_sync_relief()
+	var touched := relief.surface_loaded(request.blocks)
+	var had_reference := relief.has_reference()
 	for block: Vector2i in request.blocks:
 		_queue_ground(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
-	# Impact sites come with the ground (draft.32).
-	if not patch.impact_cells().is_empty():
-		_wrecks.redraw()
+	if not _ensure_reference():
+		return
+	if not had_reference or _bases_changed():
+		# Structures whose ground arrived stand at their base now (and cut or fill it).
+		_rebuild_structure()
+	# The blocks beside the new ones renew their edge (a new block renews its neighbours' meshes
+	# itself); everything standing there, and the impact sites that came with the ground
+	# (draft.32), is placed again.
+	_heights_changed(touched, false)
 
 
 ## Puts a ground block (its first cell) in line to be built; _process builds a few per frame.
@@ -1036,9 +1493,32 @@ func _queue_ground(x0: int, y0: int) -> void:
 		_ground_queue.append(block)
 
 
-## One textured quad of BLOCK × BLOCK cells (GroundLayer).
+## One textured block of BLOCK × BLOCK cells (GroundLayer); the blocks beside it renew their edge
+## a few per frame.
 func _add_ground_block(x0: int, y0: int) -> void:
-	_ground.add_block(model.surface, x0, y0, origin, model.size_x)
+	var block := model.surface.block_of(x0, y0)
+	_relief_queue.erase(block)
+	_relief_queue.merge(_ground.add_block(model.surface, x0, y0, origin, model.size_x))
+
+
+## Whether a loaded block can be built now: none of the blocks beside it is still on its way
+## (its edge would change when it arrives), or it has waited SETTLE_MS for them.
+func settled(block: Vector2i) -> bool:
+	var surface := model.surface
+	var waiting := false
+	for dy: int in [-1, 0, 1]:
+		for dx: int in [-1, 0, 1]:
+			if (dx != 0 or dy != 0) and surface.is_pending(surface.block_of((block.x + dx) * SurfaceBlocks.BLOCK,
+					(block.y + dy) * SurfaceBlocks.BLOCK)):
+				waiting = true
+	if not waiting:
+		_waiting_since.erase(block)
+		return true
+	var now := Time.get_ticks_msec()
+	if not _waiting_since.has(block):
+		_waiting_since[block] = now
+	var since: int = _waiting_since[block]
+	return now - since >= SETTLE_MS
 
 
 ## Puts every visible part of a model on render layers (INTERIOR_LAYER: only the interior light).
@@ -1073,11 +1553,28 @@ func _instance(key: String) -> Node3D:
 
 
 func _process(delta: float) -> void:
-	for _index: int in GROUND_BLOCKS_PER_FRAME:
-		if _ground_queue.is_empty():
-			break
-		var block: Vector2i = _ground_queue.pop_front()
+	# The ground is built once its heights have their reference (the home structure's base).
+	# A block waits for the blocks beside it that are still on their way (settled).
+	var built := 0
+	var index := 0
+	while relief != null and relief.has_reference() and built < GROUND_BLOCKS_PER_FRAME and index < _ground_queue.size():
+		var block: Vector2i = _ground_queue[index]
+		if not settled(model.surface.block_of(block.x, block.y)):
+			index += 1
+			continue
+		_ground_queue.remove_at(index)
 		_add_ground_block(block.x, block.y)
+		built += 1
+	if not _relief_queue.is_empty():
+		var batch := {}
+		for block: Vector2i in _relief_queue.keys():
+			batch[block] = true
+			_relief_queue.erase(block)
+			if batch.size() >= RELIEF_BLOCKS_PER_FRAME:
+				break
+		_ground.refresh_heights(batch)
+	if _followers_due:
+		_place_followers()
 	if _moving:
 		_mover.step(delta, _to_sun, _sun_up)
 	if fleet == null:
@@ -1251,6 +1748,26 @@ func _frame(color: Color) -> Node3D:
 		instance.position = Vector3(0.0, 0.0, sign) if side % 2 == 0 else Vector3(sign, 0.0, 0.0)
 		holder.add_child(instance)
 	return holder
+
+
+## A filled square on a cell of free ground, lying on the ground as drawn (scene points: placed at
+## the origin of the view).
+func _ground_mark(cell: Vector3i, color: Color) -> MeshInstance3D:
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = color
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var quad := ground_quad(cell.x, cell.y, 0.02, MARK_LIFT)
+	var mesh := ImmediateMesh.new()
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
+	for index: int in [0, 1, 2, 0, 2, 3]:
+		mesh.surface_add_vertex(quad[index])
+	mesh.surface_end()
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
 
 
 ## A flat square marking one cell: a frame, or filled.

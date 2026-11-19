@@ -8,8 +8,9 @@ extends Node3D
 ## a post in every cell of the line (a gate post where it ends at a gap) and a half piece from the
 ## post towards every neighbour it runs on to. One MultiMesh per model and CHUNK × CHUNK cells, so
 ## the parts off screen are culled. The chain link is a see-through face drawn by
-## fence_mesh.gdshader. The concrete is one MultiMesh of flat slabs, one per cell, a hair above the
-## ground (paving.gdshader, paving.webp from the models' concrete texture).
+## fence_mesh.gdshader. The concrete is one mesh of slabs, one per cell, a hair above the ground
+## and following its relief (paving.gdshader, paving.webp from the models' concrete texture).
+## Posts stand upright on the ground as drawn; the pieces between them are sheared along its slope.
 
 const MODELS := "res://game/world/models/grounds/"
 const PAVING_SHADER := preload("res://game/world/grounds/paving.gdshader")
@@ -37,7 +38,7 @@ const LINKS := {
 var _view: ColonyView
 ## File → Mesh (null when missing).
 var _meshes: Dictionary = {}
-var _paving_mesh: PlaneMesh
+var _paving_material: ShaderMaterial
 var _mesh_material: ShaderMaterial
 var _tier := DetailGovernor.DEFAULT_TIER
 var _counts: Dictionary = {}
@@ -47,13 +48,10 @@ func setup(view: ColonyView) -> void:
 	_view = view
 	_mesh_material = ShaderMaterial.new()
 	_mesh_material.shader = MESH_SHADER
-	var paving := ShaderMaterial.new()
-	paving.shader = PAVING_SHADER
-	paving.set_shader_parameter("paving", PAVING_TEXTURE)
-	paving.set_shader_parameter("noise", NOISE)
-	_paving_mesh = PlaneMesh.new()
-	_paving_mesh.size = Vector2.ONE
-	_paving_mesh.material = paving
+	_paving_material = ShaderMaterial.new()
+	_paving_material.shader = PAVING_SHADER
+	_paving_material.set_shader_parameter("paving", PAVING_TEXTURE)
+	_paving_material.set_shader_parameter("noise", NOISE)
 
 
 ## Places fence, wall and concrete of every base again around the view's origin.
@@ -80,7 +78,8 @@ func rebuild(plans: Array[BaseGrounds.Plan]) -> void:
 		var gate_file: String = files[1]
 		var half_file: String = files[2]
 		for post: BaseGrounds.Post in plan.posts:
-			var at := WorldGrid.to_scene(Vector3i(post.cell.x, post.cell.y, 0), _view.origin, model.size_x)
+			# Posts stand upright on the ground as drawn (TerrainRelief).
+			var at := _view.on_ground(WorldGrid.to_scene(Vector3i(post.cell.x, post.cell.y, 0), _view.origin, model.size_x))
 			var chunk := Vector2i(floori(float(post.cell.x) / CHUNK), floori(float(post.cell.y) / CHUNK))
 			_add(pieces, gate_file if post.gate else post_file, chunk, Transform3D(Basis.IDENTITY, at))
 			for bit: int in LINKS.keys():
@@ -88,7 +87,13 @@ func rebuild(plans: Array[BaseGrounds.Plan]) -> void:
 					var towards: Vector2 = LINKS[bit]
 					# The piece's front (+Z) looks towards the neighbour (cell y is scene −Z).
 					var turn := Basis(Vector3.UP, atan2(towards.x, -towards.y))
-					_add(pieces, half_file, chunk, Transform3D(turn, at))
+					# Sheared along the slope (posts stay upright): it ends half way up or down to
+					# the neighbour's post, where the neighbour's half piece meets it.
+					var beside := _view.cell_ground(post.cell.x + int(towards.x), post.cell.y + int(towards.y))
+					# Half the difference over half a cell.
+					var rise := beside - at.y
+					var shear := Basis(Vector3.RIGHT, Vector3.UP, Vector3(0.0, rise, 1.0))
+					_add(pieces, half_file, chunk, Transform3D(turn * shear, at))
 	for key: String in pieces.keys():
 		var file := key.get_slice(" ", 0)
 		var list: Array = pieces[key]
@@ -131,29 +136,59 @@ func _add(pieces: Dictionary, file: String, chunk: Vector2i, placed: Transform3D
 
 ## The concrete: one slab per cell, each showing its own window of the texture, turned by a
 ## quarter now and then, a little brighter or darker. paved: cell → the sides facing the open land
-## (BaseGrounds.Plan.outward), where the slab stops at the fence's line.
-func _paving(paved: Dictionary, size_x: int) -> MultiMeshInstance3D:
+## (BaseGrounds.Plan.outward), where the slab stops at the fence's line. One mesh lying on the
+## ground as drawn: each slab's corners on the relief's corners, split into triangles as the ground
+## is (TerrainRelief.split), a hair above it. Per vertex CUSTOM0 = (cell x mod 64, cell y mod 64,
+## window u, v), CUSTOM1 = (shade, quarter turn, sides / 255).
+func _paving(paved: Dictionary, _size_x: int) -> MeshInstance3D:
 	var cells: Array = paved.keys()
-	var multimesh := MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.use_colors = true
-	multimesh.use_custom_data = true
-	multimesh.mesh = _paving_mesh
-	multimesh.instance_count = cells.size()
-	for index: int in cells.size():
-		var cell: Vector2i = cells[index]
-		var at := WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), _view.origin, size_x)
-		multimesh.set_instance_transform(index, Transform3D(Basis.IDENTITY, at + Vector3(0.0, PAVING_LIFT, 0.0)))
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var slabs := PackedFloat32Array()
+	var looks := PackedFloat32Array()
+	var indices := PackedInt32Array()
+	# Corners as ground_quad gives them (south-west, south-east, north-east, north-west) and their
+	# place on the slab (UV.x east, UV.y south).
+	var corner_uvs: Array[Vector2] = [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+	for cell: Vector2i in cells:
+		var quad := _view.ground_quad(cell.x, cell.y, 0.0, PAVING_LIFT)
 		var u := float(PropRules.key_hash(cell.x * 13 + 1, cell.y * 7 + 3, RANK_STEPS)) / RANK_STEPS
 		var v := float(PropRules.key_hash(cell.x * 5 + 11, cell.y * 17 + 2, RANK_STEPS)) / RANK_STEPS
 		var shade := 1.0 + SHADE_SPREAD * (2.0 * float(PropRules.key_hash(cell.x * 3 + 9, cell.y * 29 + 4, RANK_STEPS)) / RANK_STEPS - 1.0)
 		var turn := float(PropRules.key_hash(cell.x * 19 + 6, cell.y * 23 + 8, 4)) / 3.0
-		multimesh.set_instance_custom_data(index, Color(float(posmod(cell.x, 64)), float(posmod(cell.y, 64)), u, v))
 		var sides: int = paved[cell]
-		multimesh.set_instance_color(index, Color(shade, turn, sides / 255.0, 1.0))
-	var instance := MultiMeshInstance3D.new()
+		var normal := (quad[2] - quad[0]).cross(quad[1] - quad[3]).normalized()
+		if normal.y < 0.0:
+			normal = -normal
+		var first := vertices.size()
+		for index: int in 4:
+			vertices.append(quad[index])
+			normals.append(normal)
+			uvs.append(corner_uvs[index])
+			slabs.append_array(PackedFloat32Array([float(posmod(cell.x, 64)), float(posmod(cell.y, 64)), u, v]))
+			looks.append_array(PackedFloat32Array([shade, turn, sides / 255.0, 0.0]))
+		# The diagonal the ground takes here (corners 0 = south-west … 3 = north-west).
+		if TerrainRelief.split(quad[0].y, quad[1].y, quad[3].y, quad[2].y):
+			indices.append_array(PackedInt32Array([first, first + 3, first + 2, first, first + 2, first + 1]))
+		else:
+			indices.append_array(PackedInt32Array([first, first + 3, first + 1, first + 1, first + 3, first + 2]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_CUSTOM0] = slabs
+	arrays[Mesh.ARRAY_CUSTOM1] = looks
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var format := (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) \
+		| (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT)
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, format)
+	mesh.surface_set_material(0, _paving_material)
+	var instance := MeshInstance3D.new()
 	instance.name = "Paving"
-	instance.multimesh = multimesh
+	instance.mesh = mesh
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	instance.set_meta("flat", true)
 	return instance
