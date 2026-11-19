@@ -27,6 +27,21 @@ func test_reads_header_and_cells_at_absolute_positions() -> void:
 	assert_bool(patch.complete).is_true()
 
 
+func test_elevations_are_read_by_position_and_minus_one_outside() -> void:
+	var patch := SurfacePatch.from_stream(Ndjson.parse(STREAM))
+
+	assert_int(patch.elevation(-1, 4)).is_equal(734)
+	assert_int(patch.elevation(0, 5)).is_equal(patch.cell(0, 5).elevation)
+	assert_int(patch.elevation(1, 4)).is_equal(-1)
+	assert_int(patch.elevation(-1, 3)).is_equal(-1)
+	var fog := SurfacePatch.from_stream(Ndjson.parse(
+		'{"bodyId":"b","x0":0,"y0":0,"x1":1,"y1":0,"z":0,"rows":1}\n'
+		+ '{"y":0,"cells":[null,{"b":"PLAINS","v":0,"g":0,"e":12,"m":0}]}\n'
+		+ '{"end":true,"rows":1}'))
+	assert_int(fog.elevation(0, 0)).is_equal(-1)
+	assert_int(fog.elevation(1, 0)).is_equal(12)
+
+
 func test_without_deposits_the_cells_have_none() -> void:
 	var patch := SurfacePatch.from_stream(Ndjson.parse(STREAM))
 

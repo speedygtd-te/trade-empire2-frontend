@@ -136,6 +136,7 @@ func setup(view: ColonyView) -> void:
 	model.surface_loaded.connect(_on_surface_loaded)
 	model.layout_changed.connect(_on_structures_changed)
 	model.guests_changed.connect(_on_structures_changed)
+	view.relief_changed.connect(_on_relief_changed)
 	_read_structures()
 
 
@@ -194,8 +195,16 @@ func _process(_delta: float) -> void:
 	var deadline := Time.get_ticks_msec() + BUILD_BUDGET_MS
 	while Time.get_ticks_msec() < deadline and (_job != null or not _queue.is_empty()):
 		if _job == null:
+			# A block waits for the blocks beside it still on their way: their arrival would move the
+			# ground at its edge (ColonyView.settled).
+			var index := 0
+			while index < _queue.size() and not _view.settled(_queue[index]):
+				index += 1
+			if index >= _queue.size():
+				break
 			_job = Job.new()
-			_job.block = _queue.pop_front()
+			_job.block = _queue[index]
+			_queue.remove_at(index)
 		if _work(_job, deadline):
 			_finish(_job)
 			_job = null
@@ -275,10 +284,13 @@ func _place(job: Job, prop: PropRules.Prop, centre: Vector3) -> void:
 	if look.is_empty():
 		return
 	var at := centre + Vector3(prop.offset.x, 0.0, -prop.offset.y)
+	# On the ground as drawn (TerrainRelief).
+	at.y = _view.ground_height(at)
 	var basis: Basis
 	match look["kind"]:
 		Kind.MODEL:
-			basis = Basis(Vector3.UP, prop.turn).scaled(Vector3.ONE * prop.scale)
+			# Stones and blocks lie along the slope.
+			basis = _tilt(at) * Basis(Vector3.UP, prop.turn).scaled(Vector3.ONE * prop.scale)
 		Kind.TREE, Kind.SPRITE:
 			# Half of the sprites are mirrored, for variety.
 			var flip := -1.0 if prop.turn >= PI else 1.0
@@ -288,8 +300,9 @@ func _place(job: Job, prop: PropRules.Prop, centre: Vector3) -> void:
 			# flicker where they overlap: each moves a hair towards the camera, by its rank.
 			at += facing.z * CARD_STAGGER * prop.rank
 		_:
-			basis = _decal_turn * Basis.from_scale(Vector3(prop.scale, 1.0, prop.scale))
-			at.y = DECAL_LIFT
+			# Decals lie on the slope.
+			basis = _tilt(at) * _decal_turn * Basis.from_scale(Vector3(prop.scale, 1.0, prop.scale))
+			at.y += DECAL_LIFT
 	var key := "%s_%d" % [prop.family, prop.variant]
 	var group: Group = job.groups.get(key)
 	if group == null:
@@ -301,6 +314,31 @@ func _place(job: Job, prop: PropRules.Prop, centre: Vector3) -> void:
 	group.transforms.append(Transform3D(basis, at))
 	# A little brightness spread, so sprites of one variant do not look stamped.
 	group.shades.append(0.88 + 0.14 * fposmod(prop.turn * 2.3, 1.0))
+
+
+## The turn that stands something upright on the ground's slope at a scene point.
+func _tilt(at: Vector3) -> Basis:
+	var normal := _view.ground_normal(at, 0.3)
+	if normal.y > 0.9999:
+		return Basis.IDENTITY
+	var axis := Vector3.UP.cross(normal).normalized()
+	return Basis(axis, Vector3.UP.angle_to(normal))
+
+
+## The ground's heights changed in some blocks (ColonyView.relief_changed): their props are placed
+## again.
+func _on_relief_changed(blocks: Dictionary) -> void:
+	var dropped := false
+	for block: Vector2i in blocks.keys():
+		if _blocks.has(block):
+			(_blocks[block] as Node3D).queue_free()
+			_blocks.erase(block)
+			dropped = true
+		if _job != null and _job.block == block:
+			_job = null
+			dropped = true
+	if dropped:
+		_queue_loaded()
 
 
 ## Turns a finished job into MultiMeshes under a node of its own.

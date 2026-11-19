@@ -42,6 +42,9 @@ var _cells: Dictionary = {}
 var _hidden: Dictionary = {}
 ## Cells with impact sites (draft.32) → their Array of Probes.Impact.
 var _impact_cells: Dictionary = {}
+## Elevation of every cell, row by row from (x0, y0); -1 where unexplored or not sent. For the
+## relief, which reads hundreds of cells per block (TerrainRelief).
+var _elevations := PackedInt32Array()
 
 
 ## Reads a finished surface stream; null when the first line is no surface header.
@@ -59,6 +62,8 @@ static func from_stream(stream: Ndjson) -> SurfacePatch:
 	patch.y1 = Wire.as_int(header.get("y1"), -1)
 	patch.z = Wire.as_int(header.get("z"))
 	patch.include_deposits = header.get("includeDeposits") == true
+	patch._elevations.resize(maxi(patch.width(), 0) * maxi(patch.height(), 0))
+	patch._elevations.fill(-1)
 	var announced := Wire.as_int(header.get("rows"))
 	var rows := 0
 	for index: int in range(1, stream.objects.size()):
@@ -85,6 +90,13 @@ func height() -> int:
 ## The cell at absolute (x, y), or null outside the patch.
 func cell(x: int, y: int) -> Cell:
 	return _cells.get(Vector2i(x, y)) as Cell
+
+
+## Elevation of the cell at absolute (x, y); -1 when unexplored or outside the patch.
+func elevation(x: int, y: int) -> int:
+	if x < x0 or x > x1 or y < y0 or y > y1:
+		return -1
+	return _elevations[(y - y0) * (x1 - x0 + 1) + x - x0]
 
 
 func cell_count() -> int:
@@ -134,3 +146,5 @@ func _read_row(line: Dictionary) -> void:
 				entry.impacts.append(Probes.Impact.from_wire(Wire.as_dict(item), x0 + offset, y))
 			_impact_cells[Vector2i(x0 + offset, y)] = entry.impacts
 		_cells[Vector2i(x0 + offset, y)] = entry
+		if y >= y0 and y <= y1 and offset < width():
+			_elevations[(y - y0) * width() + offset] = entry.elevation

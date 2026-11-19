@@ -24,6 +24,9 @@ func _ready() -> void:
 	if _routes == null:
 		return
 	_routes.changed.connect(_rebuild)
+	# The marks lie on the ground as drawn: placed again when its heights change.
+	_view.relief_changed.connect(func(_blocks: Dictionary) -> void: _rebuild())
+	_view.origin_moved.connect(_rebuild)
 	_rebuild()
 
 
@@ -47,7 +50,7 @@ func _rebuild() -> void:
 		return
 	for cell: Vector2i in stop_cells(_routes.book.routes(), _view.model.body_id):
 		_cells.append(cell)
-		add_child(_mark())
+		add_child(_mark(cell))
 	_place()
 
 
@@ -65,30 +68,34 @@ func _place() -> void:
 		if mark == null or mark.is_queued_for_deletion() or index >= _cells.size():
 			continue
 		var cell := _cells[index]
-		mark.position = WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), _view.origin, _view.model.size_x) \
-			+ Vector3(0.0, LIFT, 0.0)
+		mark.position = WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), _view.origin, _view.model.size_x)
 		index += 1
 
 
-func _mark() -> MeshInstance3D:
+## The mark of a cell, its corners on the ground as drawn (relative to the cell's middle at the
+## ground level), LIFT above it.
+func _mark(cell: Vector2i) -> MeshInstance3D:
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.vertex_color_use_as_albedo = true
+	var level := WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), _view.origin, _view.model.size_x)
+	var fill := _view.ground_quad(cell.x, cell.y, 0.05, LIFT)
+	var frame := _view.ground_quad(cell.x, cell.y, 0.02, LIFT)
+	for index: int in 4:
+		fill[index] -= level
+		frame[index] -= level
 	var mesh := ImmediateMesh.new()
 	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
 	mesh.surface_set_color(FILL)
-	for corner: Vector3 in [Vector3(-0.45, 0, -0.45), Vector3(0.45, 0, -0.45), Vector3(0.45, 0, 0.45),
-			Vector3(-0.45, 0, -0.45), Vector3(0.45, 0, 0.45), Vector3(-0.45, 0, 0.45)]:
-		mesh.surface_add_vertex(corner)
+	for index: int in [0, 1, 2, 0, 2, 3]:
+		mesh.surface_add_vertex(fill[index])
 	mesh.surface_end()
 	mesh.surface_begin(Mesh.PRIMITIVE_LINES, material)
 	mesh.surface_set_color(COLOR)
-	var corners: Array[Vector3] = [Vector3(-0.48, 0, -0.48), Vector3(0.48, 0, -0.48),
-		Vector3(0.48, 0, 0.48), Vector3(-0.48, 0, 0.48)]
 	for index: int in 4:
-		mesh.surface_add_vertex(corners[index])
-		mesh.surface_add_vertex(corners[(index + 1) % 4])
+		mesh.surface_add_vertex(frame[index])
+		mesh.surface_add_vertex(frame[(index + 1) % 4])
 	mesh.surface_end()
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh

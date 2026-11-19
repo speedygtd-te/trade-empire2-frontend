@@ -109,5 +109,15 @@ func is_loaded(block: Vector2i) -> bool:
 	return _blocks.get(block) != null
 
 
+## The loaded patch holding a block (x wrapped as block_of gives it); null while not loaded.
+func patch(block: Vector2i) -> SurfacePatch:
+	return _blocks.get(block) as SurfacePatch
+
+
+## Whether a block was asked for and has not arrived yet.
+func is_pending(block: Vector2i) -> bool:
+	return _blocks.has(block) and _blocks[block] == null
+
+
 func clear() -> void:
 	_blocks.clear()

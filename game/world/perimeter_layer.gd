@@ -42,7 +42,10 @@ const CONE_START_RADIUS := 0.07
 ## along).
 const POOL_CENTRE := 2.5
 const POOL_HALF := Vector2(0.85, 1.35)
-const POOL_LIFT := 0.012
+const POOL_LIFT := 0.03
+## Grid of a pool over the ground's slope (across, along).
+const POOL_COLUMNS := 3
+const POOL_ROWS := 5
 ## Height of the radar's turning axis (perimeter.py PIVOT) and its speed in turns per second.
 const RADAR_PIVOT := 0.46
 const RADAR_TURNS_PER_SECOND := 0.1
@@ -61,11 +64,12 @@ var _items: Dictionary = {}
 var _dishes: Array[MeshInstance3D] = []
 var _dish_phases: PackedFloat32Array = []
 var _cones: MultiMeshInstance3D
-var _pools: MultiMeshInstance3D
+## The pools of all floodlights: one mesh lying on the ground as drawn.
+var _pools: MeshInstance3D
+var _pool_count := 0
 var _cone_material: ShaderMaterial
 var _pool_material: ShaderMaterial
 var _cone_mesh: Mesh
-var _pool_mesh: Mesh
 ## File → Mesh (null when missing), and the glow materials of the blinking models.
 var _meshes: Dictionary = {}
 var _blinkers: Array[StandardMaterial3D] = []
@@ -90,7 +94,6 @@ func setup(view: ColonyView) -> void:
 	_pool_material = ShaderMaterial.new()
 	_pool_material.shader = POOL_SHADER
 	_cone_mesh = _build_cone()
-	_pool_mesh = _build_pool()
 	_grounds = BaseGroundsLayer.new()
 	_grounds.name = "Grounds"
 	add_child(_grounds)
@@ -186,7 +189,8 @@ func rebuild() -> void:
 	var model := _view.model
 	var transforms: Dictionary = {}
 	for spot: Perimeter.Spot in spots_for(model):
-		var at := WorldGrid.to_scene(Vector3i(spot.cell.x, spot.cell.y, 0), _view.origin, model.size_x)
+		# Masts stand upright on the ground as drawn (TerrainRelief).
+		var at := _view.on_ground(WorldGrid.to_scene(Vector3i(spot.cell.x, spot.cell.y, 0), _view.origin, model.size_x))
 		# The model's front (+Z) looks along the spot's direction (cell y is scene −Z).
 		var turn := Basis(Vector3.UP, atan2(spot.direction.x, -spot.direction.y))
 		if not transforms.has(spot.kind):
@@ -207,8 +211,8 @@ func rebuild() -> void:
 		_items[kind] = instance
 	var lamps: Array = transforms.get(Perimeter.Kind.LAMP, [])
 	_cones = _multimesh(_cone_mesh, lamps)
-	_pools = _multimesh(_pool_mesh, lamps)
-	for glow: MultiMeshInstance3D in [_cones, _pools]:
+	_pools = _pool_sheet(lamps)
+	for glow: GeometryInstance3D in [_cones, _pools]:
 		if glow != null:
 			glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(glow)
@@ -242,7 +246,7 @@ func stats() -> Dictionary:
 		counts[FILES[kind]] = (_items[kind] as MultiMeshInstance3D).multimesh.instance_count
 	counts["radar_dish"] = _dishes.size()
 	counts["cones_drawn"] = _cones.multimesh.instance_count if _cones != null and _cones.visible else 0
-	counts["pools_drawn"] = _pools.multimesh.instance_count if _pools != null and _pools.visible else 0
+	counts["pools_drawn"] = _pool_count if _pools != null and _pools.visible else 0
 	return counts
 
 
@@ -362,16 +366,39 @@ func _build_cone() -> Mesh:
 	return _array_mesh(vertices, normals, uvs, indices, _cone_material)
 
 
-## The pool of light on the ground in the lamp mast's space. UV.y runs from the mast's side (0)
-## to the far side (1).
-func _build_pool() -> Mesh:
+## The pools of light of every floodlight (mast transforms) in one mesh lying on the ground as
+## drawn: a small grid per pool in front of its mast, each point on the ground's height. UV.y runs
+## from the mast's side (0) to the far side (1). Null without lamps.
+func _pool_sheet(lamps: Array) -> MeshInstance3D:
+	_pool_count = lamps.size()
+	if lamps.is_empty():
+		return null
 	var near := POOL_CENTRE - POOL_HALF.y
 	var far := POOL_CENTRE + POOL_HALF.y
-	var vertices := PackedVector3Array([Vector3(-POOL_HALF.x, POOL_LIFT, near), Vector3(POOL_HALF.x, POOL_LIFT, near),
-		Vector3(POOL_HALF.x, POOL_LIFT, far), Vector3(-POOL_HALF.x, POOL_LIFT, far)])
-	var normals := PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
-	var uvs := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
-	return _array_mesh(vertices, normals, uvs, PackedInt32Array([0, 2, 1, 0, 3, 2]), _pool_material)
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	for placed: Transform3D in lamps:
+		var first := vertices.size()
+		for row: int in POOL_ROWS + 1:
+			for column: int in POOL_COLUMNS + 1:
+				var u := float(column) / POOL_COLUMNS
+				var v := float(row) / POOL_ROWS
+				var point := placed * Vector3(lerpf(-POOL_HALF.x, POOL_HALF.x, u), 0.0, lerpf(near, far, v))
+				point.y = _view.ground_height(point) + POOL_LIFT
+				vertices.append(point)
+				normals.append(Vector3.UP)
+				uvs.append(Vector2(u, v))
+		for row: int in POOL_ROWS:
+			for column: int in POOL_COLUMNS:
+				var a := first + row * (POOL_COLUMNS + 1) + column
+				var b := a + POOL_COLUMNS + 1
+				indices.append_array(PackedInt32Array([a, b, a + 1, a + 1, b, b + 1]))
+	var instance := MeshInstance3D.new()
+	instance.name = "Pools"
+	instance.mesh = _array_mesh(vertices, normals, uvs, indices, _pool_material)
+	return instance
 
 
 static func _array_mesh(vertices: PackedVector3Array, normals: PackedVector3Array, uvs: PackedVector2Array,

@@ -38,10 +38,29 @@ func test_requested_blocks_are_not_asked_for_twice() -> void:
 func test_a_forgotten_request_is_asked_for_again() -> void:
 	var blocks := SurfaceBlocks.new()
 	var first := blocks.missing_around(0, 0, 0)
+	assert_bool(blocks.is_pending(Vector2i.ZERO)).is_true()
 
 	blocks.forget(first[0])
 
+	assert_bool(blocks.is_pending(Vector2i.ZERO)).is_false()
 	assert_int(blocks.missing_around(0, 0, 0).size()).is_equal(1)
+
+
+func test_a_block_is_pending_from_its_request_until_it_arrives() -> void:
+	var blocks := SurfaceBlocks.new(64, 4)
+	assert_bool(blocks.is_pending(Vector2i(0, 0))).is_false()
+	var requests := blocks.missing_around(0, 0, 0)
+	assert_bool(blocks.is_pending(Vector2i(0, 0))).is_true()
+	var patch := SurfacePatch.from_stream(Ndjson.parse(
+		'{"bodyId":"b","x0":0,"y0":0,"x1":3,"y1":0,"z":0,"rows":1}\n'
+		+ '{"y":0,"cells":[null,null,null,null]}\n'
+		+ '{"end":true,"rows":1}'
+	))
+
+	blocks.store(requests[0], patch)
+
+	assert_bool(blocks.is_pending(Vector2i(0, 0))).is_false()
+	assert_bool(blocks.is_loaded(Vector2i(0, 0))).is_true()
 
 
 func test_requests_never_cross_the_seam() -> void:

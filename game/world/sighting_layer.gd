@@ -3,7 +3,8 @@ extends Node3D
 ## Foreign structures a probe has seen near the view (draft.31, RevealMap.Sighting): a snapshot,
 ## not live, so each is only a ghost — a flat amber fill over exactly the cells it covered seen from
 ## above (draft.32 `footprint`; before, a square about as large as its hull count), with one
-## outline around them all, and the owner with how long ago it was seen.
+## outline around them all, and the owner with how long ago it was seen. Fill and outline lie on
+## the ground as drawn (TerrainRelief).
 
 ## Sightings farther than this from the view's origin (cells) are left out.
 const REACH := 400
@@ -84,7 +85,7 @@ func redraw() -> void:
 		label.outline_size = 8
 		label.modulate = AppTheme.COLOR_PENDING
 		label.outline_modulate = AppTheme.COLOR_BACKGROUND
-		label.position = middle / float(cells.size()) + Vector3(0.0, 0.6, 0.0)
+		label.position = _view.on_ground(middle / float(cells.size())) + Vector3(0.0, 0.6, 0.0)
 		add_child(label)
 
 
@@ -93,14 +94,14 @@ static func _corner(cell: Vector2i, origin: Vector3i, size_x: int) -> Vector3:
 	return WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), origin, size_x) - Vector3(0.5, 0.0, -0.5)
 
 
-## A flat rectangle from `corner` spanning `along_x` and `along_z`, at `height`.
-static func _quad(mesh: ImmediateMesh, corner: Vector3, along_x: Vector3, along_z: Vector3, height: float) -> void:
-	var a := corner + Vector3(0.0, height, 0.0)
-	var b := a + along_x
-	var c := b + along_z
-	var d := a + along_z
-	for point: Vector3 in [a, c, b, a, d, c]:
-		mesh.surface_add_vertex(point)
+## A rectangle from `corner` spanning `along_x` and `along_z`, `height` above the ground as drawn
+## at each of its corners (TerrainRelief).
+func _quad(mesh: ImmediateMesh, corner: Vector3, along_x: Vector3, along_z: Vector3, height: float) -> void:
+	var points: Array[Vector3] = [corner, corner + along_x, corner + along_x + along_z, corner + along_z]
+	for index: int in points.size():
+		points[index].y = _view.ground_height(points[index]) + height
+	for index: int in [0, 2, 1, 0, 3, 2]:
+		mesh.surface_add_vertex(points[index])
 
 
 static func _material(color: Color) -> StandardMaterial3D:

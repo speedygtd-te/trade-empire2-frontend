@@ -81,7 +81,6 @@ func redraw() -> void:
 	_ground.clear()
 	if not _shown:
 		return
-	position = Vector3(0.0, float(_level - _view.origin.z) - FLOOR_DROP, 0.0)
 	_draw_outline()
 	if _level >= 0:
 		return
@@ -146,6 +145,7 @@ func _level_cells(z: int) -> Dictionary:
 func _draw_outline() -> void:
 	if _outline == null or _view == null or _view.model == null or not _shown:
 		return
+	_place()
 	var below := _level_cells(_level - 1)
 	var bars: Array[Transform3D] = []
 	for edge: Vector3i in LevelOutline.outline(below) + LevelOutline.outline(_level_cells(_level + 1)):
@@ -156,6 +156,13 @@ func _draw_outline() -> void:
 		for offset: float in DASH_OFFSETS:
 			dashes.append(_edge_transform(edge, offset))
 	_dashes.multimesh = _multimesh(_bar(DASH_LENGTH, DASH_WIDTH), dashes)
+
+
+## The layer lies at the active level, counted from the home structure's floor: the structure
+## stands at the base elevation of its footprint (ColonyView.lift_of, TerrainRelief), and the rock
+## floor and the outlines belong to it like its levels — flat, whatever the relief around.
+func _place() -> void:
+	position = Vector3(0.0, float(_level - _view.origin.z) - FLOOR_DROP + _view.lift_of(_view.model), 0.0)
 
 
 ## Where a bar along one side of a cell lies (shifted `along` the side, in cells).
