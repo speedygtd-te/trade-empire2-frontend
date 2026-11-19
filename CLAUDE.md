@@ -48,6 +48,8 @@ verschärft, wenn es nötig wird.
 | Nur Spieldaten prüfen (ohne Konto) | `powershell -File tools\smoke.ps1 -DefinitionsOnly` |
 | Bauen gegen das Backend (Entwicklerkonto) | `powershell -File tools\colony-smoke.ps1` (setzt Hülle, Modul, Rezept und räumt wieder auf) |
 | Docks und Gäste gegen das Backend | `powershell -File tools\colony-smoke.ps1 -Scene dock_build` (gründet, erweitert, räumt auf) |
+| Ebenen und Schächte gegen das Backend (eigenes Konto `levels`) | `powershell -File tools\colony-smoke.ps1 -Scene level_build` (Stockwerke, Keller, Überhang, Treppe, räumt auf) |
+| Ebenen ansehen (Wähler, Schnitt-Ansicht, Schacht, Stockwerke von außen) | `godot --path . --resolution 720x1280 res://smoke/level_view.tscn -- --out=build/levels` (Konto `levels`; baut auf und räumt ab) |
 | Routen und Lagermodi gegen das Backend (eigenes Konto `routes`) | `powershell -File tools\colony-smoke.ps1 -Scene route_flow -TimeoutSeconds 900` (baut einmal Transporter + Station und lässt sie stehen; Route anlegen, Lieferung, Pause, Löschen; dauert Minuten) |
 | Routen-, Fracht- und Editor-Ansichten ansehen | `godot --path . --resolution 720x1280 res://smoke/route_view.tscn -- --out=build/routes` (Konto `routes`, nach `route_flow`) |
 | Fahrten gegen das Backend (eigenes Konto `travel`) | `powershell -File tools\colony-smoke.ps1 -Scene travel_flow` (baut Fahrzeug und Schiff, falls sie fehlen; Orbit + Andocken, Fahrt mit Wegpunkt + Andocken; dauert ~10 min) |

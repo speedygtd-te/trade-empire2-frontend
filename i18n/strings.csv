@@ -78,7 +78,6 @@ SLOT_UNDER_WATER,under water
 BUILD_VERDICT_OK,Ready to build.
 BUILD_VERDICT_OCCUPIED,This field already has a hull.
 BUILD_VERDICT_NOT_CONNECTED,A new hull has to touch the colony or stand on a dock.
-BUILD_VERDICT_WRONG_LEVEL,Only the ground level can be built on for now.
 BUILD_VERDICT_NO_HULL,A module needs a hull under every field it covers.
 BUILD_VERDICT_HULL_OCCUPIED,This hull already carries a module.
 BUILD_VERDICT_POSITIONING,This module needs a hull with a {slots} slot.
@@ -646,3 +645,45 @@ LOG_TRAVEL_ARRIVED_ORBIT,Arrived in the orbit of {body}.
 LOG_TRAVEL_ARRIVED_SURFACE,Arrived on {body}.
 LOG_TRAVEL_ARRIVED_DOCKED,Docked at {host}.
 LOG_TRAVEL_BLOCKED_REASON,The journey was stopped: {reason} It waits in the orbit of {body}.
+BUILD_VERDICT_INVALID_HULL_TYPE,This hull cannot be built on a planet's surface.
+BUILD_VERDICT_OUT_OF_BOUNDS,This level lies outside the buildable range of this body.
+BUILD_VERDICT_HULL_Z_RESTRICTED,"This hull cannot stand on this level (Starter Hull: ground and first floor only, Glass & Carbon: not below the ground)."
+BUILD_VERDICT_INCOMPATIBLE_HULL,This hull is not made for this place ({environment}).
+BUILD_VERDICT_OVERHANG_EXCEEDED,Above the ground a hull needs another hull below it or diagonally below it.
+BUILD_VERDICT_NO_HULL_ABOVE,A staircase or elevator needs a free hull of this structure directly above it.
+BUILD_VERDICT_HULL_ABOVE_OCCUPIED,The hull above carries a module: a staircase or elevator needs it free.
+BUILD_VERDICT_NOT_VERTICAL_ACCESS,Only a staircase or an elevator forms a shaft.
+BUILD_VERDICT_BASE_BUILDING,The shaft is still under construction.
+BUILD_VERDICT_SHAFT_TOO_TALL,The shaft already has its maximum of 20 floors.
+ERROR_NO_HULL_ABOVE,A staircase or elevator needs a free hull directly above it.
+ERROR_HULL_ABOVE_OCCUPIED,The hull above carries a module.
+ERROR_NOT_UPPER_HULL_OWNER,The hull above belongs to someone else.
+ERROR_NOT_VERTICAL_ACCESS,Only a staircase or an elevator forms a shaft.
+ERROR_BASE_BUILDING,The shaft is still under construction.
+ERROR_SHAFT_TOO_TALL,The shaft already has its maximum number of floors.
+ERROR_INVALID_HULL_TYPE,This hull type cannot be built here.
+ERROR_NOT_ADJACENT,A new hull has to touch the structure.
+LEVEL_UP,Up
+LEVEL_DOWN,Down
+LEVEL_GROUND,Ground
+LEVEL_NAME,Level {level}
+LEVEL_ENV_SURFACE,Surface
+LEVEL_ENV_UNDERGROUND,Underground
+LEVEL_ENV_DEEP_UNDERGROUND,Deep underground
+LEVEL_ENV_UNDERWATER,Under water
+LEVEL_ENV_ASTEROID,Asteroid rock
+LEVEL_HULLS_HIDDEN,Not offered on this level: {names}.
+LEVEL_ITEM_WITH_CHANGE,{name} ×{count} · {change}
+LEVEL_CHANGE_UP,+{percent} %
+LEVEL_CHANGE_DOWN,-{percent} %
+LEVEL_Z_BETTER_HIGH,Production on this level: {change}. Higher levels are better for it.
+LEVEL_Z_BETTER_DEEP,Production on this level: {change}. Deeper levels are better for it.
+LEVEL_SHAFT_PLACE,{name} – also takes the hull above as its landing.
+LEVEL_SHAFT_LINE,"Shaft of {floors} floors, from {low} up to {high}."
+LEVEL_SHAFT_HEAD,The top landing of the shaft.
+LEVEL_SHAFT_REMOVES,Removing it removes the whole shaft ({floors} floors).
+LEVEL_EXTEND_SHAFT,Extend shaft
+LEVEL_REMOVE_SHAFT,Remove shaft
+LEVEL_GO_UP,Shaft top
+LEVEL_GO_DOWN,Shaft foot
+LEVEL_EMPTY,Nothing built here on this level.
