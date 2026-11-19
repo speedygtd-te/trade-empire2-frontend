@@ -14,7 +14,8 @@ extends RefCounted
 ## around the star lies a logarithmic step beyond the previous one (LOG_UNIT per factor e), but
 ## never closer than the two neighbours need for their moon systems (CLEARANCE between them).
 ## Moons sit on rings per rank around their planet (MOON_FIRST, then MOON_STEP apart). Marker
-## sizes follow the body's radius on a log scale, clamped per kind.
+## sizes follow the body's radius on a log scale, clamped per kind. Distances that are no orbit
+## (the star's habitable zone and frost line, draft.30) go through the same scale (ring_of_au).
 
 ## Map units: radius of the star's disc.
 const STAR_RADIUS := 26.0
@@ -34,6 +35,10 @@ const KM_LARGE := 50000.0
 const PLANET_MARKER := Vector2(6.0, 20.0)
 const MOON_MARKER := Vector2(3.0, 6.0)
 const ASTEROID_MARKER := Vector2(3.0, 5.0)
+## A zone (habitable zone, frost line) is drawn only this far outside the star's disc.
+const ZONE_MIN_WIDTH := 4.0
+## The map grows to show a zone beyond the outermost orbit, by at most this much.
+const ZONE_MAX_REACH := LOG_UNIT
 
 const KIND_PLANET := "PLANET"
 const KIND_MOON := "MOON"
@@ -62,6 +67,8 @@ class Body:
 	var moons: PackedStringArray = []
 	## The body as the server sent it (environment, grid, …), for the details.
 	var data: Dictionary = {}
+	## Derived physics (`Body.physics`, draft.30); null when the server sent none.
+	var physics: BodyPhysics = null
 
 	func is_moon() -> bool:
 		return not parent_id.is_empty()
@@ -79,6 +86,9 @@ class Body:
 
 
 var system_id := ""
+## The star with everything the server sent (spectral class, zones, …); the three fields below
+## repeat its name, type and temperature.
+var star := StarInfo.new()
 var star_name := ""
 var star_type := ""
 var star_kelvin := 5800.0
@@ -95,12 +105,10 @@ var _deposits: Dictionary = {}
 static func from_system(data: Dictionary) -> SystemMap:
 	var map := SystemMap.new()
 	map.system_id = Wire.as_string(data.get("systemId"))
-	var star := Wire.as_dict(data.get("star"))
-	map.star_name = Wire.as_string(star.get("name"))
-	map.star_type = Wire.as_string(star.get("type"))
-	var kelvin := number(star.get("temperature"))
-	if kelvin > 0.0:
-		map.star_kelvin = kelvin
+	map.star = StarInfo.from_wire(Wire.as_dict(data.get("star")))
+	map.star_name = map.star.name
+	map.star_type = map.star.type
+	map.star_kelvin = map.star.kelvin
 	var list: Array = data.get("bodies") if typeof(data.get("bodies")) == TYPE_ARRAY else []
 	for item: Variant in list:
 		var raw := Wire.as_dict(item)
@@ -118,6 +126,7 @@ static func from_system(data: Dictionary) -> SystemMap:
 		entry.period_s = number(orbit.get("periodS"))
 		entry.phase0 = deg_to_rad(number(orbit.get("phase0")))
 		entry.data = raw
+		entry.physics = BodyPhysics.from_wire(raw.get("physics"))
 		map.bodies.append(entry)
 		map._by_id[entry.id] = entry
 	map._link_moons()
@@ -174,6 +183,70 @@ func pick(point: Vector2, t_s: float, reach: float, with_moons: bool = true) -> 
 			best_distance = distance
 			best = entry.id
 	return best
+
+
+## Distance of a body from the star in AU: `physics.starDistanceAu` when sent, else its orbit (a
+## moon: its planet's); 0 for an unknown body.
+func star_distance_au(id: String) -> float:
+	var entry := body(id)
+	if entry == null:
+		return 0.0
+	if entry.physics != null and entry.physics.star_distance_au > 0.0:
+		return entry.physics.star_distance_au
+	if entry.is_moon():
+		var planet := body(entry.parent_id)
+		return planet.orbit_au if planet != null else 0.0
+	return entry.orbit_au
+
+
+## Radius on the map (map units) of a distance from the star in AU, on the same scale as the
+## orbits: between two orbits in proportion of the logarithms (as the orbits themselves are
+## spaced), inside the first and beyond the last LOG_UNIT per factor e; never inside the star's
+## disc. Monotonic, so a zone's edges keep their order and the bodies in it stay in it.
+func ring_of_au(au: float) -> float:
+	var anchors_au := PackedFloat64Array()
+	var anchors_ring := PackedFloat64Array()
+	for entry: Body in star_orbits():
+		if entry.orbit_au <= 0.0:
+			continue
+		if not anchors_au.is_empty() and entry.orbit_au <= anchors_au[anchors_au.size() - 1]:
+			continue
+		anchors_au.append(entry.orbit_au)
+		anchors_ring.append(entry.ring)
+	var inner := STAR_RADIUS
+	if au <= 0.0:
+		return inner
+	if anchors_au.is_empty():
+		return maxf(inner, STAR_RADIUS + CLEARANCE + LOG_UNIT * log(au))
+	var last := anchors_au.size() - 1
+	if au <= anchors_au[0]:
+		return maxf(inner, anchors_ring[0] - LOG_UNIT * log(anchors_au[0] / au))
+	if au >= anchors_au[last]:
+		return anchors_ring[last] + LOG_UNIT * log(au / anchors_au[last])
+	for index: int in last:
+		var low := anchors_au[index]
+		var high := anchors_au[index + 1]
+		if au <= high:
+			var share := log(au / low) / log(high / low)
+			return lerpf(anchors_ring[index], anchors_ring[index + 1], share)
+	return anchors_ring[last]
+
+
+## The habitable zone on the map: x inner, y outer radius (map units); ZERO when the star has none
+## or it would vanish in the star's disc.
+func habitable_zone_rings() -> Vector2:
+	if not star.has_habitable_zone():
+		return Vector2.ZERO
+	var rings := Vector2(ring_of_au(star.habitable_zone_au.x), ring_of_au(star.habitable_zone_au.y))
+	return rings if rings.y > STAR_RADIUS + ZONE_MIN_WIDTH else Vector2.ZERO
+
+
+## The frost line on the map (map units); 0 when the star has none or it lies in the star's disc.
+func frost_line_ring() -> float:
+	if not star.has_frost_line():
+		return 0.0
+	var ring := ring_of_au(star.frost_line_au)
+	return ring if ring > STAR_RADIUS + ZONE_MIN_WIDTH else 0.0
 
 
 ## The deposits of a body, most abundant first: {resourceType, abundance, quality}.
@@ -237,8 +310,10 @@ static func moon_ring(rank: int, planet_marker: float) -> float:
 	return planet_marker + MOON_FIRST + MOON_STEP * rank
 
 
-## The body's name without the star's name in front ("Nu Eridani Secundus I" → "Secundus I"),
-## for labels on the map; the full name when that would leave nothing.
+## The body's name without the star's name in front, for labels on the map: draft.30 names
+## planets "{star} b, c …", moons "{planet} I, II …" and belts "{star} Belt-1" ("Brevan Thakoris
+## b I" → "b I"); older worlds "{star} Primus …" ("Nu Eridani Secundus I" → "Secundus I"). The
+## full name when that would leave nothing or the star's name is not in front.
 static func short_name(body_name: String, name_of_star: String) -> String:
 	if name_of_star.is_empty() or not body_name.begins_with(name_of_star + " "):
 		return body_name
@@ -383,3 +458,8 @@ func _lay_out() -> void:
 	for index: int in orbits.size():
 		orbits[index].ring = rings[index]
 		extent = maxf(extent, rings[index] + reaches[index])
+	# Zones beyond the outermost orbit: the map grows to show them, within ZONE_MAX_REACH.
+	var orbits_extent := extent
+	var zone_edge := maxf(habitable_zone_rings().y, frost_line_ring())
+	if zone_edge > 0.0:
+		extent = maxf(extent, minf(zone_edge + CLEARANCE, orbits_extent + ZONE_MAX_REACH))

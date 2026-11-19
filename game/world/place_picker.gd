@@ -1,7 +1,7 @@
 class_name PlacePicker
 extends Control
 ## The player's places, opened from the Base head: every body with own structures standing or
-## docked there (Fleet.places), e.g. "Tertius · 2 structures", the current one marked. A tap
+## docked there (Fleet.places), e.g. "Brevan Thakoris c · 2 structures", the current one marked. A tap
 ## chooses the place's main structure. "‹ Back" or Back closes it.
 
 ## A place was chosen: its body and the structure to show there.

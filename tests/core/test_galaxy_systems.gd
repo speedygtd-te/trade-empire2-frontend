@@ -32,6 +32,25 @@ func test_entry_from_wire_reads_position_star_and_planets() -> void:
 	assert_int(entry.planet_count).is_equal(7)
 
 
+func test_entry_from_wire_reads_the_draft_30_star() -> void:
+	var row := {"systemId": "sys-12_-3_0-417", "position": {"x": 1.0, "y": 2.0, "z": 0.0}, "planetCount": 5.0,
+		"star": {"name": "Brevan Thakoris", "type": "RED_GIANT", "temperature": 4100.0, "luminosity": 380.0,
+			"mass": 1.4, "radius": 38.5, "spectralClass": "K3 III", "catalog": "TEC 12:-3:0/417"}}
+	var entry := GalaxySystems.entry_from_wire(row)
+
+	assert_float(entry.radius).is_equal(38.5)
+	assert_str(entry.spectral_class).is_equal("K3 III")
+	assert_str(entry.catalog).is_equal("TEC 12:-3:0/417")
+
+
+func test_entry_from_wire_without_the_draft_30_fields() -> void:
+	var entry := GalaxySystems.entry_from_wire(Wire.parse_object(_row("sys-0_0_0-3", 1.0, 2.0, 3.0)))
+
+	assert_float(entry.radius).is_equal(0.0)
+	assert_str(entry.spectral_class).is_empty()
+	assert_str(entry.catalog).is_empty()
+
+
 func test_entry_without_id_is_null() -> void:
 	assert_object(GalaxySystems.entry_from_wire({"position": {"x": 1, "y": 2, "z": 3}})).is_null()
 

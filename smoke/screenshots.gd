@@ -834,6 +834,24 @@ func _capture_map(shell: MainShell) -> void:
 	await _capture("map_zoomed")
 	screen._select(home)
 	await _capture("map_selected")
+	# The rest of the details (physics, draft.30): scrolled down.
+	await get_tree().process_frame
+	screen._details._scroll.scroll_vertical = 140
+	await _capture("map_selected_scrolled")
+	print("MAP  star %s, catalog %s, habitable zone %s AU, frost line %.3f AU" % [map.star.spectral_class,
+		map.star.catalog, map.star.habitable_zone_au, map.star.frost_line_au])
+	for body: SystemMap.Body in map.bodies:
+		var physics := body.physics
+		print("MAP    %-24s %-11s %7s °C  %s" % [body.name, body.type,
+			BodyPhysics.celsius(SystemMap.number(Wire.as_dict(body.data.get("environment")).get("temperature"))),
+			"physics: %s Earth masses, %s g/cm3, %s AU, flux %s, Teq %s °C" % [BodyPhysics.figure(physics.mass_earth),
+			BodyPhysics.figure(physics.density), BodyPhysics.figure(physics.star_distance_au), BodyPhysics.figure(physics.flux),
+			BodyPhysics.celsius(physics.equilibrium_c)] if physics != null else "no physics"])
+	# The outermost body: beyond the frost line (when the star has one).
+	var outermost := map.star_orbits()[map.star_orbits().size() - 1]
+	screen._view.focus_body(outermost.id)
+	screen._select(outermost.id)
+	await _capture("map_outer")
 	for body: SystemMap.Body in map.bodies:
 		if body.type == "GAS_GIANT" or body.type == "ICE_GIANT":
 			screen._view.focus_body(body.id)

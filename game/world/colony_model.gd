@@ -55,6 +55,9 @@ var star_kelvin := 5800.0
 ## The star's luminosity (in suns) and its distance from this body (AU; a moon's planet's).
 var star_luminosity := 1.0
 var star_distance_au := 1.0
+## The star's radius in solar radii (`Star.radius`, draft.30); 0 when not sent (then derived from
+## luminosity and temperature).
+var star_radius := 0.0
 var atmosphere_density := 1.0
 ## Gases of the air → share 0..1 (`Environment.atmosphere`); empty without air.
 var atmosphere: Dictionary = {}
@@ -249,15 +252,16 @@ func _load_body() -> ApiError:
 	var distance: Variant = orbit.get("radiusAu")
 	if typeof(distance) == TYPE_FLOAT:
 		star_distance_au = distance
+	# draft.30 sends the distance itself (a moon's is its planet's).
+	var physics := BodyPhysics.from_wire(body.data.get("physics"))
+	if physics != null and physics.star_distance_au > 0.0:
+		star_distance_au = physics.star_distance_au
 	var system := await Services.api.get_json("/v2/systems/" + system_id.uri_encode())
 	if system.is_ok():
-		var star := Wire.as_dict(system.data.get("star"))
-		var kelvin: Variant = star.get("temperature")
-		if typeof(kelvin) == TYPE_FLOAT:
-			star_kelvin = kelvin
-		var luminosity: Variant = star.get("luminosity")
-		if typeof(luminosity) == TYPE_FLOAT:
-			star_luminosity = luminosity
+		var star := StarInfo.from_wire(Wire.as_dict(system.data.get("star")))
+		star_kelvin = star.kelvin
+		star_luminosity = star.luminosity
+		star_radius = star.radius
 	return null
 
 
@@ -305,6 +309,7 @@ func _make_sibling(id: int) -> ColonyModel:
 	other.star_kelvin = star_kelvin
 	other.star_luminosity = star_luminosity
 	other.star_distance_au = star_distance_au
+	other.star_radius = star_radius
 	other.atmosphere_density = atmosphere_density
 	other.atmosphere = atmosphere
 	other.sun = sun
@@ -458,9 +463,10 @@ func star_brightness() -> float:
 	return SkyLight.brightness(SkyLight.irradiance(star_luminosity, star_distance_au))
 
 
-## How large the star looks here compared with the Sun from Earth (soft shadows when large).
+## How large the star looks here compared with the Sun from Earth (soft shadows when large):
+## the server's radius when it sent one (draft.30), else derived from luminosity and temperature.
 func star_size() -> float:
-	return SkyLight.apparent_size(SkyLight.star_radius(star_luminosity, star_kelvin), star_distance_au)
+	return SkyLight.apparent_size(StarInfo.radius_or_estimate(star_radius, star_luminosity, star_kelvin), star_distance_au)
 
 
 func is_guest() -> bool:

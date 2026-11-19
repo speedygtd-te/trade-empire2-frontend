@@ -188,7 +188,125 @@ func test_deposits_of_a_body_most_abundant_first() -> void:
 	assert_int(map.deposits_of("p1").size()).is_equal(0)
 
 
+## A G star system as draft.30 sends it: names "{star} b, c …", star with zones, bodies with
+## physics (the belt and the moon without, as the field is optional).
+func _system_30() -> Dictionary:
+	var system := {
+		"systemId": "sys-12_-3_0-417",
+		"star": {"name": "Brevan Thakoris", "type": "G", "temperature": 5890.0, "luminosity": 1.21, "mass": 1.05,
+			"radius": 1.03, "spectralClass": "G1 V", "catalog": "TEC 12:-3:0/417",
+			"habitableZoneAu": [1.045, 1.837], "frostLineAu": 2.97},
+		"bodies": [
+			_body("b", "Brevan Thakoris b", "VOLCANIC", "PLANET", "", 3000.0, 0.35, 1000.0, 0.0),
+			_body("c", "Brevan Thakoris c", "EARTH_LIKE", "PLANET", "", 6000.0, 1.1, 4000.0, 40.0),
+			_body("c1", "Brevan Thakoris c I", "MOON_ROCKY", "MOON", "c", 900.0, 0.002, 100.0, 0.0),
+			_body("d", "Brevan Thakoris d", "GAS_GIANT", "PLANET", "", 40000.0, 5.2, 9000.0, 90.0),
+			_body("belt", "Brevan Thakoris Belt-1", "ASTEROID_C", "ASTEROID", "", 60.0, 2.4, 7000.0, 270.0),
+		],
+		"deposits": [],
+	}
+	var bodies: Array = system["bodies"]
+	(bodies[1] as Dictionary)["physics"] = {"massEarth": 1.02, "density": 5.5, "escapeVelocity": 11.3,
+		"starDistanceAu": 1.1, "flux": 1.0, "equilibriumTemperature": -16.0}
+	(bodies[0] as Dictionary)["physics"] = {"massEarth": 0.12, "density": 5.1, "escapeVelocity": 4.4,
+		"starDistanceAu": 0.35, "flux": 9.9, "equilibriumTemperature": 190.0}
+	return system
+
+
+func test_draft_30_system_reads_star_and_physics() -> void:
+	var map := SystemMap.from_system(_system_30())
+
+	assert_str(map.star_name).is_equal("Brevan Thakoris")
+	assert_str(map.star.spectral_class).is_equal("G1 V")
+	assert_str(map.star.catalog).is_equal("TEC 12:-3:0/417")
+	assert_float(map.star.radius).is_equal(1.03)
+	assert_vector(map.star.habitable_zone_au).is_equal(Vector2(1.045, 1.837))
+	assert_float(map.body("c").physics.mass_earth).is_equal(1.02)
+	assert_float(map.body("c").physics.equilibrium_c).is_equal(-16.0)
+	assert_object(map.body("belt").physics).is_null()
+	assert_object(map.body("c1").physics).is_null()
+
+
+func test_draft_29_system_has_no_physics_and_no_zones() -> void:
+	var map := SystemMap.from_system(_system())
+
+	assert_str(map.star.spectral_class).is_empty()
+	assert_object(map.body("p0").physics).is_null()
+	assert_vector(map.habitable_zone_rings()).is_equal(Vector2.ZERO)
+	assert_float(map.frost_line_ring()).is_equal(0.0)
+
+
+func test_star_distance_from_physics_else_from_the_orbit() -> void:
+	var map := SystemMap.from_system(_system_30())
+
+	assert_float(map.star_distance_au("c")).is_equal(1.1)
+	# The moon has no physics: its planet's orbit.
+	assert_float(map.star_distance_au("c1")).is_equal(1.1)
+	assert_float(map.star_distance_au("belt")).is_equal(2.4)
+	assert_float(map.star_distance_au("nope")).is_equal(0.0)
+	assert_float(SystemMap.from_system(_system()).star_distance_au("m0")).is_equal(2.8)
+
+
+func test_ring_of_au_meets_every_orbit_and_keeps_the_order() -> void:
+	var map := SystemMap.from_system(_system_30())
+
+	for body: SystemMap.Body in map.star_orbits():
+		assert_float(map.ring_of_au(body.orbit_au)).is_equal_approx(body.ring, EPSILON)
+	var previous := 0.0
+	for au: float in [0.01, 0.1, 0.35, 0.7, 1.0, 1.1, 2.0, 2.4, 3.0, 5.2, 10.0, 40.0]:
+		var ring := map.ring_of_au(au)
+		assert_float(ring).is_greater_equal(previous)
+		assert_float(ring).is_greater_equal(SystemMap.STAR_RADIUS)
+		previous = ring
+	# Beyond the last orbit: LOG_UNIT per factor e.
+	var outer := map.body("d")
+	assert_float(map.ring_of_au(5.2 * exp(1.0))).is_equal_approx(outer.ring + SystemMap.LOG_UNIT, EPSILON)
+
+
+func test_zones_lie_between_the_orbits_they_belong_to() -> void:
+	var map := SystemMap.from_system(_system_30())
+	var zone := map.habitable_zone_rings()
+	var frost := map.frost_line_ring()
+
+	# The earth-like planet at 1.1 AU is in the band; the belt at 2.4 AU inside the frost line,
+	# the giant at 5.2 AU beyond it.
+	assert_float(zone.x).is_less(map.body("c").ring)
+	assert_float(zone.y).is_greater(map.body("c").ring)
+	assert_float(zone.y).is_less(map.body("belt").ring)
+	assert_float(frost).is_greater(map.body("belt").ring)
+	assert_float(frost).is_less(map.body("d").ring)
+
+
+func test_a_zone_inside_the_star_disc_is_not_drawn() -> void:
+	# A white dwarf: its habitable zone lies far inside the first orbit (at least 1 AU).
+	var data := _system_30()
+	var star: Dictionary = data["star"]
+	star["habitableZoneAu"] = [0.0001, 0.0002]
+	star["frostLineAu"] = 0.0003
+	var map := SystemMap.from_system(data)
+
+	assert_vector(map.habitable_zone_rings()).is_equal(Vector2.ZERO)
+	assert_float(map.frost_line_ring()).is_equal(0.0)
+
+
+func test_the_map_grows_to_show_a_frost_line_beyond_the_last_orbit() -> void:
+	var data := _system_30()
+	var star: Dictionary = data["star"]
+	star["frostLineAu"] = 8.0
+	var map := SystemMap.from_system(data)
+	var orbits_edge := map.body("d").ring + map.body("d").reach()
+
+	assert_float(map.frost_line_ring()).is_greater(orbits_edge)
+	assert_float(map.extent).is_equal_approx(map.frost_line_ring() + SystemMap.CLEARANCE, EPSILON)
+	# Far beyond, the map grows only so far.
+	star["frostLineAu"] = 5000.0
+	assert_float(SystemMap.from_system(data).extent).is_equal_approx(orbits_edge + SystemMap.ZONE_MAX_REACH, EPSILON)
+
+
 func test_short_name_drops_the_star_name() -> void:
+	assert_str(SystemMap.short_name("Brevan Thakoris b", "Brevan Thakoris")).is_equal("b")
+	assert_str(SystemMap.short_name("Brevan Thakoris b II", "Brevan Thakoris")).is_equal("b II")
+	assert_str(SystemMap.short_name("Brevan Thakoris Belt-1", "Brevan Thakoris")).is_equal("Belt-1")
 	assert_str(SystemMap.short_name("Nu Eridani Secundus I", "Nu Eridani")).is_equal("Secundus I")
 	assert_str(SystemMap.short_name("Kepler", "Nu Eridani")).is_equal("Kepler")
 	assert_str(SystemMap.short_name("Nu Eridani", "Nu Eridani")).is_equal("Nu Eridani")

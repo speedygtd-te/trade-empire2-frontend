@@ -10,6 +10,10 @@ extends Control
 ## per map unit). Moons appear once their rings are far enough apart to be told from each other;
 ## before that a faint ring around the planet says it has moons. Names are placed greedily by
 ## importance and left out where they would overlap.
+##
+## When the star sends them (draft.30), its habitable zone lies under the orbits as a soft
+## emerald band and its frost line as a thin dashed blue ring, both on the orbits' scale
+## (SystemMap.ring_of_au), and its catalog designation stands small in the lower right corner.
 
 ## A body was tapped; "" for a tap beside every body.
 signal body_tapped(body_id: String)
@@ -25,6 +29,20 @@ const MIN_BELT_BODY_PX := 4.0
 ## Zoom limits: from a bit more than the whole system to moon rings this far apart (px).
 const MAX_MOON_STEP_PX := 72.0
 const LABEL_FONT_SIZE := 22
+## Smaller, muted texts: the star's catalog designation and the zones' names.
+const NOTE_FONT_SIZE := 20
+## Distance of the catalog designation from the free area's lower right corner.
+const CATALOG_INSET := 20.0
+## The habitable zone: fill and edges (emerald: where life is fine); the frost line (blue as ice;
+## depiction, not a UI meaning) with its dash length (px).
+const HABITABLE_FILL := Color(0.204, 0.827, 0.600, 0.10)
+const HABITABLE_EDGE := Color(0.204, 0.827, 0.600, 0.30)
+const HABITABLE_TEXT := Color(0.45, 0.80, 0.65)
+const FROST_COLOR := Color(0.55, 0.75, 1.0, 0.65)
+const FROST_TEXT := Color(0.62, 0.78, 1.0)
+const FROST_DASH_PX := 10.0
+## Most dashes drawn for the frost line; close up the dashes grow instead.
+const FROST_MAX_DASHES := 240
 ## Dots that draw an asteroid belt's band.
 const BELT_DOTS := 420
 ## Colour of each body type on the map (depiction only, not a UI meaning).
@@ -204,6 +222,7 @@ func _draw() -> void:
 	var star_at := to_view(Vector2.ZERO)
 	var star_color := SkyLight.star_color(map.star_kelvin)
 	var orbit_color := Color(AppTheme.COLOR_BORDER, 0.7)
+	_draw_zones(star_at)
 	for body: SystemMap.Body in map.star_orbits():
 		var color := Color(AppTheme.COLOR_ACCENT, 0.6) if _orbit_selected(body) else orbit_color
 		if body.is_belt():
@@ -310,6 +329,46 @@ func _draw_ring(at: Vector2, radius: float, color: Color, width: float) -> void:
 	draw_arc(at, radius, 0.0, TAU, points, color, width, true)
 
 
+## The habitable zone as a soft band with faint edges, the frost line as a dashed ring.
+func _draw_zones(star_at: Vector2) -> void:
+	var zone := map.habitable_zone_rings()
+	if zone != Vector2.ZERO:
+		var inner := zone.x * _zoom
+		var outer := zone.y * _zoom
+		var width := maxf(outer - inner, 2.0)
+		var points := clampi(int(outer / 3.0), 64, 720)
+		draw_arc(star_at, (inner + outer) * 0.5, 0.0, TAU, points, HABITABLE_FILL, width, true)
+		_draw_ring(star_at, inner, HABITABLE_EDGE, 1.0)
+		_draw_ring(star_at, outer, HABITABLE_EDGE, 1.0)
+	var frost := map.frost_line_ring() * _zoom
+	if frost >= 1.0:
+		_draw_dashed_ring(star_at, frost, FROST_COLOR, 1.5)
+
+
+## A dashed circle; close up only the part that can be on screen is drawn, so the dashes keep
+## their length.
+func _draw_dashed_ring(at: Vector2, radius: float, color: Color, width: float) -> void:
+	var area := _area()
+	var middle := area.get_center() - at
+	var half_diagonal := area.size.length() * 0.5
+	var from := 0.0
+	var span := TAU
+	if middle.length() > half_diagonal:
+		if radius < middle.length() - half_diagonal or radius > middle.length() + half_diagonal:
+			return
+		var half := asin(clampf(half_diagonal / middle.length(), 0.0, 1.0))
+		from = middle.angle() - half
+		span = half * 2.0
+	var step := FROST_DASH_PX * 2.0 / radius
+	var dashes := mini(ceili(span / step), FROST_MAX_DASHES)
+	step = maxf(step, span / FROST_MAX_DASHES)
+	# Dashes start on a fixed grid round the circle, so they do not crawl while panning.
+	var start := floorf(from / step) * step
+	for index: int in dashes + 1:
+		var angle := start + index * step
+		draw_arc(at, radius, angle, angle + step * 0.5, 6, color, width, true)
+
+
 ## An asteroid belt: a band of dots that turns with the belt's body.
 func _draw_belt(body: SystemMap.Body, star_at: Vector2) -> void:
 	var turn := SystemMap.orbit_angle(body.phase0, body.period_s, time_s)
@@ -351,7 +410,8 @@ func _drawn_radius(body: SystemMap.Body) -> float:
 
 ## Names next to the bodies, below or else above. The selected body's name always shows; the
 ## others keep off the star, every disc and each other, placed by importance: home and marked
-## bodies, planets and belts, moons. A name that fits nowhere is left out.
+## bodies, planets and belts, moons, the zones' names. A name that fits nowhere is left out. The
+## star's catalog designation keeps its corner; the others keep off it.
 func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
 	var obstacles: Array[Rect2] = []
 	var star_radius := maxf(SystemMap.STAR_RADIUS * _zoom, 10.0)
@@ -360,8 +420,15 @@ func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
 		var disc_at: Vector2 = entry[1]
 		var radius := _drawn_radius(entry[0] as SystemMap.Body)
 		obstacles.append(Rect2(disc_at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0))
+	# Per label: candidate boxes, text, colour, font size.
 	var candidates: Array[Array] = []
-	var owners: Array[SystemMap.Body] = []
+	var texts := PackedStringArray()
+	var colors: Array[Color] = []
+	var sizes := PackedInt32Array()
+	var catalog := _catalog_box()
+	if catalog.has_area():
+		_draw_text(map.star.catalog, AppTheme.COLOR_MUTED, NOTE_FONT_SIZE, catalog)
+		obstacles.append(catalog)
 	for rank: int in 4:
 		for entry: Array in entries:
 			var body: SystemMap.Body = entry[0]
@@ -370,39 +437,97 @@ func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
 			var at: Vector2 = entry[1]
 			var below := _label_box(body, at, true)
 			if body.id == selected:
-				_draw_label(body, below)
+				_draw_text(_label_text(body), _label_color(body), LABEL_FONT_SIZE, below)
 				obstacles.append(below)
 				continue
 			candidates.append([below, _label_box(body, at, false)])
-			owners.append(body)
+			texts.append(_label_text(body))
+			colors.append(_label_color(body))
+			sizes.append(LABEL_FONT_SIZE)
+	_add_zone_labels(star_at, candidates, texts, colors, sizes)
 	var placed := SystemMap.place_labels(candidates, obstacles)
 	for index: int in candidates.size():
 		if placed[index] >= 0:
-			_draw_label(owners[index], candidates[index][placed[index]] as Rect2)
+			_draw_text(texts[index], colors[index], sizes[index], candidates[index][placed[index]] as Rect2)
+
+
+## Where the star's catalog designation stands: small in the lower right corner of the free area,
+## like a legend, at every zoom; an empty box without one.
+func _catalog_box() -> Rect2:
+	var text := map.star.catalog
+	if text.is_empty():
+		return Rect2()
+	var box_size := _text_box_size(text, NOTE_FONT_SIZE)
+	var corner := _area().end - Vector2(CATALOG_INSET, CATALOG_INSET)
+	return Rect2(corner - box_size, box_size)
+
+
+## The names of the habitable zone (in its band) and the frost line (on its ring): at the top of
+## the ring if free, else around it; only where the box lies wholly in the free area.
+func _add_zone_labels(star_at: Vector2, candidates: Array[Array], texts: PackedStringArray, colors: Array[Color],
+		sizes: PackedInt32Array) -> void:
+	var zone := map.habitable_zone_rings()
+	if zone != Vector2.ZERO:
+		_add_ring_label(tr("MAP_HABITABLE_ZONE"), HABITABLE_TEXT, (zone.x + zone.y) * 0.5 * _zoom, star_at, 0.0,
+			candidates, texts, colors, sizes)
+	var frost := map.frost_line_ring()
+	if frost > 0.0:
+		# A bit further round, so the two names do not start out on top of each other.
+		_add_ring_label(tr("MAP_FROST_LINE"), FROST_TEXT, frost * _zoom, star_at, PI / 12.0, candidates, texts, colors,
+			sizes)
+
+
+func _add_ring_label(text: String, color: Color, radius: float, star_at: Vector2, offset: float,
+		candidates: Array[Array], texts: PackedStringArray, colors: Array[Color], sizes: PackedInt32Array) -> void:
+	var box_size := _text_box_size(text, NOTE_FONT_SIZE)
+	if radius < box_size.x * 0.6:
+		return
+	var area := _area()
+	var options: Array = []
+	for step: int in 12:
+		var angle := PI * 0.5 + offset + TAU * step / 12.0
+		var centre := star_at + SystemMap.on_ring(radius, angle)
+		var box := Rect2(centre - box_size * 0.5, box_size)
+		if area.encloses(box):
+			options.append(box)
+	if options.is_empty():
+		return
+	candidates.append(options)
+	texts.append(text)
+	colors.append(color)
+	sizes.append(NOTE_FONT_SIZE)
 
 
 ## The box of a body's name centred below (or above) its disc, clear of the rings around it.
 func _label_box(body: SystemMap.Body, at: Vector2, below: bool) -> Rect2:
-	var text := SystemMap.short_name(body.name, map.star_name)
-	var width := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE).x
-	var height := LABEL_FONT_SIZE + 4.0
+	var box_size := _text_box_size(_label_text(body), LABEL_FONT_SIZE)
 	var gap := _drawn_radius(body) + (18.0 if body.id == selected else 6.0)
-	var top := at.y + gap if below else at.y - gap - height
-	return Rect2(at.x - width * 0.5 - 4.0, top, width + 8.0, height)
+	var top := at.y + gap if below else at.y - gap - box_size.y
+	return Rect2(at.x - box_size.x * 0.5, top, box_size.x, box_size.y)
 
 
-func _draw_label(body: SystemMap.Body, box: Rect2) -> void:
-	var color := AppTheme.COLOR_MUTED
+## Size of a label's box: the text with a little room around it.
+func _text_box_size(text: String, font_size: int) -> Vector2:
+	var width := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	return Vector2(width + 8.0, font_size + 4.0)
+
+
+func _label_text(body: SystemMap.Body) -> String:
+	return SystemMap.short_name(body.name, map.star_name)
+
+
+func _label_color(body: SystemMap.Body) -> Color:
 	if body.id == selected:
-		color = AppTheme.COLOR_ACCENT
-	elif body.id == home_body or marked.has(body.id):
-		color = AppTheme.COLOR_OK
-	elif not body.is_moon():
-		color = AppTheme.COLOR_TEXT
-	var text := SystemMap.short_name(body.name, map.star_name)
-	var spot := Vector2(box.position.x + 4.0, box.position.y + 2.0 + _font.get_ascent(LABEL_FONT_SIZE))
-	draw_string_outline(_font, spot, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, 6, AppTheme.COLOR_BACKGROUND)
-	draw_string(_font, spot, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, color)
+		return AppTheme.COLOR_ACCENT
+	if body.id == home_body or marked.has(body.id):
+		return AppTheme.COLOR_OK
+	return AppTheme.COLOR_TEXT if not body.is_moon() else AppTheme.COLOR_MUTED
+
+
+func _draw_text(text: String, color: Color, font_size: int, box: Rect2) -> void:
+	var spot := Vector2(box.position.x + 4.0, box.position.y + 2.0 + _font.get_ascent(font_size))
+	draw_string_outline(_font, spot, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 6, AppTheme.COLOR_BACKGROUND)
+	draw_string(_font, spot, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
 func _label_rank(body: SystemMap.Body) -> int:
