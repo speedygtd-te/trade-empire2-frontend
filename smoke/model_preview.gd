@@ -19,6 +19,8 @@ var _camera: Camera3D
 var _cell: MeshInstance3D
 ## False for models that are already built to cell size: they are shown as they are.
 var _fit := true
+## --night: a dim bluish night with the glow masks turned up like ColonyView.LAMP_NIGHT.
+var _night := false
 
 
 func _ready() -> void:
@@ -35,6 +37,8 @@ func _run() -> void:
 			out_dir = argument.trim_prefix("--out=")
 		elif argument == "--no-fit":
 			_fit = false
+		elif argument == "--night":
+			_night = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	_add_stage()
@@ -152,6 +156,12 @@ func _add_stage() -> void:
 	sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
 	sun.light_energy = 1.2
 	add_child(sun)
+	if _night:
+		environment.background_color = Color(0.03, 0.04, 0.07)
+		environment.ambient_light_color = ColonyView.NIGHT_COLOR
+		environment.ambient_light_energy = ColonyView.NIGHT_AMBIENT
+		sun.light_color = ColonyView.NIGHT_FILL_COLOR
+		sun.light_energy = ColonyView.NIGHT_FILL
 
 	# One grid cell, so the scale of the model is visible.
 	_cell = MeshInstance3D.new()
@@ -182,7 +192,16 @@ func _load_glb(path: String) -> Node3D:
 	var state := GLTFState.new()
 	if document.append_from_file(path, state) != OK:
 		return null
-	return document.generate_scene(state) as Node3D
+	var scene := document.generate_scene(state) as Node3D
+	if _night and scene != null:
+		var instances: Array[MeshInstance3D] = []
+		_mesh_instances(scene, instances)
+		for instance: MeshInstance3D in instances:
+			for surface: int in instance.mesh.get_surface_count():
+				var material := instance.mesh.surface_get_material(surface) as StandardMaterial3D
+				if material != null and material.emission_enabled:
+					material.emission_energy_multiplier = ColonyView.LAMP_NIGHT
+	return scene
 
 
 func _mesh_instances(node: Node, into: Array[MeshInstance3D]) -> void:
