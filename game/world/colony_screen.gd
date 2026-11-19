@@ -25,6 +25,14 @@ extends Control
 ## founds a guest; on an open guest a hull goes next to or on top of it. A guest is built from the
 ## home structure's store (contract), which the palette shows.
 ##
+## Paths (PathAccess, draft.29): in Build the active level of the home structure shows its
+## corridors (reached faintly cyan, cut off amber), the entrances (arrows) and the modules without
+## a corridor (red frame); a chosen module marks every free INDOOR hull cyan, red or amber (level
+## not connected). Placing, removing a hull or a shaft and hull shapes are refused in the preview
+## when they would leave a module without a corridor, cut modules or levels off or close the last
+## entrance. The state shown is the server's `access` from the layout header; the what-ifs are
+## reckoned here. Inspect names a module without a corridor in red.
+##
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects.
 ##
 ## Hull shapes (like V1, without circles): under a chosen hull the palette switches between Single
