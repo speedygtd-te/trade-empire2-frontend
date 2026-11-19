@@ -75,11 +75,17 @@ func _run() -> void:
 		return
 
 	var layout := _model.layout
+	_check_access(layout)
 	var hull_item := Services.definitions.hull(HULL).item
 	var module_item := Services.definitions.module(MODULE).item
 	var hulls_before := _units(hull_item)
 	var modules_before := _units(module_item)
-	var local := _free_neighbour(layout)
+	# A field where the staffed module on a new hull reaches a corridor (paths, draft.29).
+	var local := _free_neighbour(layout, BuildRules.Verdict.OK)
+	if local.x == -9999:
+		_check(false, "a free field beside the colony where the module reaches a corridor")
+		get_tree().quit(1)
+		return
 	var cell := layout.to_absolute(local)
 	_check(BuildRules.check_place_hull(layout, local) == BuildRules.Verdict.OK, "preview: hull fits at %s" % cell)
 
@@ -97,6 +103,8 @@ func _run() -> void:
 		"wrong slot: preview and server agree (preview %s, server %s)" % [BuildRules.Verdict.keys()[preview_wrong], _code(wrong)]
 	)
 
+	var preview_module := PathAccess.of(layout, Services.definitions).check_place_module(Services.definitions, MODULE, local)
+	_check(preview_module.ok(), "preview: the module reaches a corridor (%s)" % BuildRules.Verdict.keys()[preview_module.verdict])
 	var module := await _model.send_ops([{"op": "placeModule", "moduleType": MODULE, "x": cell.x, "y": cell.y, "z": cell.z, "rotation": 0}])
 	_check(module.is_ok(), "place module -> ok (error: %s)" % _code(module))
 	await _wait_until(func() -> bool: return layout.module_at(local) != null, 8000)
@@ -119,6 +127,7 @@ func _run() -> void:
 	await _wait_until(func() -> bool: return _units(hull_item) == hulls_before, 8000)
 	_check(_units(hull_item) == hulls_before, "store: hull back (%d)" % _units(hull_item))
 
+	await _check_not_connected(layout)
 	await _check_shape(layout)
 	await _check_recipes(layout)
 	await _check_discard_and_log()
@@ -310,9 +319,61 @@ func _shape_corner(layout: StructureLayout) -> Vector3i:
 	return Vector3i(-9999, 0, 0)
 
 
-func _free_neighbour(layout: StructureLayout) -> Vector3i:
+## A free field beside the colony's ground level where MODULE on a new HULL gets `wanted` from the
+## paths (OK: it reaches a corridor; NO_CORRIDOR: it would not). (-9999, 0, 0) when none does.
+func _free_neighbour(layout: StructureLayout, wanted: BuildRules.Verdict) -> Vector3i:
+	var ground := layout.ground_level()
 	for cell: Vector3i in layout.hull_cells():
+		if cell.z != ground:
+			continue
 		for step: Vector3i in [Vector3i(1, 0, 0), Vector3i(0, -1, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0)]:
-			if layout.hull_at(cell + step).is_empty():
-				return cell + step
-	return Vector3i(-1, 0, 0)
+			var next := cell + step
+			if layout.hull_at(next).is_empty() and _module_on_new_hull(layout, next) == wanted:
+				return next
+	return Vector3i(-9999, 0, 0)
+
+
+## What the paths say about MODULE on a new HULL at a local field (hull first, then the module).
+func _module_on_new_hull(layout: StructureLayout, cell: Vector3i) -> BuildRules.Verdict:
+	var grid := PathAccess.grid_of(layout, Services.definitions)
+	grid.hulls[cell] = Services.definitions.hull(HULL).module_positioning == "INDOOR"
+	return PathAccess.reckon(grid).check_place_module(Services.definitions, MODULE, cell).verdict
+
+
+## The layout header's `access` (draft.29) against this client's own reckoning of the paths.
+func _check_access(layout: StructureLayout) -> void:
+	var access := PathAccess.of(layout, Services.definitions)
+	var reported := layout.access
+	_check(reported != null, "layout header has access")
+	if reported == null:
+		return
+	print("COLONY access server: ground %d, entrances %s, levels %s, unreachable %s" % [reported.ground, reported.entrances,
+		reported.levels, reported.unreachable_modules])
+	print("COLONY access client: ground %d, entrances %s, levels %s, unreachable %s" % [access.ground(), access.entrances,
+		access.levels, access.unconnected.keys()])
+	_check(access.agrees_with(reported), "client paths agree with the server's access")
+
+
+## A staffed module on a new hull without any corridor beside it: the client preview says
+## NO_CORRIDOR and the server NOT_CONNECTED. Takes the hull down again.
+func _check_not_connected(layout: StructureLayout) -> void:
+	var local := _free_neighbour(layout, BuildRules.Verdict.NO_CORRIDOR)
+	if local.x == -9999:
+		print("SKIP  not connected (every free field beside the colony touches a corridor)")
+		return
+	var cell := layout.to_absolute(local)
+	var hull := await _model.send_ops([{"op": "placeHull", "hullType": HULL, "x": cell.x, "y": cell.y, "z": cell.z}])
+	_check(hull.is_ok(), "hull for the lonely module at %s -> ok (error: %s)" % [cell, _code(hull)])
+	if not hull.is_ok():
+		return
+	await _wait_until(func() -> bool: return not layout.hull_at(local).is_empty(), 8000)
+	var preview := PathAccess.of(layout, Services.definitions).check_place_module(Services.definitions, MODULE, local)
+	var refused := await _model.send_ops([{"op": "placeModule", "moduleType": MODULE, "x": cell.x, "y": cell.y, "z": cell.z, "rotation": 0}])
+	_check(preview.verdict == BuildRules.Verdict.NO_CORRIDOR and _code(refused) == "NOT_CONNECTED",
+		"module without corridor: preview and server agree (preview %s, server %s)" % [
+			BuildRules.Verdict.keys()[preview.verdict], _code(refused)])
+	if refused.is_ok():
+		await _model.send_ops([{"op": "removeModule", "x": cell.x, "y": cell.y, "z": cell.z}])
+	var removed := await _model.send_ops([{"op": "removeHull", "x": cell.x, "y": cell.y, "z": cell.z}])
+	_check(removed.is_ok(), "remove the lonely hull -> ok (error: %s)" % _code(removed))
+	await _wait_until(func() -> bool: return layout.hull_at(local).is_empty(), 8000)
