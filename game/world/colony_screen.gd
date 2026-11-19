@@ -27,6 +27,15 @@ extends Control
 ##
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects.
 ##
+## Hull shapes (like V1, without circles): under a chosen hull the palette switches between Single
+## (a tap, then Build), Rectangle and Square. With a shape one finger (the left mouse button) drags
+## the shape from a start cell on the active level, two fingers (right/middle button, wheel) move
+## the camera. The cells show live (HullShapes): own cells are ignored, cells of a structure this
+## client only learns about from the server (another player's) block the shape, cells where a hull
+## cannot stand or that cannot reach the structure are skipped (red); a badge above-left of the
+## finger counts the new hulls. Build sends them in one atomic batch, outward from the structure.
+## Only on the home structure: a guest keeps its own stacking on the docks.
+##
 ## Levels: while the home structure is open, a level selector at the right edge (Up / "Level 2" /
 ## Down, with the environment of the level) chooses the active level: taps, building and the
 ## inspection work on it, the levels above it are hidden, and below the ground the view cuts the
@@ -176,10 +185,31 @@ var _detail := DetailGovernor.new()
 ## When the last tap on a structure outside came (ms), for the double tap.
 var _last_tap_ms := 0
 
+## How the hull tool places hulls (HullShapes.Shape): one per tap, or a dragged shape.
+var _shape: HullShapes.Shape = HullShapes.Shape.SINGLE
+## Corners of the marked shape (absolute cells on the active level); null while none is marked.
+var _shape_start: Variant = null
+var _shape_end: Variant = null
+## Whether one finger (or the left mouse button) draws the shape right now.
+var _shape_dragging := false
+## The shape before the drag that runs now: a second finger cancels the drag and brings it back.
+var _shape_before: Array = []
+## What the marked shape would do; null while none is marked.
+var _shape_plan: HullShapes.Plan = null
+## Whether shape cells and the badge are on screen.
+var _shape_shown := false
+## The count at the shape's end cell.
+var _shape_badge: ShapeBadge
+## Absolute cells the server refused because of a structure this client cannot see (another
+## player's: FOREIGN_NEIGHBOR, or taken): they block shapes until the structure is left.
+var _foreign: Dictionary = {}
+
 var _touches: Dictionary = {}
 var _press_position := Vector2.ZERO
 var _press_travel := 0.0
 var _mouse_down := false
+## The right or middle mouse button is down: dragging pans in every tool.
+var _pan_down := false
 
 
 func _ready() -> void:
@@ -248,11 +278,13 @@ func _process(delta: float) -> void:
 
 
 ## Back (the layers over the screen belong to the shell's stack): close the recipes, clear the
-## inspected field, leave the open structure, clear the selected structure. False when nothing was
-## left to close.
+## marked hull shape, clear the inspected field, leave the open structure, clear the selected
+## structure. False when nothing was left to close.
 func handle_back() -> bool:
 	if _recipes.visible:
 		_close_recipes()
+	elif _opened and _shape_start != null:
+		_clear_shape()
 	elif _opened and _cell != null:
 		_select(null)
 	elif _opened and not _model.detached:
@@ -434,6 +466,8 @@ func _build_overlay() -> void:
 	_card.content().add_child(_card_button)
 	_inspect = WorldCard.new()
 	add_child(_inspect)
+	_shape_badge = ShapeBadge.new()
+	add_child(_shape_badge)
 
 	var frame := VBoxContainer.new()
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -531,6 +565,7 @@ func _build_overlay() -> void:
 
 	_palette = BuildPalette.new()
 	_palette.chosen.connect(_choose_tool)
+	_palette.shape_chosen.connect(_set_shape)
 	_rows.add_child(_palette)
 
 	# Info, status and actions: in the bottom while building, on the inspect card in Inspect.
@@ -592,7 +627,8 @@ func _free_rect() -> Rect2:
 ## The head or the bottom changed: the colony moves so that it stays in the middle of the room
 ## between them.
 func _follow_bars() -> void:
-	if not _placed or _model.detached or not is_visible_in_tree():
+	# While a finger draws a shape the ground must not slide away under it; afterwards it follows.
+	if not _placed or _model.detached or not is_visible_in_tree() or _shape_dragging:
 		return
 	var room := _free_rect()
 	var wanted := (size.y - room.end.y - room.position.y) * 0.5
@@ -608,6 +644,13 @@ func _place_cards() -> void:
 		return
 	if _card.visible:
 		_card.place(_view.roof_point(_focus) / _scale(), _free_rect())
+	if _shape_badge.visible and _shape_end != null:
+		# Never under the level selector at the right edge.
+		var badge_room := _free_rect()
+		if _levels.visible:
+			var left_of := _levels.global_position.x - global_position.x
+			badge_room.size.x = maxf(left_of - badge_room.position.x, float(AppTheme.TOUCH_MIN) * 2.0)
+		_shape_badge.place(_view.cell_point(_shape_end as Vector3i) / _scale(), badge_room)
 	if _inspect.visible and _cell != null:
 		var anchor := _view.cell_point(_target() as Vector3i, _focus.is_guest()) / _scale()
 		var room := _free_rect()
@@ -755,6 +798,7 @@ func _set_mode(mode: Mode) -> void:
 		_store.show_balance(_focus)
 	_tool = ""
 	_armed = ""
+	_forget_shape()
 	_status.text = ""
 	_update_levels()
 	_fill_palette()
@@ -849,6 +893,8 @@ func _fill_palette() -> void:
 		entries = kept
 	var hint := tr("LEVEL_HULLS_HIDDEN").format({"names": ", ".join(hidden)}) if not hidden.is_empty() else ""
 	_palette.show_entries(entries, _tool, hint)
+	# Shapes only on the home structure: a guest keeps its own stacking on the docks.
+	_palette.show_shapes(_shapes_offered(), _shape, tr("COLONY_SHAPE_HOME_ONLY") if _focus.is_guest() else "")
 
 
 # --- levels ---------------------------------------------------------------------------------
@@ -934,6 +980,7 @@ func _set_level(z: int) -> void:
 		var at: Vector3i = _cell
 		_cell = Vector3i(at.x, at.y, z)
 	_armed = ""
+	_forget_shape()
 	_status.text = ""
 	_update_levels()
 	_fill_palette()
@@ -991,8 +1038,206 @@ func _extend_verdict(placed: StructureLayout.Module) -> BuildRules.Verdict:
 func _choose_tool(tool: String) -> void:
 	_tool = tool
 	_rotation = 0
+	_forget_shape()
 	_status.text = ""
 	_fill_palette()
+	_refresh()
+
+
+# --- hull shapes ----------------------------------------------------------------------------
+
+## Whether the hull tool may place shapes here: on the home structure (a guest keeps its own
+## stacking on the docks).
+func _shapes_offered() -> bool:
+	return _opened and _focus == _model and not _model.detached
+
+
+## Whether a drag marks a hull shape now (instead of panning).
+func _shape_active() -> bool:
+	return _mode == Mode.BUILD and _tool.begins_with("hull:") and _shape != HullShapes.Shape.SINGLE \
+		and _shapes_offered()
+
+
+## The player switched between Single, Rectangle and Square: the marks start over.
+func _set_shape(shape: HullShapes.Shape) -> void:
+	_shape = shape
+	_forget_shape()
+	_status.text = ""
+	_select(null)
+	_fill_palette()
+
+
+## Clears the marked shape (no refresh).
+func _forget_shape() -> void:
+	_shape_start = null
+	_shape_end = null
+	_shape_dragging = false
+	_shape_plan = null
+
+
+func _clear_shape() -> void:
+	_forget_shape()
+	_refresh()
+
+
+## The absolute cell of the active level under a point of the screen; null when the ray misses.
+func _shape_cell(position_in_container: Vector2) -> Variant:
+	return _view.cell_on_level(position_in_container * _scale(), _level)
+
+
+## A finger (or the left button) went down: a new shape starts at the cell under it.
+func _shape_begin(position_in_container: Vector2) -> void:
+	var cell: Variant = _shape_cell(position_in_container)
+	if cell == null:
+		return
+	_shape_before = [_shape_start, _shape_end]
+	_shape_start = cell
+	_shape_end = cell
+	_shape_dragging = true
+	_status.text = ""
+	_refresh()
+
+
+## The finger moved: the shape follows to the cell under it.
+func _shape_move(position_in_container: Vector2) -> void:
+	var cell: Variant = _shape_cell(position_in_container)
+	if cell == null or (cell as Vector3i) == (_shape_end as Vector3i):
+		return
+	_shape_end = cell
+	_refresh()
+
+
+## The finger came up: the shape stays marked with its count and Build.
+func _shape_finish() -> void:
+	_shape_dragging = false
+	_refresh()
+	_follow_bars.call_deferred()
+
+
+## A second finger came: the drag was meant for the camera, the shape before it comes back.
+func _shape_cancel() -> void:
+	_shape_dragging = false
+	_shape_start = _shape_before[0] if _shape_before.size() == 2 else null
+	_shape_end = _shape_before[1] if _shape_before.size() == 2 else null
+	_refresh()
+	_follow_bars.call_deferred()
+
+
+## The hull units in the store that builds here.
+func _hull_units() -> int:
+	var supply := _focus.supply().inventory
+	var hull_def := Services.definitions.hull(_tool.get_slice(":", 1))
+	if supply == null or hull_def == null:
+		return 0
+	return supply.units(hull_def.item, Services.clock.now_ms())
+
+
+## Works out what the marked shape would do: own cells ignored, foreign ones blocking, the rest
+## placed outward from the structure or skipped.
+func _plan_shape() -> HullShapes.Plan:
+	var cells := HullShapes.cells(_shape, _shape_start as Vector3i, _shape_end as Vector3i, _model.size_x)
+	var guests := _model.guest_layouts()
+	var neighbours: Array[StructureLayout] = []
+	for structure: ColonyModel in _model.drawn_structures():
+		if structure != _model and not guests.has(structure.layout):
+			neighbours.append(structure.layout)
+	return HullShapes.plan(cells, _model.layout, guests, neighbours, _foreign, _tool.get_slice(":", 1),
+		Services.definitions, _model.site())
+
+
+func _hide_shape() -> void:
+	if not _shape_shown:
+		return
+	_shape_shown = false
+	_view.show_shape([], [])
+	_shape_badge.visible = false
+
+
+## Build with Rectangle or Square: the hint before the first drag; then the cells (new cyan,
+## skipped and blocked red), the badge with the count, and what Build would do.
+func _refresh_shape() -> void:
+	_view.show_preview([], false)
+	_view.select_cell(null)
+	_primary.text = tr("COLONY_BUILD_HERE")
+	if _shape_start == null:
+		_hide_shape()
+		_info.text = tr("COLONY_SHAPE_HINT").format({"name": _tool_name()})
+		_primary.disabled = true
+		return
+	_shape_plan = _plan_shape()
+	var plan := _shape_plan
+	var units := _hull_units()
+	var count := plan.place.size()
+	var ok := plan.buildable(units)
+	_shape_shown = true
+	_view.show_shape(plan.place, plan.bad_cells())
+	# The badge: the count, the size, what is skipped, and the store when it runs short.
+	var parts := PackedStringArray([tr("COLONY_SHAPE_SIZE").format({"width": plan.extent.x, "height": plan.extent.y})])
+	var bad := plan.foreign.size() + plan.skipped.size()
+	if bad > 0:
+		parts.append(tr("COLONY_SHAPE_SKIPPED_SHORT").format({"count": bad}))
+	if count > units:
+		parts.append(tr("COLONY_SHAPE_STORE_SHORT").format({"count": units}))
+	_shape_badge.show_count(count, " · ".join(parts), ok)
+	# Below: what happens, cell group by cell group.
+	var lines := PackedStringArray()
+	lines.append(tr("COLONY_SHAPE_SUMMARY_ONE" if count == 1 else "COLONY_SHAPE_SUMMARY").format({
+		"name": _tool_name(), "count": count, "width": plan.extent.x, "height": plan.extent.y}))
+	if not plan.own.is_empty():
+		lines.append(tr("COLONY_SHAPE_OWN").format({"count": plan.own.size()}))
+	if plan.blocked():
+		lines.append(tr("COLONY_SHAPE_FOREIGN"))
+	if not plan.skipped.is_empty():
+		var reasons := plan.reasons()
+		lines.append(tr("COLONY_SHAPE_SKIPPED").format({"count": plan.skipped.size(),
+			"reason": _shape_reason_text(plan, reasons[0])}))
+	if count == 0 and not plan.blocked():
+		lines.append(tr("COLONY_SHAPE_NOTHING"))
+	elif count > units:
+		lines.append(tr("COLONY_SHAPE_NOT_ENOUGH").format({"count": count, "stock": units}))
+	elif _shape_dragging:
+		lines.append(tr("COLONY_SHAPE_RELEASE"))
+	_info.text = "\n".join(lines)
+	_primary.text = tr("COLONY_SHAPE_BUILD_ONE" if count == 1 else "COLONY_SHAPE_BUILD").format({"count": count})
+	_primary.disabled = _busy or _shape_dragging or not ok
+
+
+## Why the most cells of a shape are skipped, as a sentence.
+func _shape_reason_text(plan: HullShapes.Plan, verdict: BuildRules.Verdict) -> String:
+	if verdict == BuildRules.Verdict.INCOMPATIBLE_HULL:
+		for cell: Vector3i in plan.skipped.keys():
+			if plan.skipped[cell] == verdict:
+				var environment := LevelRules.environment_of(_model.site(), cell)
+				return tr("BUILD_VERDICT_INCOMPATIBLE_HULL").format({"environment": tr("LEVEL_ENV_" + environment)})
+	var key: String = BuildRules.Verdict.keys()[verdict]
+	return tr("BUILD_VERDICT_" + key)
+
+
+## Sends the new hulls of the marked shape in one atomic batch, outward from the structure. A cell
+## the server refuses because of a structure this client cannot see is kept as foreign: the shape
+## shows it red and blocked until the player makes it smaller.
+func _build_shape() -> void:
+	var plan := _shape_plan
+	if plan == null or not plan.buildable(_hull_units()):
+		return
+	var cells := plan.place.duplicate()
+	_busy = true
+	_status.remove_theme_color_override("font_color")
+	_status.text = tr("COLONY_SENDING")
+	_refresh()
+	var result := await _model.send_ops(HullShapes.place_ops(_tool.get_slice(":", 1), cells))
+	_busy = false
+	if result.is_ok():
+		_forget_shape()
+		_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
+		_status.text = tr("COLONY_SHAPE_DONE_ONE" if cells.size() == 1 else "COLONY_SHAPE_DONE").format({"count": cells.size()})
+	else:
+		var index := Wire.as_int(result.error.details.get("opIndex"), -1)
+		var code := result.error.code
+		if (code == "FOREIGN_NEIGHBOR" or code == "CELL_OCCUPIED") and index >= 0 and index < cells.size():
+			_foreign[cells[index]] = true
+		_status.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
+		_status.text = ErrorText.describe(result.error, self)
 	_refresh()
 
 
@@ -1034,6 +1279,7 @@ func _open_structure(mode: Mode) -> void:
 	_focus.activate()
 	_view.highlight(0)
 	_view.open_structure(_focus.structure_id)
+	_foreign = {}
 	# A structure opens on the ground level.
 	_level = 0
 	_view.set_level(0, _uses_levels())
@@ -1098,6 +1344,8 @@ func _refresh() -> void:
 	_jump.visible = false
 	_ground.visible = false
 	_update_levels()
+	if not _shape_active():
+		_hide_shape()
 	if not _opened:
 		_refresh_closed()
 		return
@@ -1416,6 +1664,9 @@ func _refresh_build() -> void:
 		_primary.disabled = true
 		_view.show_preview([], false)
 		return
+	if _shape_active():
+		_refresh_shape()
+		return
 	var tool_name := _tool_name()
 	if _cell == null:
 		_info.text = tr("COLONY_HINT_PLACE").format({"name": tool_name}) + supply_line
@@ -1534,7 +1785,12 @@ func _verdict_text(verdict: BuildRules.Verdict) -> String:
 # --- actions --------------------------------------------------------------------------------
 
 func _on_primary() -> void:
-	if not _opened or _busy or _cell == null:
+	if not _opened or _busy:
+		return
+	if _shape_active():
+		_build_shape()
+		return
+	if _cell == null:
 		return
 	if _mode == Mode.BUILD:
 		_build()
@@ -1554,6 +1810,11 @@ func _on_primary() -> void:
 
 func _on_secondary() -> void:
 	if not _opened:
+		return
+	# A marked shape goes first; Cancel again gives up the tool.
+	if _shape_active() and _shape_start != null:
+		_status.text = ""
+		_clear_shape()
 		return
 	if _mode == Mode.BUILD and _is_multi_cell() and _cell != null:
 		_rotation = (_rotation + 90) % 360
@@ -1725,6 +1986,9 @@ func _trip_line(structure_id: int) -> String:
 
 # --- input on the world ---------------------------------------------------------------------
 
+## Gestures: one finger drags the view (or, with a hull shape tool, the shape), two fingers pan
+## (their middle) and pinch-zoom; with the mouse the left button drags like one finger, the right
+## or middle button pans and the wheel zooms.
 func _on_world_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
@@ -1733,10 +1997,17 @@ func _on_world_input(event: InputEvent) -> void:
 			if _touches.size() == 1:
 				_press_position = touch.position
 				_press_travel = 0.0
+				if _shape_active() and not _busy:
+					_shape_begin(touch.position)
+			elif _shape_dragging:
+				# A second finger: the camera was meant.
+				_shape_cancel()
 		else:
 			var was_single := _touches.size() == 1
 			_touches.erase(touch.index)
-			if was_single and _press_travel < TAP_SLOP:
+			if was_single and _shape_dragging:
+				_shape_finish()
+			elif was_single and _press_travel < TAP_SLOP and not _shape_active():
 				_on_tap(touch.position)
 	elif event is InputEventScreenDrag:
 		var drag := event as InputEventScreenDrag
@@ -1751,12 +2022,17 @@ func _on_world_input(event: InputEvent) -> void:
 			var new_distance := drag.position.distance_to(other)
 			if old_distance > 1.0 and new_distance > 1.0:
 				_view.zoom_by(old_distance / new_distance)
+			# The middle between the fingers moves by half of one finger's move.
+			_view.pan(drag.relative * 0.5 * _scale(), Vector2(_viewport.size))
 			_touches[drag.index] = drag.position
 			_press_travel = TAP_SLOP
 		else:
 			_touches[drag.index] = drag.position
 			_press_travel += drag.relative.length()
-			_view.pan(drag.relative * _scale(), Vector2(_viewport.size))
+			if _shape_dragging:
+				_shape_move(drag.position)
+			else:
+				_view.pan(drag.relative * _scale(), Vector2(_viewport.size))
 	elif event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
 		if button.device == InputEvent.DEVICE_ID_EMULATION:
@@ -1766,21 +2042,30 @@ func _on_world_input(event: InputEvent) -> void:
 				_view.zoom_by(0.9)
 			MOUSE_BUTTON_WHEEL_DOWN:
 				_view.zoom_by(1.1)
+			MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE:
+				_pan_down = button.pressed
 			MOUSE_BUTTON_LEFT:
 				if button.pressed:
 					_mouse_down = true
 					_press_position = button.position
 					_press_travel = 0.0
+					if _shape_active() and not _busy:
+						_shape_begin(button.position)
 				else:
 					_mouse_down = false
-					if _press_travel < TAP_SLOP:
+					if _shape_dragging:
+						_shape_finish()
+					elif _press_travel < TAP_SLOP and not _shape_active():
 						_on_tap(button.position)
 	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		if motion.device == InputEvent.DEVICE_ID_EMULATION or not _mouse_down:
+		if motion.device == InputEvent.DEVICE_ID_EMULATION or not (_mouse_down or _pan_down):
 			return
 		_press_travel += motion.relative.length()
-		_view.pan(motion.relative * _scale(), Vector2(_viewport.size))
+		if _shape_dragging and _mouse_down:
+			_shape_move(motion.position)
+		else:
+			_view.pan(motion.relative * _scale(), Vector2(_viewport.size))
 	elif event is InputEventMagnifyGesture:
 		_view.zoom_by(1.0 / (event as InputEventMagnifyGesture).factor)
 

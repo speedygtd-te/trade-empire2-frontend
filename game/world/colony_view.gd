@@ -107,6 +107,8 @@ var _perimeter: PerimeterLayer
 var _hulls: Node3D
 var _modules: Node3D
 var _preview: Node3D
+## The cells of a hull shape being marked (show_shape).
+var _shape: Node3D
 var _selection: Node3D
 var _sun: DirectionalLight3D
 var _night_fill: DirectionalLight3D
@@ -168,6 +170,7 @@ func _ready() -> void:
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_preview = _child("Preview")
+	_shape = _child("Shape")
 	_selection = _frame(COLOR_SELECTED)
 	_selection.visible = false
 	add_child(_selection)
@@ -648,6 +651,39 @@ func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rota
 	ghost.position = _footprint_centre(cells) + Vector3(0.0, lift - drop, 0.0)
 	ghost.rotation.y = -deg_to_rad(rotation)
 	_preview.add_child(ghost)
+
+
+## Shows a hull shape being marked: `good` cells (the new hulls) cyan, `bad` cells (skipped or
+## blocked) red; cells left out of both are not marked. Empty lists hide it. Each colour is one
+## mesh, so a large shape stays cheap while it follows the finger.
+func show_shape(good: Array[Vector3i], bad: Array[Vector3i]) -> void:
+	for child: Node in _shape.get_children():
+		child.queue_free()
+	for part: Array in [[good, COLOR_OK], [bad, COLOR_BAD]]:
+		var cells: Array[Vector3i] = []
+		cells.assign(part[0] as Array)
+		if cells.is_empty():
+			continue
+		var color: Color = part[1]
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.albedo_color = Color(color, minf(color.a + 0.15, 1.0))
+		material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		var mesh := ImmediateMesh.new()
+		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
+		for cell: Vector3i in cells:
+			# As in show_preview: on the ground or the rock, or on the floor plate below.
+			var floor_lift := 0.006 if cell.z <= origin.z else HULL_FLOOR_HEIGHT + 0.006
+			var centre := WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift, 0.0)
+			for corner: Vector3 in [Vector3(-0.46, 0, -0.46), Vector3(0.46, 0, -0.46), Vector3(0.46, 0, 0.46),
+					Vector3(-0.46, 0, -0.46), Vector3(0.46, 0, 0.46), Vector3(-0.46, 0, 0.46)]:
+				mesh.surface_add_vertex(centre + corner)
+		mesh.surface_end()
+		var instance := MeshInstance3D.new()
+		instance.mesh = mesh
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_shape.add_child(instance)
 
 
 func _after_move() -> void:

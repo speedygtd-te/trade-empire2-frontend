@@ -52,6 +52,8 @@ enum Verdict {
 	BASE_BUILDING,
 	## The shaft has its maximum number of floors.
 	SHAFT_TOO_TALL,
+	## A hull of a shape here would found or extend a guest (HullShapes); Single places those.
+	GUEST_PLACEMENT,
 }
 
 const _NEIGHBOURS: Array[Vector3i] = [
