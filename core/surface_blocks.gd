@@ -109,5 +109,10 @@ func is_loaded(block: Vector2i) -> bool:
 	return _blocks.get(block) != null
 
 
+## Whether a block was asked for and has not arrived yet.
+func is_pending(block: Vector2i) -> bool:
+	return _blocks.has(block) and _blocks[block] == null
+
+
 func clear() -> void:
 	_blocks.clear()
