@@ -145,6 +145,17 @@ func _grow(size: int) -> void:
 	var start := Time.get_ticks_usec()
 	_colony._model.layout_changed.emit()
 	print("GROW  %d hulls: layout change handled in %d ms" % [size, roundi((Time.get_ticks_usec() - start) / 1000.0)])
+	# The relief's share of it: bases and pads of the structures, and their foundations.
+	var view := _colony._view
+	# As if the pads had changed (the grown base's pad did).
+	view.relief._pad_signature = 0
+	start = Time.get_ticks_usec()
+	view._update_relief()
+	var pads_ms := (Time.get_ticks_usec() - start) / 1000.0
+	start = Time.get_ticks_usec()
+	view._build_foundations()
+	print("RELIEF  %d hulls: bases and pads %.1f ms, foundations %.1f ms (%d walls)" % [size, pads_ms,
+		(Time.get_ticks_usec() - start) / 1000.0, view.foundation_walls()])
 
 
 ## Pictures and cost of the base at its current size.

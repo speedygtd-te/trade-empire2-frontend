@@ -301,7 +301,15 @@ func _compare_flat() -> void:
 	var blocks := {}
 	for key: Vector2i in ground._blocks.keys():
 		blocks[key] = true
+	view.relief._pad_signature = 0
 	var start := Time.get_ticks_usec()
+	view._update_relief()
+	var relief_ms := (Time.get_ticks_usec() - start) / 1000.0
+	start = Time.get_ticks_usec()
+	view._build_foundations()
+	print("STRUCTURES  bases and pads %.1f ms, foundations %.1f ms (per layout change)" % [
+		relief_ms, (Time.get_ticks_usec() - start) / 1000.0])
+	start = Time.get_ticks_usec()
 	view.relief.clear()
 	ground.refresh_heights(blocks)
 	var build_ms := (Time.get_ticks_usec() - start) / 1000.0

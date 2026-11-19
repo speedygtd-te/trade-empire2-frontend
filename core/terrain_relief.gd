@@ -281,10 +281,20 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 	var span := SIDE + 1
 	var cells := PackedFloat32Array()
 	cells.resize(span * span)
+	var b := SurfaceBlocks.BLOCK
+	var last_key := Vector2i(0x7FFFFFFF, 0)
+	var patch: SurfacePatch = null
 	for j: int in span:
+		var y := y0 - 2 + j
+		var by := floori(float(y) / b)
 		for i: int in span:
-			var found := surface.cell(x0 - 2 + i, y0 - 2 + j)
-			cells[j * span + i] = float(found.elevation) if found != null else NAN
+			var x := WorldGrid.wrap_x(x0 - 2 + i, size_x)
+			var key := Vector2i(floori(float(x) / b), by)
+			if key != last_key:
+				last_key = key
+				patch = surface.patch(key)
+			var value := patch.elevation(x, y) if patch != null else -1
+			cells[j * span + i] = float(value) if value >= 0 else NAN
 	var heights := PackedFloat32Array()
 	heights.resize(SIDE * SIDE)
 	var padded := _pad_blocks.has(block)
@@ -353,7 +363,8 @@ func _mean_or_reference(block: Vector2i) -> float:
 
 
 func _block_mean(block: Vector2i) -> float:
-	if not surface.is_loaded(block):
+	var patch := surface.patch(block)
+	if patch == null:
 		return NAN
 	var sum := 0.0
 	var count := 0
@@ -361,9 +372,9 @@ func _block_mean(block: Vector2i) -> float:
 	var y0 := block.y * SurfaceBlocks.BLOCK
 	for j: int in SurfaceBlocks.BLOCK:
 		for i: int in SurfaceBlocks.BLOCK:
-			var found := surface.cell(x0 + i, y0 + j)
-			if found != null:
-				sum += found.elevation
+			var value := patch.elevation(x0 + i, y0 + j)
+			if value >= 0:
+				sum += value
 				count += 1
 	return sum / count if count > 0 else NAN
 
