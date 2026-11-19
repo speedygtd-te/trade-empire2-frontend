@@ -227,3 +227,55 @@ func test_top_in_column_finds_the_highest_hull() -> void:
 	assert_int(guest.top_in_column(0, 0)).is_equal(1)
 	assert_int(guest.top_in_column(0, 1)).is_equal(0)
 	assert_int(guest.top_in_column(3, 3)).is_equal(StructureLayout.NO_LEVEL)
+
+
+## A staircase shaft at (2,2): floors at levels 0 and 1, head at 2; hulls up to level 3.
+func _shaft() -> StructureLayout:
+	var layout := StructureLayout.new()
+	layout.vertical_types = {"STAIRCASE": true}
+	var floor_line := '{"moduleId":%d,"moduleType":"STAIRCASE","x":2,"y":2,"z":%d,"size":{"x":1,"y":1,"z":1},"rotation":0,"status":"active"}'
+	var lines: Array[String] = [
+		'{"line":"chunk","chunk":[0,0,0],"version":5,"hullTypes":["STANDARD"],'
+		+ '"hulls":[[2,2,0,0],[2,2,1,0],[2,2,2,0],[2,2,3,0],[3,2,0,0]],"modules":[%s,%s]}' % [
+			floor_line % [20, 0], floor_line % [21, 1]],
+	]
+	layout.apply(_full(5, lines))
+	return layout
+
+
+func test_shaft_floors_are_found_from_any_floor() -> void:
+	var layout := _shaft()
+	var lower := layout.module(20)
+	var upper := layout.module(21)
+
+	assert_array(layout.shaft_of(lower)).contains_exactly([lower, upper])
+	assert_array(layout.shaft_of(upper)).contains_exactly([lower, upper])
+	assert_bool(layout.is_shaft(lower)).is_true()
+
+
+func test_shaft_head_lies_above_the_top_floor_and_belongs_to_it() -> void:
+	var layout := _shaft()
+
+	assert_that(layout.shaft_head(layout.module(20))).is_equal(Vector3i(2, 2, 2))
+	assert_array(layout.shaft_heads()).contains_exactly([Vector3i(2, 2, 2)])
+	assert_object(layout.module_at(Vector3i(2, 2, 2))).is_same(layout.module(21))
+	assert_bool(layout.is_shaft_head(Vector3i(2, 2, 2))).is_true()
+	assert_bool(layout.is_shaft_head(Vector3i(2, 2, 1))).is_false()
+	assert_object(layout.module_at(Vector3i(2, 2, 3))).is_null()
+
+
+func test_without_shaft_types_no_head_is_known() -> void:
+	var layout := _shaft()
+	layout.vertical_types = {}
+
+	assert_object(layout.module_at(Vector3i(2, 2, 2))).is_null()
+	assert_array(layout.shaft_heads()).is_empty()
+	assert_array(layout.shaft_of(layout.module(20))).contains_exactly([layout.module(20)])
+
+
+func test_absolute_levels_add_offset_and_base() -> void:
+	var guest := _guest()
+	guest.base = Vector3i(0, 0, 2)
+
+	# The guest's offset lifts it by 1, its host's offset by 2 more.
+	assert_array(guest.absolute_levels()).contains_exactly([3, 4])

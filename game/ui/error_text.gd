@@ -34,6 +34,15 @@ const HANDLED_CODES: PackedStringArray = [
 	"STRUCTURE_NOT_EMPTY",
 	"LAST_STRUCTURE",
 	"TIER_NOT_UNLOCKED",
+	"INVALID_HULL_TYPE",
+	"NOT_ADJACENT",
+	# Shafts: staircases and elevators.
+	"NO_HULL_ABOVE",
+	"HULL_ABOVE_OCCUPIED",
+	"NOT_UPPER_HULL_OWNER",
+	"NOT_VERTICAL_ACCESS",
+	"BASE_BUILDING",
+	"SHAFT_TOO_TALL",
 	# Combat and the core module (draft.22).
 	"CORE_MODULE_LOCKED",
 	"HULL_DESTROYED",

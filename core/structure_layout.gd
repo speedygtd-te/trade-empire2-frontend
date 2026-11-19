@@ -80,6 +80,10 @@ var kind: String = ""
 var rev: int = -1
 ## Guests docked on this structure, by id (from the last header).
 var guests: Array[Guest] = []
+## Module types that form shafts (staircase, elevator; GameDefinitions.vertical_types). Each
+## floor of a shaft is a module of its own; the cell above the top floor is the shaft head: it
+## is not in the layout, but it is taken (module_at answers the shaft there).
+var vertical_types: Dictionary = {}
 
 ## Local cell → hull type.
 var _hulls: Dictionary = {}
@@ -130,11 +134,66 @@ func hull_at(cell: Vector3i) -> String:
 	return Wire.as_string(_hulls.get(cell))
 
 
-## The module covering a local cell, or null.
+## The module covering a local cell, or null. A shaft head belongs to the top floor of its shaft.
 func module_at(cell: Vector3i) -> Module:
-	if not _module_cells.has(cell):
+	if _module_cells.has(cell):
+		return _modules.get(_module_cells[cell]) as Module
+	if vertical_types.is_empty() or not _module_cells.has(cell + Vector3i(0, 0, -1)):
 		return null
-	return _modules.get(_module_cells[cell]) as Module
+	var below := _modules.get(_module_cells[cell + Vector3i(0, 0, -1)]) as Module
+	return below if below != null and vertical_types.has(below.module_type) else null
+
+
+## Whether a local cell is the head of a shaft (the taken cell above its top floor).
+func is_shaft_head(cell: Vector3i) -> bool:
+	return not _module_cells.has(cell) and module_at(cell) != null
+
+
+## Whether a module is a floor of a shaft (staircase, elevator).
+func is_shaft(placed: Module) -> bool:
+	return placed != null and vertical_types.has(placed.module_type)
+
+
+## The floors of the shaft a module belongs to, lowest first (only the module itself when it is
+## no shaft): modules of the same type stacked directly on one another.
+func shaft_of(placed: Module) -> Array[Module]:
+	var floors: Array[Module] = [placed]
+	if not is_shaft(placed):
+		return floors
+	var lowest := placed
+	for _step: int in LevelRules.MAX_SHAFT_FLOORS + 2:
+		var below := _floor_at(lowest.origin + Vector3i(0, 0, -1), placed.module_type)
+		if below == null:
+			break
+		lowest = below
+	floors = [lowest]
+	for _step: int in LevelRules.MAX_SHAFT_FLOORS + 2:
+		var above := _floor_at(floors[floors.size() - 1].origin + Vector3i(0, 0, 1), placed.module_type)
+		if above == null:
+			break
+		floors.append(above)
+	return floors
+
+
+## The head of a module's shaft (the cell above its top floor), local.
+func shaft_head(placed: Module) -> Vector3i:
+	var floors := shaft_of(placed)
+	return floors[floors.size() - 1].origin + Vector3i(0, 0, 1)
+
+
+## Heads of every shaft, local.
+func shaft_heads() -> Array[Vector3i]:
+	var result: Array[Vector3i] = []
+	for placed: Module in _modules.values():
+		if is_shaft(placed) and _floor_at(placed.origin + Vector3i(0, 0, 1), placed.module_type) == null:
+			result.append(placed.origin + Vector3i(0, 0, 1))
+	return result
+
+
+## The module of `module_type` whose origin is `cell`, or null.
+func _floor_at(cell: Vector3i, module_type: String) -> Module:
+	var found := module_at(cell) if _module_cells.has(cell) else null
+	return found if found != null and found.origin == cell and found.module_type == module_type else null
 
 
 func module(module_id: int) -> Module:
@@ -185,6 +244,15 @@ func levels() -> Array[int]:
 	for z: int in found.keys():
 		result.append(z)
 	result.sort()
+	return result
+
+
+## Levels with at least one hull as absolute z of the body, lowest first.
+func absolute_levels() -> Array[int]:
+	var result: Array[int] = []
+	var shift := offset.z + base.z
+	for z: int in levels():
+		result.append(z + shift)
 	return result
 
 

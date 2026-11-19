@@ -145,6 +145,22 @@ func test_reads_modules_with_size_and_positioning() -> void:
 	assert_int(definitions.module_count()).is_equal(6)
 
 
+func test_reads_shafts_and_level_modifiers() -> void:
+	var definitions := GameDefinitions.from_bundle({"dataHash": "x", "modules": [
+		{"key": "STAIRCASE", "verticalAccess": true},
+		{"key": "MINE", "zLevel": {"bonusPerLevelPercent": 2000000.0, "preferHigh": false}},
+		{"key": "SOLAR_PANEL", "zLevel": {"bonusPerLevelPercent": 2000000.0, "preferHigh": true}},
+	], "hulls": []})
+
+	assert_bool(definitions.module("STAIRCASE").vertical_access).is_true()
+	assert_bool(definitions.module("MINE").vertical_access).is_false()
+	assert_int(definitions.module("MINE").z_bonus_percent).is_equal(2000000)
+	assert_bool(definitions.module("MINE").z_prefer_high).is_false()
+	assert_bool(definitions.module("SOLAR_PANEL").z_prefer_high).is_true()
+	assert_int(definitions.module("STAIRCASE").z_bonus_percent).is_equal(0)
+	assert_dict(definitions.vertical_types()).is_equal({"STAIRCASE": true})
+
+
 func test_reads_hulls_and_a_hull_without_module_slot() -> void:
 	var definitions := GameDefinitions.from_bundle(BUNDLE)
 

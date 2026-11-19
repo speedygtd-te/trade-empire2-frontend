@@ -101,28 +101,48 @@ static func placement(host: StructureLayout, guests: Array[StructureLayout], hos
 	return Placement.HOST
 
 
-## Preview of placing a hull at a host cell, guests and docks included.
-static func check_place_hull(host: StructureLayout, guests: Array[StructureLayout], host_cell: Vector3i) -> BuildRules.Verdict:
+## Preview of placing a hull at a host cell, guests and docks included. With a hull type, the game
+## data and the site the level rules are checked too: a hull of the host by type, grid, height
+## limit and environment (LevelRules.check_hull_cell); a guest's hull by grid and the type's
+## height limit on the guest's own level (guests skip the environment). Without them only the
+## places are checked.
+static func check_place_hull(host: StructureLayout, guests: Array[StructureLayout], host_cell: Vector3i,
+		hull_type: String = "", definitions: GameDefinitions = null, site: LevelRules.Site = null) -> BuildRules.Verdict:
+	var touching := touching_guests(guests, host_cell)
+	var on_dock := host.hull_at(host_cell + Vector3i(0, 0, -1)) == DOCK
+	var checked := not hull_type.is_empty() and definitions != null and site != null
+	if checked:
+		var absolute := host.to_absolute(host_cell)
+		var cell_verdict := BuildRules.Verdict.OK
+		if touching.is_empty() and not on_dock:
+			cell_verdict = LevelRules.check_hull_cell(definitions, hull_type, absolute, site)
+		elif definitions.hull(hull_type) == null:
+			cell_verdict = BuildRules.Verdict.INVALID_HULL_TYPE
+		elif not LevelRules.in_bounds(site, absolute.z):
+			cell_verdict = BuildRules.Verdict.OUT_OF_BOUNDS
+		if cell_verdict != BuildRules.Verdict.OK:
+			return cell_verdict
 	if owner_at(host, guests, host_cell) != 0:
 		return BuildRules.Verdict.OCCUPIED
-	var touching := touching_guests(guests, host_cell)
 	if touching.size() > 1:
 		return BuildRules.Verdict.DOCK_SPACE_BLOCKED
 	var column := Rect2i(Vector2i(host_cell.x, host_cell.y), Vector2i.ONE)
 	if touching.size() == 1:
 		var guest := touching[0]
+		var local := guest_cell(guest, host_cell)
+		if local.z < 0:
+			return BuildRules.Verdict.NOT_ON_DOCK
+		if checked and not LevelRules.hull_z_allowed(hull_type, local.z):
+			return BuildRules.Verdict.HULL_Z_RESTRICTED
 		var rect := dock_rect(guest)
 		return _check_area(host, guests, guest, rect.merge(column) if rect.has_area() else column, dock_level(guest))
-	if host.hull_at(host_cell + Vector3i(0, 0, -1)) == DOCK:
+	if on_dock:
+		if checked and not LevelRules.hull_z_allowed(hull_type, 0):
+			return BuildRules.Verdict.HULL_Z_RESTRICTED
 		return _check_area(host, guests, null, column, host_cell.z - 1)
-	if host_cell.z != 0:
-		# Above the ground only touching the host makes it a question of the level; touching
-		# nothing it would be a new structure off the docks (FOUND_ONLY_ON_DOCK).
-		for step: Vector3i in _NEIGHBOURS:
-			if not host.hull_at(host_cell + step).is_empty():
-				return BuildRules.Verdict.WRONG_LEVEL
-		return BuildRules.Verdict.NOT_CONNECTED
-	return BuildRules.check_place_hull(host, host_cell)
+	# Off the docks: the host's own rules; touching nothing it would be a new structure off the
+	# docks (FOUND_ONLY_ON_DOCK). The guests carry a hull above them as well (overhang).
+	return BuildRules.check_place_hull(host, host_cell, guests)
 
 
 ## Preview of removing the hull at a host cell from `structure` (the host or one of the guests).
@@ -156,24 +176,25 @@ static func removes_guest(guest: StructureLayout, host_cell: Vector3i) -> bool:
 
 
 ## The host cell a tap on the column (host x, y) aims at while `focus` (the host or a guest)
-## is open. `new_hull`: a hull is to be placed (it goes on top); otherwise the topmost hull of the
-## column is meant (inspect, remove, place a module). On the host a new hull on a dock goes on
-## the dock (it founds a guest); on a guest an empty column aims at its lowest level.
-static func target_cell(host: StructureLayout, focus: StructureLayout, column: Vector2i, new_hull: bool) -> Vector3i:
+## is open. On the host it is the cell on the active `level` (absolute z): a new hull goes
+## exactly there, anything else (inspect, remove, place a module) means the hull there — but a
+## new hull on a dock goes on the dock (it founds a guest). A guest keeps its own stacking:
+## `new_hull` goes on top of the column, anything else means its topmost hull, and an empty
+## column aims at its lowest level.
+static func target_cell(host: StructureLayout, focus: StructureLayout, column: Vector2i, new_hull: bool,
+		level: int = 0) -> Vector3i:
 	if focus == host or not focus.is_docked():
-		var top := host.top_in_column(column.x, column.y)
-		if top == StructureLayout.NO_LEVEL:
-			return Vector3i(column.x, column.y, 0)
-		if new_hull and host.hull_at(Vector3i(column.x, column.y, top)) == DOCK:
-			return Vector3i(column.x, column.y, top + 1)
-		return Vector3i(column.x, column.y, top)
+		var cell := Vector3i(column.x, column.y, level - host.offset.z - host.base.z)
+		if new_hull and host.hull_at(cell) == DOCK:
+			return cell + Vector3i(0, 0, 1)
+		return cell
 	var local := column - Vector2i(focus.offset.x, focus.offset.y)
-	var level := focus.top_in_column(local.x, local.y)
-	if level == StructureLayout.NO_LEVEL:
-		level = 0
+	var top := focus.top_in_column(local.x, local.y)
+	if top == StructureLayout.NO_LEVEL:
+		top = 0
 	elif new_hull:
-		level += 1
-	return host_cell_of(focus, Vector3i(local.x, local.y, level))
+		top += 1
+	return host_cell_of(focus, Vector3i(local.x, local.y, top))
 
 
 ## Every column of `rect` has a dock hull on `dock_z`, and no other guest of that level

@@ -118,6 +118,15 @@ func test_site_cells_put_the_lowest_level_on_the_ground() -> void:
 	assert_that(TravelPlan.origin_for_centre([Vector3i(0, 0, 0), Vector3i(2, 2, 0)], Vector2i(10, 10))).is_equal(Vector2i(9, 9))
 
 
+func test_site_cells_put_a_basement_on_the_ground() -> void:
+	# A structure with a basement lands with its lowest level (−1) at z = 0 (server: offset.z = −z_min).
+	var ship := _surface(5, Vector3i(10, 10, 0), "[[0,0,0,0],[0,0,1,0]]")
+	var cells := TravelPlan.mover_cells(ship, [])
+	cells.append(Vector3i(0, 0, -1))
+	var site := TravelPlan.site_cells(cells, Vector2i(50, 60))
+	assert_array(site).contains_exactly_in_any_order([Vector3i(50, 60, 0), Vector3i(50, 60, 1), Vector3i(50, 60, 2)])
+
+
 func test_check_site_against_own_structures() -> void:
 	var base := _surface(1, Vector3i(40, 44, 0), "[[0,0,0,0],[1,0,0,0]]")
 	var taken := TravelPlan.taken_cells([base], 1000)

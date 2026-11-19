@@ -127,9 +127,61 @@ func test_guests_do_not_share_space() -> void:
 func test_away_from_docks_the_host_rules_apply() -> void:
 	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(-1, 0, 0))).is_equal(BuildRules.Verdict.OK)
 	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(9, 9, 0))).is_equal(BuildRules.Verdict.NOT_CONNECTED)
-	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, 1))).is_equal(BuildRules.Verdict.WRONG_LEVEL)
+	# On top of the host and under it: the host grows by a level.
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, 1))).is_equal(BuildRules.Verdict.OK)
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, -1))).is_equal(BuildRules.Verdict.OK)
 	# Up in the air touching nothing: no new structure off the docks.
 	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(9, 9, 1))).is_equal(BuildRules.Verdict.NOT_CONNECTED)
+
+
+func test_host_hulls_follow_the_level_rules() -> void:
+	var definitions := GameDefinitions.from_bundle({"dataHash": "x", "modules": [], "hulls": [
+		{"key": "STARTER", "modulePositioning": "INDOOR", "environments": ["SURFACE"]},
+		{"key": "REINFORCED", "modulePositioning": "INDOOR", "environments": ["SURFACE", "UNDERGROUND", "DEEP_UNDERGROUND"]},
+		{"key": "COMPOSITE", "modulePositioning": "INDOOR", "environments": ["SURFACE", "SPACE"]},
+	]})
+	var site := LevelRules.Site.new()
+	site.has_grid = true
+	site.min_z = -10
+	site.max_z = 100
+	site.deep_threshold = -6
+
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, -1), "REINFORCED", definitions, site)) \
+		.is_equal(BuildRules.Verdict.OK)
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, -1), "STARTER", definitions, site)) \
+		.is_equal(BuildRules.Verdict.HULL_Z_RESTRICTED)
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, 1), "STARTER", definitions, site)) \
+		.is_equal(BuildRules.Verdict.OK)
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, 1), "COMPOSITE", definitions, site)) \
+		.is_equal(BuildRules.Verdict.INVALID_HULL_TYPE)
+	# Cell rules come before the place: even a taken cell answers the type first.
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, 0), "COMPOSITE", definitions, site)) \
+		.is_equal(BuildRules.Verdict.INVALID_HULL_TYPE)
+	site.min_z = 0
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(0, 0, -1), "REINFORCED", definitions, site)) \
+		.is_equal(BuildRules.Verdict.OUT_OF_BOUNDS)
+
+
+func test_guest_hulls_skip_the_environment_but_keep_the_height_limit() -> void:
+	var definitions := GameDefinitions.from_bundle({"dataHash": "x", "modules": [], "hulls": [
+		{"key": "STARTER", "modulePositioning": "INDOOR", "environments": ["SURFACE"]},
+		{"key": "COMPOSITE", "modulePositioning": "INDOOR", "environments": ["SPACE"]},
+	]})
+	var site := LevelRules.Site.new()
+	site.has_grid = true
+	site.min_z = -10
+	site.max_z = 100
+
+	# Any known type founds a guest on a dock, also one the surface does not take.
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(8, 0, 1), "COMPOSITE", definitions, site)) \
+		.is_equal(BuildRules.Verdict.OK)
+	# STARTER on the L's second level (local z 1) is fine, on its third (local z 2) too high.
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(3, 0, 2), "STARTER", definitions, site)) \
+		.is_equal(BuildRules.Verdict.OK)
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(2, 0, 3), "STARTER", definitions, site)) \
+		.is_equal(BuildRules.Verdict.HULL_Z_RESTRICTED)
+	assert_int(DockRules.check_place_hull(_host, _guests, Vector3i(8, 0, 1), "NOPE", definitions, site)) \
+		.is_equal(BuildRules.Verdict.INVALID_HULL_TYPE)
 
 
 func test_dock_under_a_guest_cannot_go() -> void:
@@ -164,6 +216,17 @@ func test_target_on_the_host_goes_on_top_of_a_dock() -> void:
 	assert_that(DockRules.target_cell(_host, _host, Vector2i(8, 0), false)).is_equal(Vector3i(8, 0, 0))
 	assert_that(DockRules.target_cell(_host, _host, Vector2i(0, 0), true)).is_equal(Vector3i(0, 0, 0))
 	assert_that(DockRules.target_cell(_host, _host, Vector2i(9, 9), true)).is_equal(Vector3i(9, 9, 0))
+
+
+func test_target_on_the_host_lies_on_the_active_level() -> void:
+	assert_that(DockRules.target_cell(_host, _host, Vector2i(0, 0), true, 1)).is_equal(Vector3i(0, 0, 1))
+	assert_that(DockRules.target_cell(_host, _host, Vector2i(0, 0), false, 2)).is_equal(Vector3i(0, 0, 2))
+	assert_that(DockRules.target_cell(_host, _host, Vector2i(0, 0), true, -1)).is_equal(Vector3i(0, 0, -1))
+	# The level is absolute: a host lifted by its offset aims at the same absolute level.
+	var lifted := _layout(
+		'{"line":"header","structureId":3,"anchor":{"type":"surface","bodyId":"p","offset":{"x":0,"y":0,"z":1}},'
+		+ '"rev":1,"chunks":1}', '["STARTER"]', "[[0,0,0,0]]")
+	assert_that(DockRules.target_cell(lifted, lifted, Vector2i(0, 0), false, 1)).is_equal(Vector3i(0, 0, 0))
 
 
 func test_target_on_a_guest_stacks_or_starts_at_its_lowest_level() -> void:

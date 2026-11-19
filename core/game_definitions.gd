@@ -41,6 +41,13 @@ class ModuleDef:
 	var fuel_type := ""
 	var fuel_rate := 0
 	var warp_level := 0
+	## Staircase or elevator: it takes two levels (its own and the shaft head above) and forms
+	## shafts (`verticalAccess`).
+	var vertical_access := false
+	## Production change per level (`zLevel`), micro-percent (1 000 000 = 1 %); 0 when the module
+	## does not care about its level. `z_prefer_high`: higher is better, otherwise deeper.
+	var z_bonus_percent := 0
+	var z_prefer_high := false
 
 
 ## What unlocks a housing tier (2–5): enough inhabitants of the tier below, and enough of
@@ -187,6 +194,15 @@ func hull_keys() -> PackedStringArray:
 	return PackedStringArray(_hulls.keys())
 
 
+## Module types that form shafts (staircase, elevator) → true, for StructureLayout.
+func vertical_types() -> Dictionary:
+	var result: Dictionary = {}
+	for entry: ModuleDef in _modules.values():
+		if entry.vertical_access:
+			result[entry.key] = true
+	return result
+
+
 func module_count() -> int:
 	return _modules.size()
 
@@ -243,6 +259,10 @@ static func _read_module(data: Dictionary) -> ModuleDef:
 	module.fuel_type = Wire.as_string(data.get("fuelType"))
 	module.fuel_rate = Wire.as_int(data.get("fuelRate"))
 	module.warp_level = Wire.as_int(data.get("warpLevel"))
+	module.vertical_access = data.get("verticalAccess") == true
+	var level := Wire.as_dict(data.get("zLevel"))
+	module.z_bonus_percent = Wire.as_int(level.get("bonusPerLevelPercent"))
+	module.z_prefer_high = level.get("preferHigh") == true
 	return module
 
 

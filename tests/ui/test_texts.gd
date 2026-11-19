@@ -3,7 +3,7 @@ extends GdUnitTestSuite
 
 const TRANSLATION_PATH := "res://i18n/strings.en.translation"
 const SOURCE_DIRS: PackedStringArray = ["res://game", "res://core", "res://net"]
-const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH|WORKFORCE|MAP|GALAXY|FLEET|TRAVEL|ROUTE)_[A-Z0-9_]*[A-Z0-9])"'
+const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH|WORKFORCE|MAP|GALAXY|FLEET|TRAVEL|ROUTE|LEVEL)_[A-Z0-9_]*[A-Z0-9])"'
 ## Game-data keys that look like text keys (a lab type); error codes are skipped as well.
 const NOT_TEXT_KEYS: PackedStringArray = ["RESEARCH_LAB"]
 
@@ -125,7 +125,7 @@ func test_known_code_gets_its_own_text() -> void:
 
 
 func test_unknown_codes_get_the_generic_text_not_the_raw_code() -> void:
-	var build_error := ApiError.from_response(409, '{"error":"SHAFT_TOO_TALL","message":"x"}')
+	var build_error := ApiError.from_response(409, '{"error":"BATCH_TOO_LARGE","message":"x"}')
 	var proxy_error := ApiError.from_response(502, "<html>Bad Gateway</html>")
 
 	assert_str(ErrorText.key_for(build_error)).is_equal("ERROR_UNKNOWN")
