@@ -25,6 +25,8 @@ var _body_id := ""
 ## Pick mode: why the body cannot be chosen, and the button that chooses it.
 var _pick_note: Label
 var _choose: Button
+## The line on how much of the body is explored (draft.31); null on a body without a surface.
+var _explored: Label = null
 
 
 func _ready() -> void:
@@ -128,6 +130,9 @@ func show_body(map: SystemMap, body_id: String, structures: PackedStringArray, i
 		_line(tr("MAP_SURFACE_NONE"))
 	else:
 		_line(tr("MAP_SURFACE_BUILDABLE"))
+		# How much is explored (draft.31) follows once the reveal is loaded (show_exploration).
+		_explored = _line("")
+		_explored.visible = false
 
 	var gases := SystemMap.atmosphere_shares(Wire.as_dict(environment.get("atmosphere")))
 	if gases.is_empty():
@@ -180,13 +185,24 @@ func _fit_height() -> void:
 	_scroll.custom_minimum_size = Vector2(0.0, minf(_lines.get_combined_minimum_size().y, MAX_LIST_HEIGHT))
 
 
-func _line(text: String, color: Color = AppTheme.COLOR_TEXT) -> void:
+## How much of the shown body is explored (translated); `none` (nothing yet) shows it amber.
+func show_exploration(text: String, none: bool) -> void:
+	if _explored == null or not is_instance_valid(_explored):
+		return
+	_explored.text = text
+	_explored.visible = true
+	_explored.add_theme_color_override("font_color", AppTheme.COLOR_PENDING if none else AppTheme.COLOR_OK)
+	_fit_height.call_deferred()
+
+
+func _line(text: String, color: Color = AppTheme.COLOR_TEXT) -> Label:
 	var label := Ui.dynamic_label()
 	label.text = text
 	label.add_theme_font_size_override("font_size", AppTheme.FONT_SIZE_SMALL)
 	if color != AppTheme.COLOR_TEXT:
 		label.add_theme_color_override("font_color", color)
 	_lines.add_child(label)
+	return label
 
 
 func _resource_name(key: String) -> String:

@@ -117,7 +117,7 @@ func _run() -> void:
 		await get_tree().create_timer(3.0).timeout
 	await _capture("routes_colony_stops")
 	shell.show_tab(MainShell.Tab.FLEET)
-	panel._show_tab(true)
+	panel._show_tab(FleetPanel.TAB_ROUTES)
 	await _capture("routes_list")
 	await _samples(panel, fleet, transporter, base, station)
 	var live := fleet.routes.book.routes()

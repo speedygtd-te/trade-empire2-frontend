@@ -11,6 +11,8 @@ const ITEM := "PROBE"
 ## Cells a probe explores around its target (contract `ProbeView.radius`, decision R4); the
 ## preview before a launch uses it.
 const RADIUS := 5000
+## The same in kilometres (a cell is 10 m).
+const RADIUS_KM := 50
 ## The shortest flight (contract: at least one minute).
 const MIN_FLIGHT_MS := 60000
 const STATUS_FLYING := "flying"

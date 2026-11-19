@@ -32,6 +32,8 @@ signal research_changed
 signal research_completed(tech: String)
 ## The telescopes of this structure (level, range, upgrade) arrived or failed to load.
 signal telescopes_changed
+## The loaded surface was dropped (more of it was explored): it loads again around the camera.
+signal surface_reset
 
 ## How many surface blocks around the camera are kept loaded.
 const SURFACE_RADIUS := 2
@@ -796,6 +798,17 @@ func ground_cell(cell: Vector3i) -> SurfacePatch.Cell:
 		for request: SurfaceBlocks.Request in blocks.missing_around(cell.x, cell.y, 0):
 			_load_deposits(request, z, blocks)
 	return found
+
+
+## Drops every loaded cell of this body (all levels, deposits too) after more of it was explored
+## (a probe arrived): the view asks for the ground again. Shared with the structures beside this one.
+func reset_surface() -> void:
+	surface.clear()
+	for blocks: SurfaceBlocks in level_surfaces.values():
+		blocks.clear()
+	for blocks: SurfaceBlocks in deposit_levels.values():
+		blocks.clear()
+	surface_reset.emit()
 
 
 ## Whether the ground under an absolute cell is loaded and unexplored (fog, draft.31): it has no

@@ -21,6 +21,8 @@ var error: ApiError = null
 var body_names: Dictionary = {}
 ## The player's routes; loaded with the fleet.
 var routes: RouteModel
+## The player's exploration probes and the explored areas of bodies (draft.31); loaded with the fleet.
+var probes: ProbeModel
 
 var _loading := false
 var _again := false
@@ -32,6 +34,9 @@ func _ready() -> void:
 	routes = RouteModel.new()
 	routes.name = "Routes"
 	add_child(routes)
+	probes = ProbeModel.new()
+	probes.name = "Probes"
+	add_child(probes)
 
 
 ## Loads the list again, and the details of everything that can move.
@@ -51,6 +56,7 @@ func reload() -> void:
 	var items: Array = list.data.get("items")
 	fleet.apply_list(items)
 	routes.reload()
+	probes.reload()
 	for entry: Fleet.Entry in fleet.entries():
 		if entry.can_fly() or entry.can_drive() or entry.where() == Fleet.Where.TRANSIT:
 			var details := await Services.api.get_json("/v2/structures/%d" % entry.structure_id)

@@ -34,6 +34,8 @@ var _site: Variant = null
 ## Driving: the tapped cells (the middle of the structure goes there); the last is the stop.
 var _points: Array[Vector2i] = []
 var _client_ok := false
+## The explored areas of the body (draft.31); null while unknown or without fog.
+var _reveal: RevealMap = null
 ## Landing: the site is still the suggested one (the player has not tapped); it follows the own
 ## structures' layouts as they arrive.
 var _suggested := true
@@ -163,6 +165,10 @@ func _build_overlay() -> void:
 # --- data -----------------------------------------------------------------------------------
 
 func _on_ready_to_show() -> void:
+	# What is explored here (draft.31): a landing site must lie in it; null on an older server.
+	if _fleet != null:
+		_reveal = await _fleet.probes.ensure_reveal(_body_id)
+		_view.set_reveal(_reveal)
 	_loading.visible = false
 	_header.set_subtitle(_model.body_name)
 	if _fleet != null:
@@ -241,6 +247,10 @@ func _around() -> Vector2i:
 	if best != null and best.layout.hull_count() > 0:
 		var cell := best.centre_cell()
 		return Vector2i(cell.x, cell.y)
+	# Without an own structure: where the newest probe explored (landing needs explored ground).
+	var probed := _reveal.newest_probe_area() if _reveal != null else null
+	if probed != null:
+		return probed.centre()
 	# The equator (y runs from −sizeY/2 to sizeY/2, SunPosition.cell_angles).
 	return Vector2i.ZERO
 
@@ -268,9 +278,28 @@ func _show_site() -> void:
 	var verdict := TravelPlan.check_site(cells, _taken, _model.size_x, _model.size_y)
 	_client_ok = verdict == TravelPlan.Site.OK
 	_hint.text = tr("TRAVEL_SITE_LAND_HINT") if _client_ok else _site_text(verdict)
+	if _client_ok and _unexplored(cells):
+		# Landing only on explored ground (SURFACE_NOT_REVEALED); the server is not asked.
+		_client_ok = false
+		_hint.text = tr("TRAVEL_SITE_UNEXPLORED")
+		_hint.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
+		_view.travel_layer().show_ghost(cells, TravelLayer.COLOR_GHOST_BAD)
+		_quote.show_hint("")
+		return
 	_hint.add_theme_color_override("font_color", AppTheme.COLOR_MUTED if _client_ok else AppTheme.COLOR_DANGER)
 	_view.travel_layer().show_ghost(cells, TravelLayer.COLOR_GHOST_UNSURE if _client_ok else TravelLayer.COLOR_GHOST_BAD)
 	_quote.ask(TravelPlan.request(TravelPlan.MODE_FLIGHT, TravelPlan.surface_target(_body_id, at)))
+
+
+## Whether a cell of a landing footprint is unexplored: by the explored areas when known, else
+## by the loaded ground (draft.31 fog; an older server has none).
+func _unexplored(cells: Array[Vector3i]) -> bool:
+	if _reveal != null:
+		return not _reveal.covers_all(cells, _model.size_x)
+	for cell: Vector3i in cells:
+		if _model.surface.is_hidden(cell.x, cell.y):
+			return true
+	return false
 
 
 func _site_text(verdict: TravelPlan.Site) -> String:
@@ -340,7 +369,9 @@ func _on_quoted(quote: TravelPlan.Quote) -> void:
 	if cells.is_empty():
 		return
 	var color := TravelLayer.COLOR_GHOST_BAD
-	if quote != null and quote.ok:
+	if _mode == MODE_LAND and _unexplored(cells):
+		pass
+	elif quote != null and quote.ok:
 		color = TravelLayer.COLOR_GHOST_OK
 	elif quote == null and _client_ok:
 		color = TravelLayer.COLOR_GHOST_UNSURE
