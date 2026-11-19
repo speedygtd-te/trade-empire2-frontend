@@ -1,5 +1,6 @@
 # End-to-end check of building against the server (smoke/colony_build.tscn): places a hull and
-# a module next to the colony of the development account and removes both again. With
+# a module next to the colony of the development account and removes both again, then a 3x2 hull
+# rectangle half over the colony's edge (one atomic batch), and removes it again. With
 # -Scene dock_build (smoke/dock_build.tscn): places docks, founds and extends a guest on them,
 # checks the dock rules and takes everything down again. With -Scene route_flow
 # (smoke/route_flow.tscn, own account .local/routes-account.json): builds a transporter and a
