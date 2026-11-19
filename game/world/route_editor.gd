@@ -113,8 +113,9 @@ func _ready() -> void:
 	form.add_child(_ends)
 	_rules = Ui.column(10)
 	form.add_child(_rules)
+	# The quote stays in sight under the form, next to the button it decides about.
 	_quote_label = Ui.dynamic_label()
-	form.add_child(_quote_label)
+	column.add_child(_quote_label)
 
 	_picker = Ui.column(12)
 	_picker.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -131,7 +132,7 @@ func _ready() -> void:
 	_picker_list = Ui.column(10)
 	_picker_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	picker_scroll.add_child(_picker_list)
-	var cancel := Ui.secondary_button("COMMON_CLOSE")
+	var cancel := Ui.secondary_button("ROUTE_PICK_CANCEL")
 	cancel.pressed.connect(_close_picker)
 	_picker.add_child(cancel)
 
@@ -406,6 +407,7 @@ func _rules_changed() -> void:
 func _open_picker(what: String) -> void:
 	_picking = what
 	_form_scroll.visible = false
+	_quote_label.visible = false
 	_action.visible = false
 	_result.visible = false
 	_picker.visible = true
@@ -417,6 +419,7 @@ func _close_picker() -> void:
 	_picker.visible = false
 	_form_scroll.visible = true
 	_action.visible = true
+	_show_quote()
 	_update_action()
 
 
@@ -613,7 +616,7 @@ func _run_quote() -> void:
 
 
 func _show_quote() -> void:
-	if not is_new():
+	if not is_new() or _picker.visible:
 		_quote_label.visible = false
 		return
 	_quote_label.visible = true

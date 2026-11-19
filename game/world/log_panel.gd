@@ -214,7 +214,10 @@ func _items(items: Array[Array]) -> String:
 ## and route (when known).
 func _route_sentence(entry: StructureLog.Entry) -> String:
 	var fields := entry.fields
-	var route := _route_name(Wire.as_int(fields.get("routeId")))
+	var route := Wire.as_string(_route_names.get(Wire.as_int(fields.get("routeId"))))
+	if route.is_empty() and (entry.type == "routePaused" or entry.type == "routeDeleted"):
+		# A route that is gone has no name any more: the plain sentence.
+		return ""
 	var station := _structure_name(Wire.as_int(fields.get("stationId")))
 	var reason := Wire.as_string(fields.get("reason"))
 	match entry.type:
@@ -269,11 +272,6 @@ func _amounts(value: Variant) -> String:
 func _structure_name(structure_id: int) -> String:
 	var known := Wire.as_string(_names.get(structure_id))
 	return known if not known.is_empty() else tr("ROUTE_UNKNOWN_STRUCTURE")
-
-
-func _route_name(route_id: int) -> String:
-	var known := Wire.as_string(_route_names.get(route_id))
-	return known if not known.is_empty() else tr("ROUTE_UNKNOWN_ROUTE")
 
 
 ## Looks up the names of the own structures and routes once, when a page shows route entries.

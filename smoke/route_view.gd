@@ -43,28 +43,29 @@ func _run() -> void:
 		return
 	await _until(func() -> bool: return Services.definitions != null, 10000)
 
-	var colony := await _open_colony(0)
+	# The base by kind: with vehicles standing on the home body, the screen's own start choice
+	# can land on one of them.
+	var list := await FleetModel.list_structures()
+	var base := 0
+	if list.is_ok():
+		var items: Array = list.data.get("items")
+		for value: Variant in items:
+			var summary := Wire.as_dict(value)
+			if Wire.as_string(summary.get("kind")) == "base" and base == 0:
+				base = Wire.as_int(summary.get("structureId"))
+	var colony := await _open_colony(base)
 	var fleet := colony._fleet
 	await _until(func() -> bool: return fleet.loaded and fleet.routes.loaded, 15000)
 	var vehicles := _vehicles(fleet)
 	var transporter: int = vehicles[0]
 	var station: int = vehicles[1]
-	var base := colony._model.structure_id
 	print("ROUTES  base %d, transporter %d, station %d, %d route(s)" % [base, transporter, station, fleet.routes.book.size()])
-	var made := 0
-	if fleet.routes.book.size() == 0 and transporter != 0 and station != 0:
-		made = await _make_route(fleet, transporter, base, station)
-		await get_tree().create_timer(3.0).timeout
-	await _capture("routes_colony_stops")
-
 	colony._open_fleet()
 	var panel := colony._fleet_panel
 	await _capture("routes_fleet_structures")
-	panel._show_tab(true)
-	await _capture("routes_list")
-	await _samples(panel, fleet, transporter, base, station)
 
-	# The editor for a new route: prefilled, a live quote, a rule, the pickers.
+	# The editor for a new route (before the picture route takes the transporter): prefilled, a
+	# live quote, a rule, the pickers, a refused quote.
 	panel.open_route_editor(0, transporter)
 	var editor := panel._editor
 	editor._draft.station_a = base
@@ -90,11 +91,31 @@ func _run() -> void:
 	editor._draft.station_a = transporter
 	editor._draft.station_b = station
 	editor._rebuild_ends()
+	editor._rebuild_rules()
 	editor._changed()
 	await _until(func() -> bool: return editor._quote != null or editor._quote_error != null, 8000)
 	await _capture("routes_editor_refused")
 	print("ROUTES  refused quote says: ", editor._quote_label.text.replace("\n", " | "))
 	panel._close_editor()
+
+	colony._close_fleet()
+	var made := 0
+	if fleet.routes.book.size() == 0 and transporter != 0 and station != 0:
+		made = await _make_route(fleet, transporter, base, station)
+		await get_tree().create_timer(3.0).timeout
+	var routes_now := fleet.routes.book.routes()
+	if not routes_now.is_empty() and routes_now[0].station_a.has_stop:
+		var stop := routes_now[0].station_a.stop
+		colony._view.look_at_cell(Vector3i(stop.x, stop.y, 0))
+		colony._view.zoom = 16.0
+		colony._view._update_camera()
+		await get_tree().create_timer(3.0).timeout
+	await _capture("routes_colony_stops")
+	colony._open_fleet()
+	panel = colony._fleet_panel
+	panel._show_tab(true)
+	await _capture("routes_list")
+	await _samples(panel, fleet, transporter, base, station)
 	var live := fleet.routes.book.routes()
 	if not live.is_empty():
 		panel.open_route_editor(live[0].route_id)
@@ -124,8 +145,9 @@ func _run() -> void:
 		await _capture("routes_log")
 		vehicle.queue_free()
 	if made != 0:
-		var gone := await fleet.routes.delete_route(made)
-		print("ROUTES  picture route %d deleted: %s" % [made, "ok" if gone.is_ok() else gone.error.code])
+		# The colony (and its fleet model) is gone by now: straight to the server.
+		var gone := await Services.api.delete_json("/v2/routes/%d" % made)
+		print("ROUTES  picture route %d deleted: %s" % [made, str(gone.data.get("deleted")) if gone.is_ok() else gone.error.code])
 	if not had_session:
 		await Services.session.logout()
 	get_tree().quit()
@@ -195,6 +217,16 @@ func _samples(panel: FleetPanel, fleet: FleetModel, transporter: int, base: int,
 	fleet.routes.changed.emit()
 	print("SAMPLE  route list with made-up routes (not from the server)")
 	await _capture("routes_list_sample")
+	var scroll: ScrollContainer = null
+	for child: Node in panel._routes.get_children():
+		if child is ScrollContainer:
+			scroll = child as ScrollContainer
+	if scroll != null:
+		scroll.scroll_vertical = 820
+		await _capture("routes_list_sample_waiting")
+		scroll.scroll_vertical = 100000
+		await _capture("routes_list_sample_end")
+		scroll.scroll_vertical = 0
 	panel._routes._on_delete(900001)
 	await _capture("routes_list_delete_armed")
 	panel._routes._armed = 0

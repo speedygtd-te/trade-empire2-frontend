@@ -480,7 +480,6 @@ ROUTE_DELETE_LATER,The route ends at the next station.
 ROUTE_PAUSE_REQUESTED,The route stops at the next station.
 ROUTE_RESUMED,The route runs again.
 ROUTE_UNKNOWN_STRUCTURE,a structure
-ROUTE_UNKNOWN_ROUTE,a route
 ROUTE_STATUS_HEADING,Heading to {station}
 ROUTE_STATUS_HEADING_ETA,Heading to {station} · arrives in {duration}
 ROUTE_STATUS_WAITING,Waiting at {station}: {reason}
@@ -491,7 +490,7 @@ ROUTE_STATUS_PAUSED_MOVING,Paused: a station is moving.
 ROUTE_STATUS_STOPPING,Stops at {station}
 ROUTE_STATUS_DELETING,Ends at {station}
 ROUTE_CARGO_FOR,On board for {station}: {items}
-ROUTE_STATS,{trips} trips · {cycles} round trips
+ROUTE_STATS,Trips: {trips} · round trips: {cycles}
 ROUTE_DELIVERED,Delivered so far: {items}
 ROUTE_NOTHING,nothing
 ROUTE_NEW_TITLE,New route
@@ -534,6 +533,7 @@ ROUTE_PICK_NO_STATION,You have no other structure to choose.
 ROUTE_PICK_GOODS,Goods in the store of {station}:
 ROUTE_PICK_GOODS_ROW,{item} · {count}
 ROUTE_PICK_NO_GOODS,The store there is empty.
+ROUTE_PICK_CANCEL,Back to the route
 ROUTE_QUOTE_INCOMPLETE,Choose a transporter and two stations.
 ROUTE_QUOTE_CHECKING,Checking the route…
 ROUTE_QUOTE_OK,The route can start.
@@ -549,10 +549,10 @@ ROUTE_LOG_SKIPPED,Skipped: {items}.
 ROUTE_LOG_DEPARTED,Left for {station}.
 ROUTE_LOG_DEPARTED_FUEL,Left for {station}; {payer} paid {fuel}.
 ROUTE_LOG_STALLED,Waiting at {station}: {reason}
-ROUTE_LOG_PAUSED,{route} was paused.
-ROUTE_LOG_PAUSED_MOVED,{route} paused itself: a station moved.
-ROUTE_LOG_DELETED,{route} has ended.
-ROUTE_LOG_DELETED_STATION_GONE,{route} has ended: a station is gone.
+ROUTE_LOG_PAUSED,The route “{route}” was paused.
+ROUTE_LOG_PAUSED_MOVED,The route “{route}” paused itself: a station moved.
+ROUTE_LOG_DELETED,The route “{route}” has ended.
+ROUTE_LOG_DELETED_STATION_GONE,The route “{route}” has ended: a station is gone.
 ROUTE_LOG_TRANSFER,{transporter} delivered {delivered} and took {taken}.
 ROUTE_LOG_FUEL_PAID,Paid {fuel} for {transporter}.
 STORE_CARGO_TITLE,Cargo hold
