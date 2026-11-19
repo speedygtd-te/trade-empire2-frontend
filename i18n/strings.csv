@@ -460,3 +460,117 @@ FLEET_UNKNOWN_PLACE,somewhere
 FLEET_ON_ROUTE,on a route
 COLONY_NEIGHBOUR,Another of your structures on this body.
 COLONY_GO_THERE,Go there
+ROUTE_TAB,Routes
+ROUTE_TAB_STRUCTURES,Structures
+ROUTE_NEW,New route
+ROUTE_LOADING,Loading your routes…
+ROUTE_LOAD_FAILED,Your routes could not be loaded.
+ROUTE_EMPTY,"No routes yet. A route lets a ship or vehicle shuttle goods between two of your structures."
+ROUTE_ENDS,{kind} · {transporter} · {a} ↔ {b}
+ROUTE_KIND_SHIP,Ship route
+ROUTE_KIND_GROUND,Ground route
+ROUTE_PAUSE,Pause
+ROUTE_RESUME,Resume
+ROUTE_EDIT,Edit
+ROUTE_DELETE,Delete
+ROUTE_DELETE_CONFIRM,Tap again
+ROUTE_DELETE_WARNING_NOW,Tap Delete again to end the route now. Cargo on board stays in the transporter.
+ROUTE_DELETE_WARNING_LATER,"Tap Delete again to end the route. It ends at {station}, after unloading; cargo left on board stays in the transporter."
+ROUTE_DELETE_LATER,The route ends at the next station.
+ROUTE_PAUSE_REQUESTED,The route stops at the next station.
+ROUTE_RESUMED,The route runs again.
+ROUTE_UNKNOWN_STRUCTURE,a structure
+ROUTE_STATUS_HEADING,Heading to {station}
+ROUTE_STATUS_HEADING_ETA,Heading to {station} · arrives in {duration}
+ROUTE_STATUS_WAITING,Waiting at {station}: {reason}
+ROUTE_STATUS_WAITING_RETRY,Waiting at {station}: {reason} Next try in {duration}.
+ROUTE_STATUS_PAUSED,Paused at {station}
+ROUTE_STATUS_PAUSED_MOVED,Paused: a station moved to another place.
+ROUTE_STATUS_PAUSED_MOVING,Paused: a station is moving.
+ROUTE_STATUS_STOPPING,Stops at {station}
+ROUTE_STATUS_DELETING,Ends at {station}
+ROUTE_CARGO_FOR,On board for {station}: {items}
+ROUTE_STATS,Trips: {trips} · round trips: {cycles}
+ROUTE_DELIVERED,Delivered so far: {items}
+ROUTE_NOTHING,nothing
+ROUTE_NEW_TITLE,New route
+ROUTE_EDIT_TITLE,Edit route
+ROUTE_NAME_HINT,Name (optional)
+ROUTE_CREATE,Create route
+ROUTE_SAVE,Save
+ROUTE_CHOOSE,choose…
+ROUTE_FIXED_ENDS,"{transporter} shuttles between {a} and {b}. To change these, delete the route and create a new one."
+ROUTE_TRANSPORTER,Transporter: {name}
+ROUTE_STATION_A,Station A: {name}
+ROUTE_STATION_B,Station B: {name}
+ROUTE_STATION_A_SHORT,station A
+ROUTE_STATION_B_SHORT,station B
+ROUTE_START_AT,First stop: {name}
+ROUTE_START_NEARER,First stop: the nearer station
+ROUTE_RULES_FROM,Loaded at {from} for {to}
+ROUTE_RULES_EMPTY,Nothing is loaded here; the transporter only unloads.
+ROUTE_ADD_GOODS,Add goods
+ROUTE_TOP_UP_FUEL,Keep fuel topped up
+ROUTE_RULE_CARGO,{item} · {count} as cargo
+ROUTE_RULE_CARGO_MAX,{item} · as much as there is as cargo
+ROUTE_RULE_SUPPLY,{item} · top up own supply to {count}
+ROUTE_RULE_SUPPLY_MAX,{item} · fill own supply
+ROUTE_RULE_STOCK,{count} in store there
+ROUTE_MAX,Max
+ROUTE_INTO_CARGO,As cargo
+ROUTE_INTO_SUPPLY,As own supply
+ROUTE_REMOVE_RULE,Remove
+ROUTE_CARGO_HINT,Cargo is unloaded at the other station.
+ROUTE_SUPPLY_HINT,"Own supply (fuel, food) of the transporter: filled up to this amount, never unloaded."
+ROUTE_RULE_TWICE,Each item can be loaded only once as cargo and once as own supply per direction.
+ROUTE_FUEL_ALREADY,Fuel is already topped up in both directions.
+ROUTE_PICK_TRANSPORTER,Choose the transporter (a ship or vehicle):
+ROUTE_PICK_STATION,Choose station {letter}:
+ROUTE_PICK_BUSY,Already drives a route.
+ROUTE_PICK_MOVING,Under way.
+ROUTE_PICK_NO_TRANSPORTER,You have no ship or vehicle yet. Build a drive into a structure first.
+ROUTE_PICK_NO_STATION,You have no other structure to choose.
+ROUTE_PICK_GOODS,Goods in the store of {station}:
+ROUTE_PICK_GOODS_ROW,{item} · {count}
+ROUTE_PICK_NO_GOODS,The store there is empty.
+ROUTE_PICK_CANCEL,Back to the route
+ROUTE_QUOTE_INCOMPLETE,Choose a transporter and two stations.
+ROUTE_QUOTE_CHECKING,Checking the route…
+ROUTE_QUOTE_OK,The route can start.
+ROUTE_QUOTE_REFUSED,The route cannot start.
+ROUTE_QUOTE_KIND,{kind}
+ROUTE_QUOTE_STOP,"Stop next to {station} at {x}, {y}"
+ROUTE_QUOTE_ORBIT,At {station}: in orbit
+ROUTE_QUOTE_TRIP,First trip to {station}: {duration}
+ROUTE_QUOTE_FUEL,Fuel: {count} {item} (own supply holds {have})
+ROUTE_QUOTE_FUEL_IN_CARGO,– more lies in the cargo hold; move it to the own supply in the store.
+ROUTE_LOG_ARRIVED,Stopped at {station}: unloaded {unloaded}; loaded {loaded}.
+ROUTE_LOG_SKIPPED,Skipped: {items}.
+ROUTE_LOG_DEPARTED,Left for {station}.
+ROUTE_LOG_DEPARTED_FUEL,Left for {station}; {payer} paid {fuel}.
+ROUTE_LOG_STALLED,Waiting at {station}: {reason}
+ROUTE_LOG_PAUSED,The route “{route}” was paused.
+ROUTE_LOG_PAUSED_MOVED,The route “{route}” paused itself: a station moved.
+ROUTE_LOG_DELETED,The route “{route}” has ended.
+ROUTE_LOG_DELETED_STATION_GONE,The route “{route}” has ended: a station is gone.
+ROUTE_LOG_TRANSFER,{transporter} delivered {delivered} and took {taken}.
+ROUTE_LOG_FUEL_PAID,Paid {fuel} for {transporter}.
+STORE_CARGO_TITLE,Cargo hold
+STORE_CARGO_FILL,{used} of {capacity} units of cargo
+STORE_CARGO_NONE,No storage is set to cargo. Switch a storage module below to carry goods on routes.
+STORE_CARGO_EMPTY,The cargo hold is empty.
+STORE_CARGO_ROW,{name} · {count}
+STORE_MODULES_TITLE,Storage modules
+STORE_MODULE_ROW,{module} · {capacity} units · {mode}
+STORE_MODE_SUPPLY,own supply
+STORE_MODE_CARGO,cargo hold
+STORE_MODE_BUILDING,{mode} (under construction)
+STORE_TO_CARGO,Use as cargo
+STORE_TO_SUPPLY,Use as supply
+STORE_MODE_SET_CARGO,The storage now holds cargo.
+STORE_MODE_SET_SUPPLY,The storage now holds own supply.
+STORE_MOVE_TO_CARGO,Move to the cargo hold:
+STORE_MOVE_TO_SUPPLY,Move to the own supply:
+STORE_MOVE_NO_ROOM,There is not enough room in the cargo hold.
+STORE_MOVED_TO_CARGO,{count} {name} moved to the cargo hold.
+STORE_MOVED_TO_SUPPLY,{count} {name} moved to the own supply.

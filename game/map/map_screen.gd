@@ -68,6 +68,7 @@ func _ready() -> void:
 	_view.home_body = _home_body
 	_view.body_tapped.connect(_on_body_tapped)
 	_content.add_child(_view)
+	_view.add_child(RouteLines.new())
 	_build_overlay()
 	_load()
 

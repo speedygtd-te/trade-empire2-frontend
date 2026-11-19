@@ -66,3 +66,44 @@ func test_flow_value_before_its_time_is_its_value() -> void:
 
 	assert_int(flow.amount_at(1000)).is_equal(7)
 	assert_int(flow.amount_at(6000)).is_equal(1007)
+
+
+const WITH_CARGO := {
+	"structureId": 9.0,
+	"capacity": 10000000000.0,
+	"items": [],
+	"transport": {
+		"capacity": 20000000000.0,
+		"used": 52500000.0,
+		"items": [
+			{"resource": "WATER", "amount": 2500000.0},
+			{"resource": "IRON", "amount": 50000000.0},
+			{"resource": "EMPTY", "amount": 0.0},
+		],
+	},
+}
+
+
+func test_cargo_area_is_read_from_transport() -> void:
+	var inventory := Inventory.from_wire(WITH_CARGO)
+
+	assert_int(inventory.transport_capacity).is_equal(20000000000)
+	assert_int(inventory.transport_used).is_equal(52500000)
+	assert_int(inventory.cargo_amount("WATER")).is_equal(2500000)
+	assert_int(inventory.cargo_units("WATER")).is_equal(2)
+	assert_int(inventory.cargo_units("IRON")).is_equal(50)
+	assert_int(inventory.cargo_amount("NOTHING")).is_equal(0)
+	assert_int(inventory.cargo_room()).is_equal(20000000000 - 52500000)
+	assert_bool(inventory.has_cargo_area()).is_true()
+
+
+func test_cargo_keys_are_sorted_and_skip_empty_rows() -> void:
+	assert_array(Array(Inventory.from_wire(WITH_CARGO).cargo_keys())).contains_exactly(["IRON", "WATER"])
+
+
+func test_without_transport_there_is_no_cargo_area() -> void:
+	var inventory := Inventory.from_wire(DATA)
+
+	assert_bool(inventory.has_cargo_area()).is_false()
+	assert_int(inventory.cargo_room()).is_equal(0)
+	assert_array(Array(inventory.cargo_keys())).is_empty()

@@ -713,3 +713,51 @@ func _on_resync(_rev: int) -> void:
 		reload_layout()
 		reload_inventory()
 		reload_research()
+
+
+# --- storage modes and the cargo area (routes, draft.20) -----------------------------------------
+
+## The storage modules of this structure (also those under construction), in id order.
+func storage_modules() -> Array[StructureLayout.Module]:
+	var result: Array[StructureLayout.Module] = []
+	if Services.definitions == null:
+		return result
+	for module: StructureLayout.Module in layout.modules():
+		var definition := Services.definitions.module(module.module_type)
+		if definition != null and definition.storage:
+			result.append(module)
+	result.sort_custom(func(a: StructureLayout.Module, b: StructureLayout.Module) -> bool:
+		return a.module_id < b.module_id)
+	return result
+
+
+## Switches a storage module between the own supply ("selfUse") and the cargo area
+## ("transport"). On success the inventory is the one the server sends back.
+func set_storage_mode(module_id: int, mode: String) -> ApiResult:
+	var result := await Services.api.patch_json("/v2/structures/%d/modules/%d/storage" % [structure_id, module_id],
+		{"mode": mode})
+	if result.is_ok():
+		var module := layout.module(module_id)
+		if module != null:
+			module.storage_mode = mode
+		_take_inventory(result.data)
+	return result
+
+
+## Moves `amount` micro-units of an item from the own supply ("selfUse") to the cargo area
+## ("transport") or back. On success the inventory is the one the server sends back.
+func move_storage(from: String, item: String, amount: int) -> ApiResult:
+	var result := await Services.api.post_json("/v2/structures/%d/storage/move" % structure_id, {
+		"from": from,
+		"items": [{"resource": item, "amount": amount}],
+	})
+	if result.is_ok():
+		_take_inventory(result.data)
+	return result
+
+
+func _take_inventory(data: Dictionary) -> void:
+	var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+	inventory = Inventory.from_wire(data, scale)
+	inventory_changed.emit()
+	reload_production()

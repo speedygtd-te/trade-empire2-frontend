@@ -123,6 +123,10 @@ func _ready() -> void:
 	add_child(_fleet)
 	_fleet.changed.connect(_on_fleet_changed)
 	_build_world()
+	# Stop sites the routes hold on this body (RouteStopLayer).
+	var stops := RouteStopLayer.new()
+	stops.setup(_view, _fleet.routes)
+	_view.add_child(stops)
 	_build_overlay()
 	_model.layout_changed.connect(_refresh)
 	_model.guests_changed.connect(_on_guests_changed)
@@ -166,7 +170,8 @@ func _process(delta: float) -> void:
 ## structure, clear the selected structure — never quit.
 func handle_back() -> void:
 	if _fleet_panel != null:
-		_close_fleet()
+		if not _fleet_panel.handle_back():
+			_close_fleet()
 	elif _map != null:
 		_map.handle_back()
 	elif _menu != null and _menu.visible:

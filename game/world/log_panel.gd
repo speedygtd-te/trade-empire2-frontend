@@ -12,6 +12,10 @@ var _older: Button
 var _empty: Label
 var _oldest_seq := 0
 var _loading := false
+## Names for route entries: structure id → name, route id → name (loaded once, when needed).
+var _names: Dictionary = {}
+var _route_names: Dictionary = {}
+var _names_loaded := false
 
 
 func setup(model: ColonyModel) -> void:
@@ -59,6 +63,7 @@ func _load_page(query: String) -> void:
 		_empty.visible = true
 		_empty.text = ErrorText.describe(answer.error, self) if answer.error != null else tr("LOG_EMPTY")
 		return
+	await _load_names(page)
 	var now := Services.clock.now_ms()
 	for entry: StructureLog.Entry in page.entries:
 		var text := describe(entry)
@@ -81,6 +86,10 @@ func _load_page(query: String) -> void:
 
 ## The sentence for one entry; "" for types the client does not know.
 func describe(entry: StructureLog.Entry) -> String:
+	# Route entries with their goods and names (the plain sentences below stay as a fallback).
+	var route_text := _route_sentence(entry) if entry.type.begins_with("route") else ""
+	if not route_text.is_empty():
+		return route_text
 	var fields := entry.fields
 	var module_name := _module_name(Wire.as_string(fields.get("moduleType")))
 	var recipe := _recipe_name(Wire.as_string(fields.get("blueprint")))
@@ -199,6 +208,94 @@ func _items(items: Array[Array]) -> String:
 		@warning_ignore("integer_division")
 		parts.append("%s %s" % [AmountFormat.units(amount / maxi(scale, 1)), _resource_name(key)])
 	return ", ".join(parts)
+
+
+## The sentence of a route entry, with the goods moved and the names of stations, transporter
+## and route (when known).
+func _route_sentence(entry: StructureLog.Entry) -> String:
+	var fields := entry.fields
+	var route := Wire.as_string(_route_names.get(Wire.as_int(fields.get("routeId"))))
+	if route.is_empty() and (entry.type == "routePaused" or entry.type == "routeDeleted"):
+		# A route that is gone has no name any more: the plain sentence.
+		return ""
+	var station := _structure_name(Wire.as_int(fields.get("stationId")))
+	var reason := Wire.as_string(fields.get("reason"))
+	match entry.type:
+		"routeArrived":
+			var text := tr("ROUTE_LOG_ARRIVED").format({"station": station,
+				"unloaded": _amounts(fields.get("unloaded")), "loaded": _amounts(fields.get("loaded"))})
+			var skipped := PackedStringArray()
+			if typeof(fields.get("skipped")) == TYPE_ARRAY:
+				var keys: Array = fields.get("skipped")
+				for key: Variant in keys:
+					skipped.append(_resource_name(Wire.as_string(key)))
+			if not skipped.is_empty():
+				text += " " + tr("ROUTE_LOG_SKIPPED").format({"items": ", ".join(skipped)})
+			return text
+		"routeDeparted":
+			var target := _structure_name(Wire.as_int(fields.get("toStationId")))
+			var fuel := _amounts(fields.get("fuel"))
+			if typeof(fields.get("fuel")) != TYPE_ARRAY or (fields.get("fuel") as Array).is_empty():
+				return tr("ROUTE_LOG_DEPARTED").format({"station": target})
+			return tr("ROUTE_LOG_DEPARTED_FUEL").format({"station": target, "fuel": fuel,
+				"payer": _structure_name(Wire.as_int(fields.get("fuelPayerId")))})
+		"routeStalled":
+			return tr("ROUTE_LOG_STALLED").format({"station": station, "reason": RouteList.code_text(reason, self)})
+		"routePaused":
+			if reason == "STATION_MOVED" or reason == "STATION_MOVING":
+				return tr("ROUTE_LOG_PAUSED_MOVED").format({"route": route})
+			return tr("ROUTE_LOG_PAUSED").format({"route": route})
+		"routeDeleted":
+			if reason == "STATION_GONE":
+				return tr("ROUTE_LOG_DELETED_STATION_GONE").format({"route": route})
+			return tr("ROUTE_LOG_DELETED").format({"route": route})
+		"routeTransfer":
+			return tr("ROUTE_LOG_TRANSFER").format({"transporter": _structure_name(Wire.as_int(fields.get("transporterId"))),
+				"delivered": _amounts(fields.get("delivered")), "taken": _amounts(fields.get("taken"))})
+		"routeFuelPaid":
+			return tr("ROUTE_LOG_FUEL_PAID").format({"transporter": _structure_name(Wire.as_int(fields.get("transporterId"))),
+				"fuel": _amounts(fields.get("fuel"))})
+	return ""
+
+
+## "50 Iron, 3 Water" from a list of LogItem rows; "nothing" when empty.
+func _amounts(value: Variant) -> String:
+	var pairs: Array[Array] = []
+	if typeof(value) == TYPE_ARRAY:
+		var rows: Array = value
+		for row: Variant in rows:
+			var item := Wire.as_dict(row)
+			pairs.append([Wire.as_string(item.get("resource")), Wire.as_int(item.get("amount"))])
+	return tr("ROUTE_NOTHING") if pairs.is_empty() else _items(pairs)
+
+
+func _structure_name(structure_id: int) -> String:
+	var known := Wire.as_string(_names.get(structure_id))
+	return known if not known.is_empty() else tr("ROUTE_UNKNOWN_STRUCTURE")
+
+
+## Looks up the names of the own structures and routes once, when a page shows route entries.
+func _load_names(page: StructureLog) -> void:
+	if _names_loaded:
+		return
+	var wanted := false
+	for entry: StructureLog.Entry in page.entries:
+		wanted = wanted or entry.type.begins_with("route")
+	if not wanted:
+		return
+	_names_loaded = true
+	var list := await FleetModel.list_structures()
+	if list.is_ok():
+		var items: Array = list.data.get("items")
+		for value: Variant in items:
+			var summary := Wire.as_dict(value)
+			_names[Wire.as_int(summary.get("structureId"))] = Wire.as_string(summary.get("name"))
+	var routes := await Services.api.get_json("/v2/routes")
+	if routes.is_ok() and typeof(routes.data.get("items")) == TYPE_ARRAY:
+		var rows: Array = routes.data.get("items")
+		for value: Variant in rows:
+			var row := Wire.as_dict(value)
+			_route_names[Wire.as_int(row.get("routeId"))] = Wire.as_string(row.get("name"))
 
 
 func _hulls(counts: Dictionary) -> String:
