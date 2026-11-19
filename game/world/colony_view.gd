@@ -6,6 +6,10 @@ extends Node3D
 ## Everything is placed relative to an origin cell (floating origin, see WorldGrid). When the
 ## camera wanders far from it, the origin moves and the scene is rebuilt around the new one.
 
+## The origin moved and the scene was rebuilt: marks placed from outside (selection, preview)
+## have to be placed again.
+signal origin_moved
+
 ## Height of a hull's floor plate: modules stand on top of it (scripts/3d/models/hulls.py).
 const HULL_FLOOR_HEIGHT := 0.06
 ## Roof height of a shut hull on a closed structure (scripts/3d/models/hulls.py).
@@ -248,6 +252,9 @@ func set_level(z: int, cut: bool) -> void:
 	var was_cutaway := cutaway()
 	level = z
 	level_cut = cut
+	# The camera rises and sinks with the level, so the active floor stays in place on screen.
+	focus.y = float(z - origin.z) if cut else 0.0
+	_update_camera()
 	_apply_cutaway(was_cutaway)
 	_rebuild_structure()
 
@@ -652,6 +659,7 @@ func _rebuild_all() -> void:
 	_underground.redraw()
 	_rebuild_structure()
 	_travel.redraw()
+	origin_moved.emit()
 
 
 func _rebuild_structure() -> void:

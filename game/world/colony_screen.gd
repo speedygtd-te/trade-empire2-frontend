@@ -161,6 +161,7 @@ func _ready() -> void:
 	_view.add_child(_stops)
 	_build_overlay()
 	_model.layout_changed.connect(_refresh)
+	_view.origin_moved.connect(_refresh)
 	_model.guests_changed.connect(_on_guests_changed)
 	_model.inventory_changed.connect(_on_inventory_changed)
 	_model.production_changed.connect(_on_production_changed)
@@ -314,12 +315,16 @@ func _build_overlay() -> void:
 	filler.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	filler.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	middle.add_child(filler)
+	var right := Ui.column(0)
+	right.size_flags_horizontal = Control.SIZE_SHRINK_END
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	middle.add_child(right)
+	right.add_child(Ui.spacer(12))
 	_levels = PanelContainer.new()
-	_levels.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_levels.visible = false
-	middle.add_child(_levels)
+	right.add_child(_levels)
 	var level_box := Ui.column(8)
-	level_box.custom_minimum_size = Vector2(176, 0)
+	level_box.custom_minimum_size = Vector2(132, 0)
 	_levels.add_child(level_box)
 	_level_up = Ui.secondary_button("LEVEL_UP")
 	_level_up.pressed.connect(_step_level.bind(1))
@@ -330,10 +335,16 @@ func _build_overlay() -> void:
 	level_box.add_child(_level_name)
 	_level_env = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_level_env.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_level_env.autowrap_mode = TextServer.AUTOWRAP_OFF
 	level_box.add_child(_level_env)
 	_level_down = Ui.secondary_button("LEVEL_DOWN")
 	_level_down.pressed.connect(_step_level.bind(-1))
 	level_box.add_child(_level_down)
+	# With a shaft selected: straight to its other end.
+	_jump = Ui.secondary_button("LEVEL_GO_UP")
+	_jump.pressed.connect(_on_jump)
+	_jump.visible = false
+	level_box.add_child(_jump)
 
 	# Bottom: tabs, palette, info, actions.
 	_bottom = PanelContainer.new()
@@ -426,11 +437,6 @@ func _build_overlay() -> void:
 	_travel.visible = false
 	_actions.add_child(_travel)
 	_actions.move_child(_travel, 0)
-	_jump = Ui.secondary_button("LEVEL_GO_UP")
-	_jump.pressed.connect(_on_jump)
-	_jump.visible = false
-	_actions.add_child(_jump)
-	_actions.move_child(_jump, 0)
 
 	_loading = CenterContainer.new()
 	_loading.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1012,7 +1018,7 @@ func _refresh_shaft(placed: StructureLayout.Module, local: Vector3i) -> void:
 	var layout := _focus.layout
 	var floors := layout.shaft_of(placed)
 	var ends := _shaft_ends(placed)
-	var lines := PackedStringArray([_info.text, tr("LEVEL_SHAFT_LINE").format({
+	var lines := PackedStringArray([_info.text.strip_edges(), tr("LEVEL_SHAFT_LINE").format({
 		"floors": floors.size(), "low": _level_text(ends.x), "high": _level_text(ends.y)})])
 	if layout.is_shaft_head(local):
 		lines.append(tr("LEVEL_SHAFT_HEAD"))

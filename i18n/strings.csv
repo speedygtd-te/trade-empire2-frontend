@@ -684,6 +684,6 @@ LEVEL_SHAFT_HEAD,The top landing of the shaft.
 LEVEL_SHAFT_REMOVES,Removing it removes the whole shaft ({floors} floors).
 LEVEL_EXTEND_SHAFT,Extend shaft
 LEVEL_REMOVE_SHAFT,Remove shaft
-LEVEL_GO_UP,Go up
-LEVEL_GO_DOWN,Go down
+LEVEL_GO_UP,Shaft top
+LEVEL_GO_DOWN,Shaft foot
 LEVEL_EMPTY,Nothing built here on this level.
