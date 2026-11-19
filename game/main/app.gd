@@ -49,14 +49,10 @@ func _show(screen: Control) -> void:
 	add_child(screen)
 
 
+## While the session is restored: the boot splash picture with "Loading…" (no visible hand-over
+## from the engine's splash).
 func _build_loading() -> Control:
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var text := Ui.label("COMMON_LOADING", AppTheme.VARIATION_MUTED)
-	text.autowrap_mode = TextServer.AUTOWRAP_OFF
-	text.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	center.add_child(text)
-	return center
+	return SplashScreen.new("COMMON_LOADING")
 
 
 ## A stored session exists but the backend did not answer. The session is kept.

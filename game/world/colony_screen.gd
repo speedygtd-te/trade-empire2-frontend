@@ -137,7 +137,7 @@ var _recipes: RecipePanel
 ## Opens the staffing of the inspected module's type (in the structure details).
 var _staff: Button
 var _actions: HFlowContainer
-var _loading: Control
+var _loading: SplashScreen
 ## The bottom panel: notices, the palette, the inventory, the recipes, a detached structure's tabs.
 var _bottom: PanelContainer
 var _rows: VBoxContainer
@@ -633,11 +633,8 @@ func _build_overlay() -> void:
 	_structure_nav.visible = false
 	frame.add_child(_structure_nav)
 
-	_loading = CenterContainer.new()
-	_loading.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var loading_text := Ui.label("COLONY_LOADING", AppTheme.VARIATION_MUTED)
-	loading_text.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_loading.add_child(loading_text)
+	# The loading view is the boot splash picture, so the start hands over without a jump.
+	_loading = SplashScreen.new("COLONY_LOADING")
 	add_child(_loading)
 	# Deferred: while the bars lay out, their new heights are not final yet.
 	for bar: Control in [_top, _bottom, _structure_nav]:
@@ -749,10 +746,9 @@ func _update_sun() -> void:
 
 
 func _on_load_failed(error: ApiError) -> void:
-	for child: Node in _loading.get_children():
-		child.queue_free()
+	_loading.clear_content()
+	_loading.set_text("")
 	var column := Ui.column(24)
-	column.custom_minimum_size = Vector2(560, 0)
 	column.add_child(Ui.label("COLONY_LOAD_FAILED", AppTheme.VARIATION_HEADING))
 	var detail := Ui.dynamic_label(AppTheme.VARIATION_ERROR)
 	detail.text = ErrorText.describe(error, self)
@@ -760,16 +756,13 @@ func _on_load_failed(error: ApiError) -> void:
 	var retry := Ui.primary_button("COMMON_RETRY")
 	retry.pressed.connect(_on_retry_load)
 	column.add_child(retry)
-	_loading.add_child(column)
+	_loading.show_content(column)
 	_loading.visible = true
 
 
 func _on_retry_load() -> void:
-	for child: Node in _loading.get_children():
-		child.queue_free()
-	var text := Ui.label("COLONY_LOADING", AppTheme.VARIATION_MUTED)
-	text.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_loading.add_child(text)
+	_loading.clear_content()
+	_loading.set_text("COLONY_LOADING")
 	_model.load_structure(start_structure)
 
 
