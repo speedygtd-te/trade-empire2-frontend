@@ -152,13 +152,17 @@ func show_body(map: SystemMap, body_id: String, structures: PackedStringArray, i
 	_fit_height.call_deferred()
 
 
-## The body's physics (draft.30, when sent): mass, density and escape velocity; distance and
-## starlight; the temperature from starlight alone against the surface's (the greenhouse effect).
-## Then whether it lies in the star's habitable zone or beyond its frost line (when the star
-## sends them; also without physics).
+## Whether the body lies in the star's habitable zone or beyond its frost line (when the star
+## sends them; also without physics), then its physics (draft.30, when sent): mass, density and
+## escape velocity; starlight (a moon: with its distance); the temperature from starlight alone
+## against the surface's above (the greenhouse effect).
 func _physics_lines(map: SystemMap, body: SystemMap.Body, surface_c: float) -> void:
 	var physics := body.physics
 	var distance := map.star_distance_au(body.id)
+	if map.star.in_habitable_zone(distance):
+		_line(tr("MAP_IN_HABITABLE_ZONE"), AppTheme.COLOR_OK)
+	elif map.star.beyond_frost_line(distance):
+		_line(tr("MAP_BEYOND_FROST_LINE"), AppTheme.COLOR_MUTED)
 	if physics != null:
 		_line(tr("MAP_PHYSICS_MASS").format({"mass": BodyPhysics.figure(physics.mass_earth),
 			"density": BodyPhysics.figure(physics.density), "escape": BodyPhysics.figure(physics.escape_velocity)}))
@@ -166,12 +170,8 @@ func _physics_lines(map: SystemMap, body: SystemMap.Body, surface_c: float) -> v
 		_line(tr(light_key).format({"au": BodyPhysics.figure(distance), "flux": BodyPhysics.figure(physics.flux)}))
 		var warming := roundi(physics.warming(surface_c))
 		var temperatures := {"equilibrium": BodyPhysics.celsius(physics.equilibrium_c),
-			"surface": BodyPhysics.celsius(surface_c), "change": BodyPhysics.celsius_change(warming)}
+			"change": BodyPhysics.celsius_change(warming)}
 		_line(tr("MAP_PHYSICS_WARMER" if warming >= 1 else "MAP_PHYSICS_NO_WARMING").format(temperatures))
-	if map.star.in_habitable_zone(distance):
-		_line(tr("MAP_IN_HABITABLE_ZONE"), AppTheme.COLOR_OK)
-	elif map.star.beyond_frost_line(distance):
-		_line(tr("MAP_BEYOND_FROST_LINE"), AppTheme.COLOR_MUTED)
 
 
 ## The list takes the room its lines need, up to MAX_LIST_HEIGHT; beyond that it scrolls.

@@ -13,7 +13,7 @@ extends Control
 ##
 ## When the star sends them (draft.30), its habitable zone lies under the orbits as a soft
 ## emerald band and its frost line as a thin dashed blue ring, both on the orbits' scale
-## (SystemMap.ring_of_au), and its catalog designation stands small under the star.
+## (SystemMap.ring_of_au), and its catalog designation stands small in the lower right corner.
 
 ## A body was tapped; "" for a tap beside every body.
 signal body_tapped(body_id: String)
@@ -31,6 +31,8 @@ const MAX_MOON_STEP_PX := 72.0
 const LABEL_FONT_SIZE := 22
 ## Smaller, muted texts: the star's catalog designation and the zones' names.
 const NOTE_FONT_SIZE := 20
+## Distance of the catalog designation from the free area's lower right corner.
+const CATALOG_INSET := 20.0
 ## The habitable zone: fill and edges (emerald: where life is fine); the frost line (blue as ice;
 ## depiction, not a UI meaning) with its dash length (px).
 const HABITABLE_FILL := Color(0.204, 0.827, 0.600, 0.10)
@@ -343,12 +345,28 @@ func _draw_zones(star_at: Vector2) -> void:
 		_draw_dashed_ring(star_at, frost, FROST_COLOR, 1.5)
 
 
+## A dashed circle; close up only the part that can be on screen is drawn, so the dashes keep
+## their length.
 func _draw_dashed_ring(at: Vector2, radius: float, color: Color, width: float) -> void:
-	var dashes := clampi(int(radius * TAU / (FROST_DASH_PX * 2.0)), 12, FROST_MAX_DASHES)
-	var step := TAU / dashes
-	for index: int in dashes:
-		var start := index * step
-		draw_arc(at, radius, start, start + step * 0.5, 6, color, width, true)
+	var area := _area()
+	var middle := area.get_center() - at
+	var half_diagonal := area.size.length() * 0.5
+	var from := 0.0
+	var span := TAU
+	if middle.length() > half_diagonal:
+		if radius < middle.length() - half_diagonal or radius > middle.length() + half_diagonal:
+			return
+		var half := asin(clampf(half_diagonal / middle.length(), 0.0, 1.0))
+		from = middle.angle() - half
+		span = half * 2.0
+	var step := FROST_DASH_PX * 2.0 / radius
+	var dashes := mini(ceili(span / step), FROST_MAX_DASHES)
+	step = maxf(step, span / FROST_MAX_DASHES)
+	# Dashes start on a fixed grid round the circle, so they do not crawl while panning.
+	var start := floorf(from / step) * step
+	for index: int in dashes + 1:
+		var angle := start + index * step
+		draw_arc(at, radius, angle, angle + step * 0.5, 6, color, width, true)
 
 
 ## An asteroid belt: a band of dots that turns with the belt's body.
@@ -392,8 +410,8 @@ func _drawn_radius(body: SystemMap.Body) -> float:
 
 ## Names next to the bodies, below or else above. The selected body's name always shows; the
 ## others keep off the star, every disc and each other, placed by importance: home and marked
-## bodies, planets and belts, the star's catalog designation, moons, the zones' names. A name
-## that fits nowhere is left out.
+## bodies, planets and belts, moons, the zones' names. A name that fits nowhere is left out. The
+## star's catalog designation keeps its corner; the others keep off it.
 func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
 	var obstacles: Array[Rect2] = []
 	var star_radius := maxf(SystemMap.STAR_RADIUS * _zoom, 10.0)
@@ -407,9 +425,11 @@ func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
 	var texts := PackedStringArray()
 	var colors: Array[Color] = []
 	var sizes := PackedInt32Array()
+	var catalog := _catalog_box()
+	if catalog.has_area():
+		_draw_text(map.star.catalog, AppTheme.COLOR_MUTED, NOTE_FONT_SIZE, catalog)
+		obstacles.append(catalog)
 	for rank: int in 4:
-		if rank == 3:
-			_add_catalog_label(star_at, star_radius, candidates, texts, colors, sizes)
 		for entry: Array in entries:
 			var body: SystemMap.Body = entry[0]
 			if _label_rank(body) != rank:
@@ -431,19 +451,15 @@ func _draw_labels(entries: Array[Array], star_at: Vector2) -> void:
 			_draw_text(texts[index], colors[index], sizes[index], candidates[index][placed[index]] as Rect2)
 
 
-## The star's catalog designation, small and muted, below the star or else above it.
-func _add_catalog_label(star_at: Vector2, star_radius: float, candidates: Array[Array], texts: PackedStringArray,
-		colors: Array[Color], sizes: PackedInt32Array) -> void:
+## Where the star's catalog designation stands: small in the lower right corner of the free area,
+## like a legend, at every zoom; an empty box without one.
+func _catalog_box() -> Rect2:
 	var text := map.star.catalog
 	if text.is_empty():
-		return
+		return Rect2()
 	var box_size := _text_box_size(text, NOTE_FONT_SIZE)
-	var gap := star_radius + 6.0
-	candidates.append([Rect2(star_at.x - box_size.x * 0.5, star_at.y + gap, box_size.x, box_size.y),
-		Rect2(star_at.x - box_size.x * 0.5, star_at.y - gap - box_size.y, box_size.x, box_size.y)])
-	texts.append(text)
-	colors.append(AppTheme.COLOR_MUTED)
-	sizes.append(NOTE_FONT_SIZE)
+	var corner := _area().end - Vector2(CATALOG_INSET, CATALOG_INSET)
+	return Rect2(corner - box_size, box_size)
 
 
 ## The names of the habitable zone (in its band) and the frost line (on its ring): at the top of
