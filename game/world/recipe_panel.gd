@@ -26,8 +26,11 @@ func _ready() -> void:
 
 
 ## Fills the list for a module type; `current` is the recipe set now, `usable` the keys the
-## player may use (basis or researched), `atmosphere` the gases of this body's air (share 0..1).
-func show_recipes(module_type: String, current: String, usable: Dictionary, atmosphere: Dictionary = {}) -> void:
+## player may use (basis or researched), `atmosphere` the gases of this body's air (share 0..1),
+## `yields` what each extracting recipe would yield at the module's place (recipe key →
+## ExtractionYield.Estimate; empty while the ground is unknown).
+func show_recipes(module_type: String, current: String, usable: Dictionary, atmosphere: Dictionary = {},
+		yields: Dictionary = {}) -> void:
 	for child: Node in _list.get_children():
 		child.queue_free()
 	var definitions := Services.definitions
@@ -38,6 +41,11 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 		var allowed := usable.has(recipe.key)
 		var text := "%s\n%s" % [recipe.display_name, describe(recipe)]
 		var needs := condition(recipe, atmosphere)
+		var here := yields.get(recipe.key) as ExtractionYield.Estimate
+		if here != null and here.works():
+			needs = tr("RECIPE_YIELD_HERE").format({"yield": yield_text(here)})
+		elif here != null:
+			needs += "\n" + tr("RECIPE_YIELD_NONE")
 		if not needs.is_empty():
 			text += "\n" + needs
 		if not allowed:
@@ -65,6 +73,27 @@ static func condition(recipe: GameDefinitions.BlueprintDef, atmosphere: Dictiona
 		return TranslationServer.translate("RECIPE_NEEDS_DEPOSIT").format({
 			"resource": Services.definitions.resource_name(recipe.required_tile_resource)})
 	return ""
+
+
+## "Iron 40 % → 40/h" or, for a gas, "Oxygen (21 % of the air) → 29/h".
+static func yield_text(estimate: ExtractionYield.Estimate) -> String:
+	var definitions := Services.definitions
+	var name := definitions.resource_name(estimate.resource)
+	if name.is_empty():
+		name = TranslationServer.translate("STORE_UNKNOWN_ITEM")
+	var values := {"resource": name, "richness": estimate.richness, "rate": rate_text(estimate.rate)}
+	if estimate.gas_share >= 0.0:
+		values["share"] = roundi(estimate.gas_share * 100.0)
+		return TranslationServer.translate("COLONY_YIELD_GAS").format(values)
+	return TranslationServer.translate("COLONY_YIELD_TILE").format(values)
+
+
+## A rate in micro-units per hour as "40/h", "0.5/h" or "0/h".
+static func rate_text(micro_per_hour: int) -> String:
+	var definitions := Services.definitions
+	var scale := definitions.fixed_point_scale if definitions.fixed_point_scale > 0 else 1000000
+	var text := AmountFormat.rate(micro_per_hour, scale).trim_prefix("+")
+	return text if not text.is_empty() else "0/h"
 
 
 ## "2 Iron → 1 Iron Plate per hour" style text of a recipe.

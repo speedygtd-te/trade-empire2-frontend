@@ -4,7 +4,8 @@ extends RefCounted
 ##
 ## The surface is far too large to load at once; the view asks for the blocks around the
 ## camera. Blocks are aligned to multiples of BLOCK, which the wrap width of a body always is
-## (the contract promises `sizeX` to be a multiple of 16), so no block crosses the seam.
+## (the contract promises `sizeX` to be a multiple of 16), so no block crosses the seam. A
+## smaller block size (a divisor of 16, e.g. for the deposits of a few cells) keeps that true.
 
 const BLOCK := 16
 
@@ -22,17 +23,20 @@ class Request:
 
 ## Body width in cells for wrapping in x; 0 = no wrapping.
 var size_x := 0
+## Edge length of a block in cells (BLOCK unless chosen smaller).
+var block_size := BLOCK
 ## Block → SurfacePatch (null while requested).
 var _blocks: Dictionary = {}
 
 
-func _init(wrap_width: int = 0) -> void:
+func _init(wrap_width: int = 0, block_cells: int = BLOCK) -> void:
 	size_x = wrap_width
+	block_size = maxi(1, block_cells)
 
 
 ## The block containing an absolute cell.
 func block_of(x: int, y: int) -> Vector2i:
-	return Vector2i(floori(float(WorldGrid.wrap_x(x, size_x)) / BLOCK), floori(float(y) / BLOCK))
+	return Vector2i(floori(float(WorldGrid.wrap_x(x, size_x)) / block_size), floori(float(y) / block_size))
 
 
 ## Requests for every block within `radius` blocks of the cell that is neither loaded nor
@@ -46,7 +50,7 @@ func missing_around(x: int, y: int, radius: int) -> Array[Request]:
 			var bx := centre.x + step
 			if size_x > 0:
 				@warning_ignore("integer_division")
-				bx = posmod(bx, size_x / BLOCK)
+				bx = posmod(bx, size_x / block_size)
 			var block := Vector2i(bx, by)
 			if _blocks.has(block):
 				current = null
@@ -54,11 +58,11 @@ func missing_around(x: int, y: int, radius: int) -> Array[Request]:
 			_blocks[block] = null
 			if current == null or block.x != current.blocks[current.blocks.size() - 1].x + 1:
 				current = Request.new()
-				current.x0 = block.x * BLOCK
-				current.y0 = block.y * BLOCK
-				current.y1 = current.y0 + BLOCK - 1
+				current.x0 = block.x * block_size
+				current.y0 = block.y * block_size
+				current.y1 = current.y0 + block_size - 1
 				requests.append(current)
-			current.x1 = block.x * BLOCK + BLOCK - 1
+			current.x1 = block.x * block_size + block_size - 1
 			current.blocks.append(block)
 	return requests
 

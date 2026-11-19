@@ -15,6 +15,9 @@ class Cell:
 	var elevation: int = 0
 	## Moisture 0..1000.
 	var moisture: int = 0
+	## Deposits of the cell (`d`): resource key → richness 5..100 as the stream sends it (biome
+	## of this level, no depth bonus). Only filled when the patch was asked for with deposits.
+	var deposits: Dictionary = {}
 
 
 var body_id: String = ""
@@ -25,6 +28,9 @@ var y0: int = 0
 var x1: int = -1
 var y1: int = -1
 var z: int = 0
+## Whether the cells carry their deposits (`includeDeposits`); an empty `deposits` then means
+## the ground holds nothing.
+var include_deposits := false
 ## True when the stream ended properly and delivered every announced row.
 var complete := false
 
@@ -45,6 +51,7 @@ static func from_stream(stream: Ndjson) -> SurfacePatch:
 	patch.x1 = Wire.as_int(header.get("x1"), -1)
 	patch.y1 = Wire.as_int(header.get("y1"), -1)
 	patch.z = Wire.as_int(header.get("z"))
+	patch.include_deposits = header.get("includeDeposits") == true
 	var announced := Wire.as_int(header.get("rows"))
 	var rows := 0
 	for index: int in range(1, stream.objects.size()):
@@ -88,4 +95,12 @@ func _read_row(line: Dictionary) -> void:
 		entry.vegetation = Wire.as_int(data.get("g"))
 		entry.elevation = Wire.as_int(data.get("e"))
 		entry.moisture = Wire.as_int(data.get("m"))
+		var found: Variant = data.get("d")
+		if typeof(found) == TYPE_ARRAY:
+			var list: Array = found
+			for item: Variant in list:
+				var deposit := Wire.as_dict(item)
+				var resource := Wire.as_string(deposit.get("r"))
+				if not resource.is_empty():
+					entry.deposits[resource] = Wire.as_int(deposit.get("R"))
 		_cells[Vector2i(x0 + offset, y)] = entry

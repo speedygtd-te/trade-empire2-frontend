@@ -106,6 +106,14 @@ func test_every_body_and_star_type_has_a_text() -> void:
 		).is_true()
 
 
+func test_every_biome_has_a_text() -> void:
+	# The inspect card names the terrain of a field from the server's biome keys.
+	for biome: String in BiomeColors.TABLE.keys():
+		assert_bool(_has_text("COLONY_BIOME_" + biome)).override_failure_message(
+			"no translation for COLONY_BIOME_" + biome
+		).is_true()
+
+
 func test_every_structure_kind_has_a_text() -> void:
 	# The fleet list builds these keys from the server's kinds (StructureKind).
 	for kind: String in ["BASE", "SHIP", "VEHICLE", "STATION"]:

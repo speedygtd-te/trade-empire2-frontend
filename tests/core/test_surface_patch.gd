@@ -27,6 +27,33 @@ func test_reads_header_and_cells_at_absolute_positions() -> void:
 	assert_bool(patch.complete).is_true()
 
 
+func test_without_deposits_the_cells_have_none() -> void:
+	var patch := SurfacePatch.from_stream(Ndjson.parse(STREAM))
+
+	assert_bool(patch.include_deposits).is_false()
+	assert_bool(patch.cell(-1, 4).deposits.is_empty()).is_true()
+
+
+func test_reads_deposits_with_their_richness() -> void:
+	# Shape of a real answer of the live server (includeDeposits=true, z=-3), shortened.
+	var stream := (
+		'{"rev":3383,"gameTime":69573882,"bodyId":"b","bodyClass":"EARTH_LIKE","x0":0,"y0":0,"x1":1,"y1":0,"z":-3,'
+		+ '"includeDeposits":true,"deepThreshold":-6,"rows":1}\n'
+		+ '{"y":0,"cells":[{"b":"ROCK_LAYER","v":3,"g":0,"e":578,"m":317,"d":[{"r":"IRON","R":100},{"r":"COPPER","R":54}]},'
+		+ '{"b":"ROCK_LAYER","v":1,"g":0,"e":577,"m":318}]}\n'
+		+ '{"end":true,"rows":1}\n'
+	)
+	var patch := SurfacePatch.from_stream(Ndjson.parse(stream))
+
+	assert_bool(patch.include_deposits).is_true()
+	assert_int(patch.z).is_equal(-3)
+	assert_dict(patch.cell(0, 0).deposits).is_equal({"IRON": 100, "COPPER": 54})
+	assert_int(patch.cell(0, 0).deposits["IRON"]).is_equal(100)
+	# A cell without `d` holds nothing.
+	assert_bool(patch.cell(1, 0).deposits.is_empty()).is_true()
+	assert_bool(patch.complete).is_true()
+
+
 func test_cell_outside_the_patch_is_null() -> void:
 	var patch := SurfacePatch.from_stream(Ndjson.parse(STREAM))
 

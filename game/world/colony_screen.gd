@@ -13,9 +13,12 @@ extends Control
 ## names the structure (a tap opens StructureDetails: production, workers, log, research — over
 ## everything) and its "×" leaves it. The structure's own navigation replaces the shell's at the
 ## bottom: Inspect, Build, Inventory. Inspect: a tap on a field puts a card over it with what is
-## there and what can be done (recipe, staff, extend a shaft, two-step removal); a tap beside it
+## there, its ground (terrain, deposits at that level, the air for collectors), what an extracting
+## module yields there (ExtractionYield) and what can be done (recipe, staff, extend a shaft,
+## two-step removal); a tap beside it
 ## or on the same field again clears it. Build: the palette at the bottom; building is two taps —
-## choose the field, then confirm. Inventory: the store.
+## choose the field (an extracting module says what it would yield there), then confirm.
+## Inventory: the store.
 ##
 ## Guests (vessels docked on the home structure's dock hulls) are structures of their own: a tap
 ## on one gives its own card, entering opens only it. On the home structure a new hull on a dock
@@ -71,6 +74,10 @@ const DETAIL_PATH := "user://detail.json"
 const SUN_SECONDS := 1.0
 ## How long a notice stays (seconds).
 const NOTICE_SECONDS := 12.0
+## How many recipes the yield line of an extracting module names at most when none is set.
+const YIELD_LINE_MAX := 3
+## Deposits below this richness (percent) count as traces: the inspect card only counts them.
+const DEPOSIT_TRACE := 10
 
 ## The structure to show when the screen opens; 0 for the home colony. Set before adding it.
 var start_structure := 0
@@ -101,6 +108,8 @@ var _inspect: WorldCard
 ## The structure's navigation at the bottom while one is open.
 var _structure_nav: BottomNav
 var _info: Label
+## The ground of the inspected field: terrain, deposits, the air for collectors (muted, below _info).
+var _ground: Label
 var _status: Label
 var _primary: Button
 var _secondary: Button
@@ -196,6 +205,7 @@ func _ready() -> void:
 	_model.guests_changed.connect(_on_guests_changed)
 	_model.inventory_changed.connect(_on_inventory_changed)
 	_model.production_changed.connect(_on_production_changed)
+	_model.deposits_loaded.connect(_refresh)
 	_model.ready_to_show.connect(_on_ready_to_show)
 	_model.load_failed.connect(_on_load_failed)
 	Services.events.event_received.connect(_on_travel_event)
@@ -526,6 +536,9 @@ func _build_overlay() -> void:
 	# Info, status and actions: in the bottom while building, on the inspect card in Inspect.
 	_info = Ui.dynamic_label()
 	_rows.add_child(_info)
+	_ground = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_ground.visible = false
+	_rows.add_child(_ground)
 	_status = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_rows.add_child(_status)
 	_actions = HFlowContainer.new()
@@ -596,7 +609,16 @@ func _place_cards() -> void:
 	if _card.visible:
 		_card.place(_view.roof_point(_focus) / _scale(), _free_rect())
 	if _inspect.visible and _cell != null:
-		_inspect.place(_view.cell_point(_target() as Vector3i, _focus.is_guest()) / _scale(), _free_rect())
+		var anchor := _view.cell_point(_target() as Vector3i, _focus.is_guest()) / _scale()
+		var room := _free_rect()
+		_inspect.place(anchor, room)
+		# The level selector stands over the colony at the right edge: a card that would slide
+		# under it keeps to the room left of it.
+		if _levels.visible:
+			var selector := Rect2(_levels.global_position - global_position, _levels.size)
+			if _inspect.get_rect().intersects(selector):
+				room.size.x = maxf(selector.position.x - room.position.x, float(AppTheme.TOUCH_MIN) * 4.0)
+				_inspect.place(anchor, room)
 
 
 # --- data -----------------------------------------------------------------------------------
@@ -787,7 +809,7 @@ func _move_details(on_card: bool) -> void:
 	var target: Control = _inspect.content() if on_card else _rows
 	if _info.get_parent() == target:
 		return
-	for node: Control in [_info, _status, _actions]:
+	for node: Control in [_info, _ground, _status, _actions]:
 		node.reparent(target, false)
 
 
@@ -1073,6 +1095,7 @@ func _refresh() -> void:
 		return
 	_staff.visible = false
 	_jump.visible = false
+	_ground.visible = false
 	_update_levels()
 	if not _opened:
 		_refresh_closed()
@@ -1125,6 +1148,12 @@ func _refresh_view() -> void:
 	var hull_type := layout.hull_at(local)
 	var placed := layout.module_at(local)
 	var definitions := Services.definitions
+	# Every field shows its ground: terrain and deposits at this level; collectors also the air.
+	var ground_lines := PackedStringArray([_ground_text(target)])
+	if placed != null and _uses_air(placed.module_type):
+		ground_lines.append(_air_text())
+	_ground.text = "\n".join(ground_lines).strip_edges()
+	_ground.visible = not _ground.text.is_empty()
 	if hull_type.is_empty():
 		_info.text = tr("COLONY_FREE_GROUND") if target.z == 0 else tr("LEVEL_EMPTY")
 		_primary.visible = false
@@ -1153,6 +1182,10 @@ func _refresh_view() -> void:
 		var recipe_line := _recipe_line(placed)
 		if not recipe_line.is_empty():
 			_info.text += "\n" + recipe_line
+		var yield_line := _yield_text(placed.module_type, _absolute_cells(placed),
+			layout.to_absolute(placed.origin).z, placed.blueprint, true)
+		if not yield_line.is_empty():
+			_info.text += "\n" + yield_line
 		if placed.is_disabled():
 			_info.text += "\n" + tr("COLONY_MODULE_DISABLED")
 	_primary.visible = true
@@ -1217,6 +1250,155 @@ func _recipe_line(placed: StructureLayout.Module) -> String:
 	return tr("RECIPE_CURRENT").format({"name": recipe.display_name, "flows": RecipePanel.describe(recipe)})
 
 
+## Terrain and deposits (richness at the field's level, best first) of an absolute cell; while
+## they load or after a failure a line that says so. "" on a body without a grid.
+func _ground_text(cell: Vector3i) -> String:
+	if not _model.has_grid:
+		return ""
+	var ground := _model.ground_cell(cell)
+	if ground == null:
+		return tr("COLONY_GROUND_FAILED") if _model.deposits_failed else tr("COLONY_GROUND_LOADING")
+	var lines := PackedStringArray()
+	var biome_key := "COLONY_BIOME_" + ground.biome
+	var biome := tr(biome_key)
+	if not ground.biome.is_empty() and biome != biome_key:
+		lines.append(tr("COLONY_GROUND_TERRAIN").format({"biome": biome}))
+	var found: Array[Array] = []
+	for resource: String in ground.deposits.keys():
+		var richness := ExtractionYield.tile_richness(ground.deposits, resource, cell.z)
+		if richness > 0:
+			found.append([_resource_name(resource), richness])
+	if found.is_empty():
+		lines.append(tr("COLONY_GROUND_NO_DEPOSITS"))
+	else:
+		found.sort_custom(func(a: Array, b: Array) -> bool:
+			var name_a: String = a[0]
+			var name_b: String = b[0]
+			return a[1] > b[1] if a[1] != b[1] else name_a < name_b)
+		# Traces (below DEPOSIT_TRACE) only as a count, so the card stays short.
+		var parts := PackedStringArray()
+		var traces := 0
+		for entry: Array in found:
+			var richness: int = entry[1]
+			if richness < DEPOSIT_TRACE and not parts.is_empty():
+				traces += 1
+			else:
+				parts.append(tr("COLONY_DEPOSIT").format({"resource": entry[0], "richness": richness}))
+		if traces > 0:
+			parts.append(tr("COLONY_GROUND_TRACES").format({"count": traces, "limit": DEPOSIT_TRACE}))
+		lines.append(tr("COLONY_GROUND_DEPOSITS").format({"deposits": ", ".join(parts)}))
+	return "\n".join(lines)
+
+
+## The gases of this body's air with their shares, largest first.
+func _air_text() -> String:
+	var gases: Array[Array] = []
+	for gas: Variant in _model.atmosphere.keys():
+		var share: Variant = _model.atmosphere.get(gas)
+		if typeof(share) == TYPE_FLOAT:
+			var fraction: float = share
+			if fraction > 0.0:
+				gases.append([_resource_name(str(gas)), fraction])
+	if gases.is_empty():
+		return tr("COLONY_AIR_NONE")
+	gases.sort_custom(func(a: Array, b: Array) -> bool: return a[1] > b[1])
+	var parts := PackedStringArray()
+	for entry: Array in gases:
+		var fraction: float = entry[1]
+		parts.append(tr("COLONY_GAS").format({"gas": entry[0], "share": _share_text(fraction)}))
+	return tr("COLONY_AIR").format({"gases": ", ".join(parts)})
+
+
+## A share 0..1 as whole percent; below 1 % with one decimal.
+func _share_text(fraction: float) -> String:
+	var percent := fraction * 100.0
+	return String.num(percent, 1) if percent < 1.0 else str(roundi(percent))
+
+
+## Whether some recipe of a module type collects a gas from the air.
+func _uses_air(module_type: String) -> bool:
+	for recipe: GameDefinitions.BlueprintDef in Services.definitions.blueprints_for(module_type):
+		if not recipe.required_atmosphere_gas.is_empty():
+			return true
+	return false
+
+
+func _resource_name(key: String) -> String:
+	var name := Services.definitions.resource_name(key)
+	return name if not name.is_empty() else tr("STORE_UNKNOWN_ITEM")
+
+
+## Absolute cells of a module's footprint in the structure in focus.
+func _absolute_cells(placed: StructureLayout.Module) -> Array[Vector3i]:
+	var result: Array[Vector3i] = []
+	for cell: Vector3i in placed.cells():
+		result.append(_focus.layout.to_absolute(cell))
+	return result
+
+
+## The deposits under absolute cells, one dictionary per cell; empty while one of them loads.
+func _deposits_under(cells: Array[Vector3i]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for cell: Vector3i in cells:
+		var ground := _model.ground_cell(cell)
+		if ground == null:
+			var none: Array[Dictionary] = []
+			return none
+		result.append(ground.deposits)
+	return result
+
+
+## What an extracting module type yields over `cells` (absolute footprint) with its lowest floor at
+## level `z`: for the recipe `blueprint`, or without one the best recipes the player may run. A
+## standing module (`built`) also gets what the rate solution says it yields now. "" for a module
+## that extracts nothing, or while the ground loads (the ground line says so).
+func _yield_text(module_type: String, cells: Array[Vector3i], z: int, blueprint: String, built: bool) -> String:
+	var definitions := Services.definitions
+	if not ExtractionYield.extracts(definitions, module_type):
+		return ""
+	var deposits := _deposits_under(cells)
+	if deposits.is_empty():
+		return ""
+	var module_def := definitions.module(module_type)
+	var chosen: Array[ExtractionYield.Estimate] = []
+	var recipe: GameDefinitions.BlueprintDef = definitions.blueprint(blueprint) if not blueprint.is_empty() else null
+	if ExtractionYield.is_extraction(recipe):
+		chosen.append(ExtractionYield.estimate(recipe, module_def, z, deposits, _model.atmosphere, _model.atmosphere_density))
+	else:
+		for found: ExtractionYield.Estimate in ExtractionYield.estimates(definitions, module_type, z, deposits,
+				_model.atmosphere, _model.atmosphere_density, _focus.usable_blueprints):
+			if found.works() and chosen.size() < YIELD_LINE_MAX:
+				chosen.append(found)
+	var parts := PackedStringArray()
+	for found: ExtractionYield.Estimate in chosen:
+		if found.works():
+			parts.append(RecipePanel.yield_text(found))
+	if parts.is_empty():
+		return tr("COLONY_YIELD_NOTHING")
+	if built and recipe != null and chosen.size() == 1:
+		var bucket := ExtractionYield.find_bucket(_focus.buckets, module_type, blueprint)
+		if bucket != null:
+			var now := RecipePanel.rate_text(bucket.effective(chosen[0].resource))
+			var key := "COLONY_YIELD_NOW_SHARED" if bucket.modules > 1 else "COLONY_YIELD_NOW"
+			return tr(key).format({"yield": parts[0], "rate": now, "modules": bucket.modules})
+	return tr("COLONY_YIELD_HERE").format({"yields": ", ".join(parts)})
+
+
+## What each extracting recipe of a standing module would yield at its place (recipe key →
+## ExtractionYield.Estimate); empty while the ground loads.
+func _recipe_yields(placed: StructureLayout.Module) -> Dictionary:
+	var result: Dictionary = {}
+	var deposits := _deposits_under(_absolute_cells(placed))
+	if deposits.is_empty():
+		return result
+	var definitions := Services.definitions
+	var z := _focus.layout.to_absolute(placed.origin).z
+	for found: ExtractionYield.Estimate in ExtractionYield.estimates(definitions, placed.module_type, z, deposits,
+			_model.atmosphere, _model.atmosphere_density):
+		result[found.blueprint] = found
+	return result
+
+
 func _refresh_build() -> void:
 	_info.remove_theme_color_override("font_color")
 	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
@@ -1259,6 +1441,11 @@ func _refresh_build() -> void:
 	var z_line := _z_line(module_def, (_target() as Vector3i).z)
 	if not z_line.is_empty():
 		_info.text += "\n" + z_line
+	# An extracting module: what it would yield right here (the best recipes the player may run).
+	if module_def != null:
+		var yield_line := _yield_text(module_def.key, cells, (_target() as Vector3i).z, "", false)
+		if not yield_line.is_empty():
+			_info.text += "\n" + yield_line
 	_info.text += supply_line
 	_primary.disabled = _busy or verdict != BuildRules.Verdict.OK
 	if _is_multi_cell():
@@ -1398,7 +1585,8 @@ func _on_staff() -> void:
 
 func _open_recipes(placed: StructureLayout.Module) -> void:
 	_recipes.visible = true
-	_recipes.show_recipes(placed.module_type, placed.blueprint, _focus.usable_blueprints, _focus.atmosphere)
+	_recipes.show_recipes(placed.module_type, placed.blueprint, _focus.usable_blueprints, _focus.atmosphere,
+		_recipe_yields(placed))
 	_update_levels()
 	_update_layout()
 
