@@ -169,6 +169,8 @@ func _group_panel(group: BlueprintGroups.Group) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	panel.add_child(line)
+	if not group.is_none():
+		line.add_child(Ui.resource_icon(RecipePanel.main_output(Services.definitions.blueprint(group.blueprint))))
 	var texts := Ui.column(4)
 	texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(texts)

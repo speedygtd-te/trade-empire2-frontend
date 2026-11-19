@@ -240,6 +240,7 @@ func _rebuild_rules() -> void:
 			row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			row.text = _rule_line(letter, rules[index])
+			Ui.add_resource_icon(row, rules[index].resource, true)
 			row.set_chosen(letter == _selected_letter and index == _selected_index)
 			row.tapped.connect(_select_rule.bind(letter, index))
 			_rules.add_child(row)
@@ -529,6 +530,7 @@ func _fill_goods(letter: String) -> void:
 		var row := ListButton.new()
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.text = tr("ROUTE_PICK_GOODS_ROW").format({"item": entry[0], "count": AmountFormat.units(units)})
+		Ui.add_resource_icon(row, key, true)
 		row.disabled = not RoutePlan.can_add(rules, key, RoutePlan.INTO_CARGO) \
 			and not RoutePlan.can_add(rules, key, RoutePlan.INTO_SUPPLY)
 		row.tapped.connect(func() -> void:
