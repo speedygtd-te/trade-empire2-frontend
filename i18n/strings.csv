@@ -54,11 +54,11 @@ COLONY_HINT_VIEW,Tap a field to see what is there.
 COLONY_HINT_BUILD,"Choose a hull or module from the store, then tap a field."
 COLONY_HINT_PLACE,Tap a field to place {name}.
 COLONY_FREE_GROUND,Free ground.
-COLONY_CELL_HULL,{hull} without module.
-COLONY_CELL_MODULE,{module} on {hull}.
-COLONY_CELL_MODULE_BUILDING,"{module} on {hull} – under construction, ready in {duration}."
-COLONY_GROUND_TERRAIN,Terrain: {biome}
-COLONY_GROUND_DEPOSITS,Deposits: {deposits}
+COLONY_CELL_HULL,{hull} (empty)
+COLONY_CELL_MODULE,{hull} + {module}
+COLONY_CELL_MODULE_BUILDING,"{hull} + {module} · ready in {duration}"
+COLONY_GROUND_TERRAIN,{biome}
+COLONY_GROUND_DEPOSITS,{deposits}
 COLONY_GROUND_NO_DEPOSITS,No deposits in the ground here.
 COLONY_GROUND_TRACES,{count} more below {limit} %
 COLONY_GROUND_LOADING,Reading the ground…
@@ -179,7 +179,7 @@ RECIPE_NONE,No recipe (stand still)
 RECIPE_LOCKED,Needs research first.
 RECIPE_MAKES,Makes {outputs} per hour
 RECIPE_TURNS,Turns {inputs} into {outputs} per hour
-RECIPE_CURRENT,Recipe: {name} – {flows}
+RECIPE_CURRENT,Recipe: {name}
 RECIPE_IDLE_NONE,No recipe set – it stands still.
 RECIPE_IDLE_LOCATION,Cannot work at this spot (atmosphere or deposit missing).
 ERROR_NOT_BLUEPRINT_MODULE,This module does not run recipes.
@@ -1034,3 +1034,7 @@ PERF_SLOW,Frames slower than 30 fps
 PERF_DRAWS,Draw calls (avg)
 PERF_PRIMITIVES,Primitives (avg)
 PERF_MEMORY,Memory (max)
+COLONY_YIELD_SHORT,{resource}: {rate}
+COLONY_STAFF,Staff
+COLONY_STAFF_VALUE,{assigned} of {needed}
+LEVEL_BONUS,Level bonus: {change}

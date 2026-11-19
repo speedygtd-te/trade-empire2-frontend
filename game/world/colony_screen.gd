@@ -76,6 +76,8 @@ const SUN_SECONDS := 1.0
 const NOTICE_SECONDS := 12.0
 ## How many recipes the yield line of an extracting module names at most when none is set.
 const YIELD_LINE_MAX := 3
+## Below this share of the needed staff the staffing shows red (amber up to full).
+const STAFF_LOW := 0.7
 ## Deposits below this richness (percent) count as traces: the inspect card only counts them.
 const DEPOSIT_TRACE := 10
 
@@ -110,6 +112,9 @@ var _structure_nav: BottomNav
 var _info: Label
 ## The ground of the inspected field: terrain, deposits, the air for collectors (muted, below _info).
 var _ground: Label
+## The staffing of the inspected module: "Staff" and "28 of 28" coloured by how full it is.
+var _staff_row: HBoxContainer
+var _staff_value: Label
 var _status: Label
 var _primary: Button
 var _secondary: Button
@@ -536,6 +541,17 @@ func _build_overlay() -> void:
 	# Info, status and actions: in the bottom while building, on the inspect card in Inspect.
 	_info = Ui.dynamic_label()
 	_rows.add_child(_info)
+	_staff_row = HBoxContainer.new()
+	_staff_row.add_theme_constant_override("separation", 12)
+	_staff_row.visible = false
+	_rows.add_child(_staff_row)
+	var staff_caption := Ui.label("COLONY_STAFF", AppTheme.VARIATION_MUTED)
+	staff_caption.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	staff_caption.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_staff_row.add_child(staff_caption)
+	_staff_value = Ui.dynamic_label()
+	_staff_value.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_staff_row.add_child(_staff_value)
 	_ground = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_ground.visible = false
 	_rows.add_child(_ground)
@@ -809,7 +825,7 @@ func _move_details(on_card: bool) -> void:
 	var target: Control = _inspect.content() if on_card else _rows
 	if _info.get_parent() == target:
 		return
-	for node: Control in [_info, _ground, _status, _actions]:
+	for node: Control in [_info, _staff_row, _ground, _status, _actions]:
 		node.reparent(target, false)
 
 
@@ -898,10 +914,10 @@ func _z_line(module_def: GameDefinitions.ModuleDef, z: int) -> String:
 	if module_def == null or module_def.z_bonus_percent == 0:
 		return ""
 	var change := _change_text(LevelRules.z_percent(module_def, z))
-	# On the neutral level only the hint, without a "+0 %".
+	# Nothing on the neutral level; otherwise just the change.
 	if change.is_empty():
-		return tr("LEVEL_Z_HINT_HIGH" if module_def.z_prefer_high else "LEVEL_Z_HINT_DEEP")
-	return tr("LEVEL_Z_BETTER_HIGH" if module_def.z_prefer_high else "LEVEL_Z_BETTER_DEEP").format({"change": change})
+		return ""
+	return tr("LEVEL_BONUS").format({"change": change})
 
 
 ## Shows or hides the level selector and writes its level and environment.
@@ -1136,6 +1152,7 @@ func _refresh_closed() -> void:
 
 func _refresh_view() -> void:
 	_info.remove_theme_color_override("font_color")
+	_staff_row.visible = false
 	_secondary.visible = false
 	# Everything the inspect card offers on the main button removes something.
 	_primary.theme_type_variation = AppTheme.VARIATION_DANGER_BUTTON
@@ -1207,9 +1224,18 @@ func _refresh_view() -> void:
 		_secondary.text = tr("COLONY_CHOOSE_RECIPE")
 	if StructureDetails.staffable(module_def) and not placed.is_building():
 		var group := StructureDetails.group_of(_focus, placed.module_type)
-		_info.text += "\n" + tr("WORKFORCE_LINE").format({"assigned": group.assigned(),
-			"needed": group.needed(), "modules": group.modules})
+		_show_staff(group.assigned(), group.needed())
 		_staff.visible = true
+
+
+## "Staff 28 of 28": red below STAFF_LOW of the need, amber below full, emerald when full.
+func _show_staff(assigned: int, needed: int) -> void:
+	_staff_row.visible = needed > 0
+	_staff_value.text = tr("COLONY_STAFF_VALUE").format({"assigned": assigned, "needed": needed})
+	var color := AppTheme.COLOR_OK
+	if assigned < needed:
+		color = AppTheme.COLOR_DANGER if float(assigned) < float(needed) * STAFF_LOW else AppTheme.COLOR_PENDING
+	_staff_value.add_theme_color_override("font_color", color)
 
 
 ## A staircase or elevator: its floors and ends, a further floor on top, the jump to its other
@@ -1287,7 +1313,7 @@ func _ground_text(cell: Vector3i) -> String:
 				parts.append(tr("COLONY_DEPOSIT").format({"resource": entry[0], "richness": richness}))
 		if traces > 0:
 			parts.append(tr("COLONY_GROUND_TRACES").format({"count": traces, "limit": DEPOSIT_TRACE}))
-		lines.append(tr("COLONY_GROUND_DEPOSITS").format({"deposits": ", ".join(parts)}))
+		lines.append(tr("COLONY_GROUND_DEPOSITS").format({"deposits": " · ".join(parts)}))
 	return "\n".join(lines)
 
 
@@ -1307,7 +1333,7 @@ func _air_text() -> String:
 	for entry: Array in gases:
 		var fraction: float = entry[1]
 		parts.append(tr("COLONY_GAS").format({"gas": entry[0], "share": _share_text(fraction)}))
-	return tr("COLONY_AIR").format({"gases": ", ".join(parts)})
+	return tr("COLONY_AIR").format({"gases": " · ".join(parts)})
 
 
 ## A share 0..1 as whole percent; below 1 % with one decimal.
@@ -1373,16 +1399,11 @@ func _yield_text(module_type: String, cells: Array[Vector3i], z: int, blueprint:
 	var parts := PackedStringArray()
 	for found: ExtractionYield.Estimate in chosen:
 		if found.works():
-			parts.append(RecipePanel.yield_text(found))
+			parts.append(tr("COLONY_YIELD_SHORT").format({"resource": _resource_name(found.resource),
+				"rate": RecipePanel.rate_text(found.rate)}))
 	if parts.is_empty():
 		return tr("COLONY_YIELD_NOTHING")
-	if built and recipe != null and chosen.size() == 1:
-		var bucket := ExtractionYield.find_bucket(_focus.buckets, module_type, blueprint)
-		if bucket != null:
-			var now := RecipePanel.rate_text(bucket.effective(chosen[0].resource))
-			var key := "COLONY_YIELD_NOW_SHARED" if bucket.modules > 1 else "COLONY_YIELD_NOW"
-			return tr(key).format({"yield": parts[0], "rate": now, "modules": bucket.modules})
-	return tr("COLONY_YIELD_HERE").format({"yields": ", ".join(parts)})
+	return "\n".join(parts)
 
 
 ## What each extracting recipe of a standing module would yield at its place (recipe key →
