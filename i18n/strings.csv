@@ -938,3 +938,24 @@ FLEET_UNDER_WAY_NOW,It is under way right now.
 FLEET_CANNOT_TRAVEL_HERE,It cannot set off from where it is.
 FLEET_TRAVEL_LOADING,Loading the structure…
 FLEET_TRAVEL_LOAD_FAILED,The structure could not be loaded.
+PROFILE_PERFORMANCE,Performance
+PROFILE_PERFORMANCE_HINT,"Shows frame rate, frame time, draw calls and memory at the top left. While it is on, the last minute is measured and can be copied as a report."
+PROFILE_PERFORMANCE_ON,Show performance display
+PROFILE_PERFORMANCE_OFF,Hide performance display
+PROFILE_PERFORMANCE_COPY,Copy measurement
+PROFILE_PERFORMANCE_COPIED,"Copied: the last {seconds} s, ready to paste."
+PERF_BOX,"{fps} fps · {ms} ms (worst {worst})
+{draws} draws · {primitives} tris
+{memory} MB · detail {tier}"
+PERF_DEVICE,Device
+PERF_GPU,Graphics
+PERF_SCREEN,Screen
+PERF_APP,App version
+PERF_TIER,3D detail
+PERF_FRAMES,Frames measured
+PERF_FPS,Frames per second
+PERF_FRAME_TIMES,"Frame time avg / 95 % / worst"
+PERF_SLOW,Frames slower than 30 fps
+PERF_DRAWS,Draw calls (avg)
+PERF_PRIMITIVES,Primitives (avg)
+PERF_MEMORY,Memory (max)

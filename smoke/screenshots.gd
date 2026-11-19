@@ -454,6 +454,19 @@ func _capture_profile(shell: MainShell) -> void:
 	print("BACK  disarms sign-out: %s" % (not profile.is_sign_out_armed()))
 	shell.handle_back()
 	print("BACK  from Profile to Base: %s" % (shell.active_tab() == MainShell.Tab.BASE))
+	# The performance display: on for a few seconds over the colony, then the copied report.
+	var was_on := AppSettings.performance_display()
+	shell.show_tab(MainShell.Tab.PROFILE)
+	if not was_on:
+		profile._on_performance()
+	await _capture("profile_performance")
+	shell.show_tab(MainShell.Tab.BASE)
+	await get_tree().create_timer(4.0).timeout
+	await _capture("colony_performance")
+	profile._on_copy_report()
+	print("PERF  report:\n%s" % PerfOverlay.current.report())
+	if not was_on:
+		profile._on_performance()
 
 
 ## The system map: the whole system, the home planet up close and selected, a giant with its

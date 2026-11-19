@@ -63,6 +63,10 @@ func _ready() -> void:
 		_content.add_child(stack)
 		_stacks.append(stack)
 	_nav.tab_pressed.connect(_on_nav)
+	# The performance display (switched in the profile) lies over everything, the nav too.
+	var performance := PerfOverlay.new()
+	performance.tier_source = func() -> int: return _colony.detail_tier() if _colony != null else -1
+	add_child(performance)
 	_show_colony(start_structure)
 	show_tab(Tab.BASE)
 

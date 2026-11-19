@@ -34,6 +34,9 @@ var _events_value: Label
 var _detail_value: Label
 var _sign_out: Button
 var _sign_out_hint: Label
+var _performance: Button
+var _copy: Button
+var _performance_status: Label
 
 
 func _ready() -> void:
@@ -181,6 +184,19 @@ func _build() -> void:
 	_detail_value = _row(live_rows, "PROFILE_DETAIL")
 	set_detail_tier(_detail_tier)
 
+	# The performance display (PerfOverlay) and sharing its last minute.
+	var performance_rows := _panel(content, "PROFILE_PERFORMANCE")
+	performance_rows.add_child(Ui.label("PROFILE_PERFORMANCE_HINT", AppTheme.VARIATION_MUTED))
+	_performance = Ui.secondary_button("PROFILE_PERFORMANCE_ON")
+	_performance.pressed.connect(_on_performance)
+	performance_rows.add_child(_performance)
+	_copy = Ui.secondary_button("PROFILE_PERFORMANCE_COPY")
+	_copy.pressed.connect(_on_copy_report)
+	performance_rows.add_child(_copy)
+	_performance_status = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	performance_rows.add_child(_performance_status)
+	_show_performance()
+
 	_sign_out = Ui.secondary_button("HOME_SIGN_OUT")
 	_sign_out.pressed.connect(_on_sign_out)
 	content.add_child(_sign_out)
@@ -255,6 +271,29 @@ func _row(parent: Container, caption_key: String) -> Label:
 	value.clip_text = true
 	row.add_child(value)
 	return value
+
+
+# --- performance display --------------------------------------------------------------------
+
+func _on_performance() -> void:
+	AppSettings.set_performance_display(not AppSettings.performance_display())
+	_performance_status.text = ""
+	_show_performance()
+
+
+func _show_performance() -> void:
+	var on := AppSettings.performance_display()
+	_performance.text = tr("PROFILE_PERFORMANCE_OFF") if on else tr("PROFILE_PERFORMANCE_ON")
+	_copy.disabled = not on
+
+
+## Copies the report of the last minute (device, frame times, draw calls …) to the clipboard.
+func _on_copy_report() -> void:
+	var overlay := PerfOverlay.current
+	if overlay == null or not AppSettings.performance_display():
+		return
+	DisplayServer.clipboard_set(overlay.report())
+	_performance_status.text = tr("PROFILE_PERFORMANCE_COPIED").format({"seconds": roundi(overlay.measured_seconds())})
 
 
 # --- contents -------------------------------------------------------------------------------
