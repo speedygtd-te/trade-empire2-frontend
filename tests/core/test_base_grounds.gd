@@ -223,8 +223,19 @@ func test_concrete_reaches_from_the_base_to_the_fence() -> void:
 	assert_int(plan.stage).is_equal(BaseGrounds.Stage.PAVED)
 	assert_int(plan.barrier).is_equal(BaseGrounds.Barrier.FENCE)
 	assert_int(plan.paved.size()).is_equal((90 + 2 * d) * (84 + 2 * d) - 90 * 84 - 1)
-	for cell: Vector2i in plan.paved:
-		assert_int(_away(cell, 0, 0, 90, 84)).is_between(1, d)
+	assert_int(plan.outward.size()).is_equal(plan.paved.size())
+	for index: int in plan.paved.size():
+		var cell := plan.paved[index]
+		var away := _away(cell, 0, 0, 90, 84)
+		assert_int(away).is_between(1, d)
+		# Only the fence's own cells stop at its line.
+		if away < d:
+			assert_int(plan.outward[index]).is_equal(0)
+		if cell == Vector2i(-d, -d):
+			assert_int(plan.outward[index]).is_equal(BaseGrounds.WEST | BaseGrounds.SOUTH | BaseGrounds.SOUTH_WEST
+				| BaseGrounds.NORTH_WEST | BaseGrounds.SOUTH_EAST)
+		if cell == Vector2i(10, -d):
+			assert_int(plan.outward[index]).is_equal(BaseGrounds.SOUTH | BaseGrounds.SOUTH_EAST | BaseGrounds.SOUTH_WEST)
 	assert_bool(Vector2i(-2, 5) in plan.paved).is_false()
 
 

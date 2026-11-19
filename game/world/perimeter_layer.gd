@@ -68,6 +68,12 @@ var _pool_mesh: Mesh
 ## File → Mesh (null when missing), and the glow materials of the blinking models.
 var _meshes: Dictionary = {}
 var _blinkers: Array[StandardMaterial3D] = []
+## Grounds plans (BaseGrounds) computed lately, by a hash of their inputs (grounds_for).
+const PLANS_KEPT := 8
+static var _plans: Dictionary = {}
+
+## Fence, wall and concrete around large bases (BaseGroundsLayer), rebuilt with the items.
+var _grounds: BaseGroundsLayer
 var _darkness := 0.0
 var _tier := DetailGovernor.DEFAULT_TIER
 var _time := 0.0
@@ -81,6 +87,10 @@ func setup(view: ColonyView) -> void:
 	_pool_material.shader = POOL_SHADER
 	_cone_mesh = _build_cone()
 	_pool_mesh = _build_pool()
+	_grounds = BaseGroundsLayer.new()
+	_grounds.name = "Grounds"
+	add_child(_grounds)
+	_grounds.setup(view)
 
 
 ## The decorated cells around every base on screen: the loaded structure and its neighbours when
@@ -113,12 +123,55 @@ static func spots_for(model: ColonyModel) -> Array[Perimeter.Spot]:
 	return result
 
 
+## What the land around every base on screen looks like as it grows (BaseGrounds): its hulls on
+## and above the ground; other structures (and their guests) keep their cells, its own underground
+## parts do not (concrete may lie over them).
+static func grounds_for(model: ColonyModel) -> Array[BaseGrounds.Plan]:
+	var result: Array[BaseGrounds.Plan] = []
+	if model == null:
+		return result
+	var structures := model.drawn_structures()
+	for structure: ColonyModel in structures:
+		var layout := structure.layout
+		if structure.is_guest() or layout.kind != "base":
+			continue
+		var footprint: Array[Vector2i] = []
+		var docks: Array[Vector2i] = []
+		for local: Vector3i in layout.hull_cells():
+			var cell := layout.to_absolute(local)
+			if cell.z < 0:
+				continue
+			footprint.append(Vector2i(cell.x, cell.y))
+			if layout.hull_at(local) == DockRules.DOCK:
+				docks.append(Vector2i(cell.x, cell.y))
+		if BaseGrounds.stage(footprint.size()) == BaseGrounds.Stage.START:
+			continue
+		var occupied: Array[Vector2i] = []
+		for other: ColonyModel in structures:
+			if other == structure:
+				continue
+			for local: Vector3i in other.layout.hull_cells():
+				var cell := other.layout.to_absolute(local)
+				occupied.append(Vector2i(cell.x, cell.y))
+		# The layer and PropLayer both ask after every change; a large base takes a while.
+		var key := hash([footprint, occupied, docks, model.size_x])
+		var plan: BaseGrounds.Plan = _plans.get(key)
+		if plan == null:
+			if _plans.size() >= PLANS_KEPT:
+				_plans.clear()
+			plan = BaseGrounds.plan(footprint, occupied, model.size_x, docks)
+			_plans[key] = plan
+		result.append(plan)
+	return result
+
+
 ## Places every item again around the view's origin.
 func rebuild() -> void:
 	if _view == null or _view.model == null:
 		return
 	for child: Node in get_children():
-		child.queue_free()
+		if child != _grounds:
+			child.queue_free()
 	_items.clear()
 	_dishes.clear()
 	_dish_phases.clear()
@@ -151,6 +204,8 @@ func rebuild() -> void:
 		if glow != null:
 			glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(glow)
+	if _grounds != null:
+		_grounds.rebuild(grounds_for(model))
 	_apply()
 
 
@@ -162,6 +217,8 @@ func set_darkness(level: float) -> void:
 
 func apply_detail(tier: DetailGovernor.Tier) -> void:
 	_tier = tier
+	if _grounds != null:
+		_grounds.apply_detail(tier)
 	_apply()
 
 

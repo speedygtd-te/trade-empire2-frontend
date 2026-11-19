@@ -49,7 +49,14 @@ const NORTH := 1
 const EAST := 2
 const SOUTH := 4
 const WEST := 8
+## Further bits of Plan.outward: the diagonal neighbours.
+const NORTH_EAST := 16
+const SOUTH_EAST := 32
+const SOUTH_WEST := 64
+const NORTH_WEST := 128
 const _STEPS := {NORTH: Vector2i(0, 1), EAST: Vector2i(1, 0), SOUTH: Vector2i(0, -1), WEST: Vector2i(-1, 0)}
+const _DIAGONALS := {NORTH_EAST: Vector2i(1, 1), SOUTH_EAST: Vector2i(1, -1), SOUTH_WEST: Vector2i(-1, -1),
+	NORTH_WEST: Vector2i(-1, 1)}
 
 
 ## One cell of the fence line.
@@ -76,6 +83,10 @@ class Plan:
 	var posts: Array[Post] = []
 	## Concrete cells between the footprint and the fence, fence included (empty below PAVED_FROM).
 	var paved: Array[Vector2i] = []
+	## Per paved cell, the neighbours (NORTH … NORTH_WEST) that lie in the open land beyond the
+	## fence: the concrete of a fence cell stops at the fence's line on those sides. 0 for every
+	## other cell, the gaps included (the concrete runs on out through them).
+	var outward: Array[int] = []
 
 
 ## The stage of a base with this many hulls on and above the ground.
@@ -235,8 +246,18 @@ static func plan(footprint: Array[Vector2i], occupied: Array[Vector2i], size_x: 
 				if own.has(at) or outside.has(at):
 					continue
 				var key := _key(at, size_x)
-				if not blocked.has(key):
-					result.paved.append(key)
+				if blocked.has(key):
+					continue
+				result.paved.append(key)
+				var sides := 0
+				if line.has(at) and line[at] == false:
+					for bit: int in _STEPS.keys():
+						if outside.has(at + (_STEPS[bit] as Vector2i)):
+							sides |= bit
+					for bit: int in _DIAGONALS.keys():
+						if outside.has(at + (_DIAGONALS[bit] as Vector2i)):
+							sides |= bit
+				result.outward.append(sides)
 	return result
 
 
