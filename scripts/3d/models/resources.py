@@ -592,16 +592,18 @@ def food(name):
 
 
 def protein(name):
-    """Protein: a stack of vacuum packs with white labels and a tub with a lid beside it."""
+    """Protein: a stack of pillow-shaped vacuum packs with red labels, and a tub with a red lid
+    beside it."""
     model = kit.Builder(name, wear=GOODS)
-    for index, (z, turn) in enumerate(((0.0, 0.0), (0.075, 0.12), (0.15, -0.08))):
-        with model.placed((-0.06, 0.02, z), turn=turn):
-            model.box((0, 0, 0.035), (0.30, 0.20, 0.07), "protein")
-            model.box((0, 0, 0.035), (0.31, 0.12, 0.05), "protein")
-            model.plate((0.0, -0.1006, 0.035), (0.14, 0.04), "-y", "white")
-    model.revolve((0.15, -0.10, 0.0), [(0.0, 0.0), (0.075, 0.0), (0.085, 0.20), (0.0, 0.20)], "white", segments=12)
-    model.cylinder((0.15, -0.10, 0.20), (0.15, -0.10, 0.235), 0.09, "protein", segments=12)
-    model.cylinder((0.15, -0.10, 0.07), (0.15, -0.10, 0.13), 0.082, "protein", segments=12)
+    for index, (z, turn) in enumerate(((0.0, 0.0), (0.06, 0.12), (0.12, -0.08))):
+        with model.placed((-0.08, -0.04, z), turn=turn):
+            model.lump((0, 0, 0.0), (0.28, 0.20, 0.12), "protein", seed=130 + index, rough=0.04, detail=2,
+                       smooth=70.0)
+            model.box((0.0, -0.08, 0.03), (0.10, 0.03, 0.02), "red")
+    x, y = 0.16, 0.12
+    model.revolve((x, y, 0.0), [(0.0, 0.0), (0.075, 0.0), (0.085, 0.22), (0.0, 0.22)], "white", segments=12)
+    model.cylinder((x, y, 0.22), (x, y, 0.255), 0.09, "red", segments=12)
+    model.cylinder((x, y, 0.08), (x, y, 0.15), 0.082, "protein", segments=12)
     return model.finish()
 
 
