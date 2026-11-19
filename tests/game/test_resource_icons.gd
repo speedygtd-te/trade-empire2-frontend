@@ -75,6 +75,7 @@ func test_a_row_button_gets_the_icon_at_row_size() -> void:
 
 	assert_object(button.icon).is_same(ResourceIcon.texture("WATER"))
 	assert_int(button.get_theme_constant("icon_max_width")).is_equal(ResourceIcon.ROW_SIZE)
+	assert_int(button.get_theme_constant("h_separation")).is_equal(ResourceIcon.ROW_GAP)
 	button.free()
 
 

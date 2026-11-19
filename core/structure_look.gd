@@ -14,6 +14,19 @@ static func hull_closed(definitions: GameDefinitions, hull_type: String) -> bool
 	return hull != null and hull.module_positioning == "INDOOR"
 
 
+## The model of a hull type (game/world/models/<key>.glb): its floor plate ("hull_starter"), or
+## shut (*shut*) the container seen from outside ("hull_starter_closed"). A type without its own
+## model borrows hull_fallback.
+static func hull_model(hull_type: String, shut: bool) -> String:
+	return "hull_" + hull_type.to_lower() + ("_closed" if shut else "")
+
+
+## The model a hull type without its own borrows: the standard container shut, the starter's
+## floor plate open.
+static func hull_fallback(shut: bool) -> String:
+	return "hull_standard_closed" if shut else "hull_starter"
+
+
 ## Whether a module works in the open (it may stand on an outdoor slot): solar panels, pumps …
 static func module_outdoor(definitions: GameDefinitions, module_type: String) -> bool:
 	if definitions == null:

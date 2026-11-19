@@ -11,9 +11,21 @@ extends Node
 ##       [--models=game/world/models/resources] [--out=game/ui/resource_icons] \
 ##       [--sheet=build/resource_icons] [--size=128] [--only=iron,robot_t3]
 ##
-## The same stage can later render module and hull items: point --models at game/world/models.
+## With --items it renders the store items that build modules and hulls instead (PUMP_MODULE,
+## HULL_STANDARD …) from the models the colony shows (game/world/models): a module as it stands,
+## an indoor hull shut as seen from outside, a platform or dock as its floor plate, seen from
+## higher up so the flat plate still reads. Which item builds which module or hull comes from the
+## game data of the server (/v2/definitions, no account needed), plus COMING_ITEMS. Defaults then
+## --models=game/world/models --out=game/ui/item_icons --sheet=build/item_icons; --only takes
+## item keys in lower case (pump_module,hull_dock).
+##
+## Every icon gets its import settings (lossy, with mipmaps) written next to it, so a new icon is
+## not imported as a large lossless picture.
 
 const CAMERA_PITCH_DEGREES := 30.0
+## Flat models (platforms, docks: lower than FLAT_SHARE of their width) are seen from higher up.
+const FLAT_PITCH_DEGREES := 52.0
+const FLAT_SHARE := 0.2
 const CAMERA_YAW_DEGREES := 45.0
 ## Rendered this many times larger than the icon, then scaled down.
 const SUPERSAMPLE := 4
@@ -21,10 +33,17 @@ const SUPERSAMPLE := 4
 const MARGIN := 0.06
 ## The contact sheets: the size the UI shows an icon at, and the enlarged size.
 const SHEET_SIZES: Array[int] = [44, 128]
+## Items the server does not offer yet whose models exist (item key -> model), after the specs
+## in Backend-V2/docs: the probe launcher (SPEC-sonden).
+const COMING_ITEMS: Dictionary[String, String] = {"PROBE_LAUNCHER_MODULE": "probe_launcher"}
+## How long --items waits for the game data.
+const DEFINITIONS_TIMEOUT_SECONDS := 30.0
 
 var _viewport: SubViewport
 var _camera: Camera3D
 var _stage: Node3D
+## Rendering module and hull items (--items).
+var _items := false
 
 
 func _ready() -> void:
@@ -34,9 +53,11 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	var models_dir := "res://game/world/models/resources"
-	var out_dir := "res://game/ui/resource_icons"
-	var sheet_dir := "res://build/resource_icons"
+	var items := "--items" in OS.get_cmdline_user_args()
+	_items = items
+	var models_dir := "res://game/world/models" if items else "res://game/world/models/resources"
+	var out_dir := "res://game/ui/item_icons" if items else "res://game/ui/resource_icons"
+	var sheet_dir := "res://build/item_icons" if items else "res://build/resource_icons"
 	var size := 128
 	var only := PackedStringArray()
 	for argument: String in OS.get_cmdline_user_args():
@@ -52,35 +73,126 @@ func _run() -> void:
 			only = argument.trim_prefix("--only=").split(",", false)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(sheet_dir))
+
+	# Icon name (key in lower case) -> model file.
+	var jobs: Dictionary[String, String] = {}
+	if items:
+		jobs = await _item_jobs(models_dir)
+	else:
+		for file: String in DirAccess.get_files_at(models_dir):
+			if file.to_lower().ends_with(".glb"):
+				jobs[file.get_basename()] = models_dir.path_join(file)
+	if not only.is_empty():
+		for key: String in jobs.keys():
+			if not key in only:
+				jobs.erase(key)
+	if jobs.is_empty():
+		print("FAIL  nothing to render from ", models_dir)
+		return
+	var keys: Array[String] = jobs.keys()
+	keys.sort()
 	_add_stage(size * SUPERSAMPLE)
 
-	var files := PackedStringArray()
-	for file: String in DirAccess.get_files_at(models_dir):
-		if file.to_lower().ends_with(".glb") and (only.is_empty() or file.get_basename() in only):
-			files.append(file)
-	files.sort()
-	if files.is_empty():
-		print("FAIL  no .glb files in ", models_dir)
-		return
 	var icons: Dictionary[String, Image] = {}
-	for file: String in files:
-		var model := _load_glb(models_dir.path_join(file))
+	for key: String in keys:
+		var model := _load_glb(jobs[key])
 		if model == null:
-			print("FAIL  could not load ", file)
+			print("FAIL  could not load ", jobs[key])
 			continue
 		_stage.add_child(model)
+		_day_lamps(model)
 		_frame(model)
 		var image := await _capture()
 		model.queue_free()
 		image.fix_alpha_edges()
 		image.resize(size, size, Image.INTERPOLATE_LANCZOS)
-		var key := file.get_basename()
 		var path := out_dir.path_join(key + ".png")
 		var saved := image.save_png(ProjectSettings.globalize_path(path))
-		print("%s  %s" % ["SAVED" if saved == OK else "FAIL ", path])
+		_import_settings(path)
+		print("%s  %s  (%s)" % ["SAVED" if saved == OK else "FAIL ", path, jobs[key].get_file()])
 		icons[key] = image
 	for shown: int in SHEET_SIZES:
 		await _sheet(icons, shown, sheet_dir.path_join("sheet_%d.png" % shown))
+
+
+## The store items that build modules and hulls, each with the model the colony shows of it:
+## a module type's own model; a hull shut from outside when it hosts indoor modules, else its
+## floor plate, borrowing the standard container or the starter floor when it has no model of
+## its own (StructureLook, as ColonyView does).
+func _item_jobs(models_dir: String) -> Dictionary[String, String]:
+	var jobs: Dictionary[String, String] = {}
+	var waited := 0.0
+	while Services.definitions == null and waited < DEFINITIONS_TIMEOUT_SECONDS:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	var definitions := Services.definitions
+	if definitions == null:
+		print("FAIL  no game data from the server")
+		return jobs
+	for module_key: String in definitions.module_keys():
+		var item := definitions.module(module_key).item
+		var file := _model_file(models_dir, module_key.to_lower())
+		if item.is_empty() or file.is_empty():
+			print("SKIP  %s: no item or no model (the colony shows a placeholder box)" % module_key)
+			continue
+		jobs[item.to_lower()] = file
+	for hull_key: String in definitions.hull_keys():
+		var item := definitions.hull(hull_key).item
+		var shut := StructureLook.hull_closed(definitions, hull_key)
+		var file := _model_file(models_dir, StructureLook.hull_model(hull_key, shut))
+		if file.is_empty():
+			file = _model_file(models_dir, StructureLook.hull_fallback(shut))
+		if item.is_empty() or file.is_empty():
+			print("SKIP  %s: no item or no model" % hull_key)
+			continue
+		jobs[item.to_lower()] = file
+	for item: String in COMING_ITEMS:
+		var file := _model_file(models_dir, COMING_ITEMS[item])
+		if not jobs.has(item.to_lower()) and not file.is_empty():
+			jobs[item.to_lower()] = file
+	return jobs
+
+
+## The model file *key*.glb in *models_dir*; "" when there is none.
+func _model_file(models_dir: String, key: String) -> String:
+	var file := models_dir.path_join(key + ".glb")
+	return file if FileAccess.file_exists(ProjectSettings.globalize_path(file)) else ""
+
+
+## Glowing parts (windows, lamps) as the colony shows them by day.
+func _day_lamps(model: Node3D) -> void:
+	for found: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := (found as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		for surface: int in mesh.get_surface_count():
+			var material := mesh.surface_get_material(surface) as StandardMaterial3D
+			if material != null and material.emission_enabled:
+				material.emission_energy_multiplier = ColonyView.LAMP_DAY
+
+
+## Makes Godot import the icon *path* lossy with mipmaps (small in the APK, smooth when shown
+## smaller; the quality of the resource icons): sets these values in its .import file, or writes
+## one that holds only them (Godot fills in the rest on the next import).
+func _import_settings(path: String) -> void:
+	var file := ProjectSettings.globalize_path(path) + ".import"
+	var wanted: Dictionary[String, String] = {"compress/mode": "1", "compress/lossy_quality": "0.85", "mipmaps/generate": "true"}
+	var lines := PackedStringArray()
+	if FileAccess.file_exists(file):
+		lines = FileAccess.get_file_as_string(file).split("\n")
+	if not "[params]" in lines:
+		lines = PackedStringArray(["[remap]", "", "importer=\"texture\"", "type=\"CompressedTexture2D\"", "", "[params]", ""])
+	for index: int in lines.size():
+		var setting := lines[index].get_slice("=", 0)
+		if wanted.has(setting):
+			lines[index] = "%s=%s" % [setting, wanted[setting]]
+			wanted.erase(setting)
+	var at := lines.find("[params]") + 2
+	for setting: String in wanted:
+		lines.insert(at, "%s=%s" % [setting, wanted[setting]])
+	var out := FileAccess.open(file, FileAccess.WRITE)
+	out.store_string("\n".join(lines).strip_edges(false, true) + "\n")
+	out.close()
 
 
 ## Accepts paths relative to the project folder as well as res:// and absolute ones.
@@ -144,12 +256,15 @@ func _light(rotation_degrees_xyz: Vector3, color: Color, energy: float) -> void:
 
 ## Aims the camera from the game's side at the middle of the model's bounding box and fits what
 ## the camera sees of it (its corners on the screen, not the box's: a round heap would otherwise
-## come out small) into the picture.
+## come out small) into the picture. Items that are flat (platforms, docks) are seen from higher
+## up, so the plate is not a thin sliver.
 func _frame(model: Node3D) -> void:
-	var pitch := deg_to_rad(CAMERA_PITCH_DEGREES)
+	var bounds := _bounds(model)
+	var flat := _items and bounds.size.y < FLAT_SHARE * maxf(bounds.size.x, bounds.size.z)
+	var pitch := deg_to_rad(FLAT_PITCH_DEGREES if flat else CAMERA_PITCH_DEGREES)
 	var yaw := deg_to_rad(CAMERA_YAW_DEGREES)
 	var direction := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
-	var center := _bounds(model).get_center()
+	var center := bounds.get_center()
 	_camera.position = center + direction * 20.0
 	_camera.look_at(center, Vector3.UP)
 	var right := _camera.global_transform.basis.x

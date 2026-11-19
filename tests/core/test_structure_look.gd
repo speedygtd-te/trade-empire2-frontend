@@ -71,3 +71,13 @@ func test_outdoor_modules_are_those_with_an_outdoor_slot() -> void:
 	assert_bool(StructureLook.module_outdoor(_definitions, "SOLAR_PANEL")).is_true()
 	assert_bool(StructureLook.module_outdoor(_definitions, "MINE")).is_false()
 	assert_bool(StructureLook.module_outdoor(null, "SOLAR_PANEL")).is_false()
+
+
+func test_a_hull_model_is_its_floor_plate_or_shut_its_container() -> void:
+	assert_str(StructureLook.hull_model("STARTER", false)).is_equal("hull_starter")
+	assert_str(StructureLook.hull_model("GLASS_CARBON", true)).is_equal("hull_glass_carbon_closed")
+
+
+func test_a_hull_without_model_borrows_the_standard_container_or_the_starter_floor() -> void:
+	assert_str(StructureLook.hull_fallback(true)).is_equal("hull_standard_closed")
+	assert_str(StructureLook.hull_fallback(false)).is_equal("hull_starter")

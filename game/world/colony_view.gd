@@ -878,11 +878,11 @@ func _build_structure(structure: ColonyModel) -> void:
 	for cell: Vector3i in layout.hull_cells():
 		if not shows_level(structure, layout.to_absolute(cell).z):
 			continue
-		var hull_type := layout.hull_at(cell).to_lower()
-		var key := "hull_" + hull_type
-		if StructureLook.cell_closed(layout, definitions, cell):
-			# Shut: the closed container; open: a room floor under the interior light.
-			key += "_closed" if shut else INTERIOR_SUFFIX
+		var closed := StructureLook.cell_closed(layout, definitions, cell)
+		var key := StructureLook.hull_model(layout.hull_at(cell), shut and closed)
+		if closed and not shut:
+			# Open: a room floor under the interior light (shut: the closed container).
+			key += INTERIOR_SUFFIX
 		if not by_model.has(key):
 			by_model[key] = []
 		var cells: Array = by_model[key]
@@ -1079,7 +1079,7 @@ func _hull_mesh(key: String) -> Mesh:
 		return _hull_meshes[key] as Mesh
 	var node := _instance(key)
 	if node == null:
-		node = _instance("hull_standard_closed" if key.ends_with("_closed") else "hull_starter")
+		node = _instance(StructureLook.hull_fallback(key.ends_with("_closed")))
 	var mesh: Mesh = null
 	if node != null:
 		var found := node.find_children("*", "MeshInstance3D", true, false)
