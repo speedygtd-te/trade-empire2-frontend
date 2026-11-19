@@ -553,8 +553,10 @@ func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
 	print("DETAILS  open: %s, shell nav %s" % [details != null, shell.nav_visible()])
 	if details == null:
 		return
+	await _capture_production(colony, details)
 	details.show_tab(StructureDetails.Tab.WORKERS)
 	await _capture("details_workers")
+	await _capture_blueprints(colony, details)
 	details.show_tab(StructureDetails.Tab.LOG)
 	await get_tree().create_timer(2.0).timeout
 	await _capture("details_log")
@@ -564,6 +566,105 @@ func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
 		shell.handle_back()
 		await get_tree().process_frame
 	print("BACK  details closed: %s, structure still open: %s" % [colony.details() == null, colony._opened])
+
+
+## The Production tab: the real balance with a resource opened (who makes and uses it), the
+## "Short" filter; then, because a fresh starter runs short of nothing, a made-up balance with
+## short resources — clearly a sample, never sent — and the real one loaded again.
+func _capture_production(colony: ColonyScreen, details: StructureDetails) -> void:
+	var model := colony._model
+	var panel := details.production_panel()
+	var lines := PackedStringArray()
+	var opened := ""
+	for row: ProductionBalance.Row in model.totals:
+		lines.append("%s %+d" % [row.resource, row.net])
+		if opened.is_empty() and row.consumed > 0:
+			opened = row.resource
+	print("PRODUCTION  totals: %s | population %s | coverage %d" % [", ".join(lines), model.population,
+		model.life_support_coverage])
+	if not opened.is_empty():
+		panel.set_open(opened, true)
+		await _capture("details_production_open")
+		panel.set_open(opened, false)
+	panel.set_filter(ProductionPanel.Filter.SHORT)
+	await _capture("details_production_short")
+	panel.set_filter(ProductionPanel.Filter.ALL)
+	var real_totals := model.totals
+	var real_flows := model.production_flows
+	var real_population := model.population
+	var scale := Services.definitions.fixed_point_scale
+	model.totals = ProductionBalance.totals_from_wire([
+		{"resource": "COPPER", "producedPerHour": 0, "consumedPerHour": 6 * scale, "taxedPerHour": 0, "netPerHour": -6 * scale},
+		{"resource": "IRON", "producedPerHour": 78 * scale, "consumedPerHour": 40 * scale, "taxedPerHour": 4 * scale, "netPerHour": 38 * scale},
+		{"resource": "OXYGEN", "producedPerHour": 25 * scale, "consumedPerHour": 85 * scale, "taxedPerHour": 0, "netPerHour": -60 * scale},
+		{"resource": "WATER", "producedPerHour": 20 * scale, "consumedPerHour": 20 * scale, "taxedPerHour": 0, "netPerHour": 0},
+		{"resource": "IRON_PLATE", "producedPerHour": 20 * scale, "consumedPerHour": 0, "taxedPerHour": 0, "netPerHour": 20 * scale},
+	])
+	model.production_flows = ProductionBalance.flows_from_wire([
+		{"moduleType": "SMELTER", "modules": 2, "inputs": [{"resource": "COPPER", "effective": 6 * scale},
+			{"resource": "IRON", "effective": 40 * scale}], "outputs": [{"resource": "IRON_PLATE", "effective": 20 * scale}]},
+		{"moduleType": "COLLECTOR", "modules": 1, "inputs": [], "outputs": [{"resource": "OXYGEN", "effective": 25 * scale}]},
+		{"moduleType": "LIFE_SUPPORT", "modules": 1, "inputs": [{"resource": "OXYGEN", "effective": 85 * scale}], "outputs": []},
+	])
+	model.population = [12, 3, 0, 0, 0]
+	panel.set_open("OXYGEN", true)
+	print("SAMPLE  production tab with a made-up balance (not from the server)")
+	await _capture("details_production_sample")
+	panel.set_open("OXYGEN", false)
+	model.totals = real_totals
+	model.production_flows = real_flows
+	model.population = real_population
+	panel.reload()
+
+
+## The Blueprints tab against the server: closed rows, the mines opened, the recipe list of the
+## mines' group; then the group's blueprint is cleared through the tab (a "None" group in amber,
+## the tab's badge, the result line), the recipe list of the "None" group, and the old blueprint
+## set again the same way — the account is as before.
+func _capture_blueprints(colony: ColonyScreen, details: StructureDetails) -> void:
+	details.show_tab(StructureDetails.Tab.BLUEPRINTS)
+	var panel := details.blueprints_panel()
+	await _capture("details_blueprints")
+	var model := colony._model
+	var mine: StructureLayout.Module = null
+	for placed: StructureLayout.Module in model.layout.modules():
+		if placed.module_type == "MINE" and not placed.blueprint.is_empty():
+			mine = placed
+			break
+	if mine == null:
+		print("BLUEPRINTS  no mine with a blueprint")
+		return
+	var before := mine.blueprint
+	panel.set_open("MINE", true)
+	await _capture("details_blueprints_open")
+	panel.open_picker("MINE", before)
+	await _ground_ready(colony, model.layout.to_absolute(mine.origin))
+	panel.open_picker("MINE", before)
+	await _capture("details_blueprints_picker")
+	print("BLUEPRINTS  picker for MINE/%s, Back closes it: %s" % [before, details.handle_back() and not panel.is_picking()])
+	var mine_id := mine.module_id
+	panel._on_chosen("")
+	await _until(func() -> bool: return model.layout.module(mine_id).blueprint.is_empty() and not panel._busy, 10000)
+	await get_tree().create_timer(1.5).timeout
+	await _capture("details_blueprints_none")
+	print("BLUEPRINTS  cleared: %s | badge %s" % [panel.status_text(), details.nav().has_badge(StructureDetails.Tab.BLUEPRINTS)])
+	panel.open_picker("MINE", "")
+	await _capture("details_blueprints_picker_none")
+	panel._on_chosen(before)
+	await _until(func() -> bool: return model.layout.module(mine_id).blueprint == before and not panel._busy, 10000)
+	await get_tree().create_timer(1.5).timeout
+	await _capture("details_blueprints_result")
+	print("BLUEPRINTS  set again: %s | badge %s" % [panel.status_text(), details.nav().has_badge(StructureDetails.Tab.BLUEPRINTS)])
+	# The yield line over many spots, with made-up numbers (the starter has one mine only).
+	var span := BlueprintGroups.YieldSpan.new()
+	span.resource = "IRON"
+	span.spots = 6
+	span.working = 4
+	span.low_richness = 21
+	span.high_richness = 48
+	span.low_rate = 21000000
+	span.high_rate = 48000000
+	print("SAMPLE  yield over 6 spots: %s" % panel._span_text(span))
 
 
 ## The research tab. With a real lab in the structure it aims the lab at the first research

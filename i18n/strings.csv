@@ -996,6 +996,50 @@ DETAILS_IDLE_LOCATION,{count} idle: cannot work at this spot
 DETAILS_IDLE_OTHER,{count} idle
 DETAILS_NO_STAFF,No module here needs staff.
 DETAILS_STAFF_LINE,Staff {assigned} of {needed} · {modules} module(s)
+DETAILS_PRODUCTION_FAILED,Could not load the production.
+DETAILS_POPULATION,Inhabitants: {tiers} · {percent} % with life support
+DETAILS_POPULATION_TIER,T{tier} {count}
+DETAILS_POPULATION_NONE,No inhabitants yet.
+DETAILS_STAFF,Staff: {assigned} of {needed}
+DETAILS_RESOURCES,Resources per hour
+DETAILS_RESOURCES_EMPTY,Nothing is made or used here yet.
+DETAILS_RESOURCES_NONE_SHORT,Nothing runs short here.
+DETAILS_FILTER_ALL,All ({count})
+DETAILS_FILTER_SHORT,Short ({count})
+DETAILS_COLUMN_RESOURCE,Resource
+DETAILS_COLUMN_MADE,Made
+DETAILS_COLUMN_USED,Used
+DETAILS_COLUMN_NET,Net
+DETAILS_EMPTY_IN,Empty in {time}
+DETAILS_EMPTY_NOW,Empty – its users are slowed down
+DETAILS_TAXED,Tax {rate}/h
+DETAILS_USES_NONE,No module makes or uses it right now.
+DETAILS_MADE_BY,Made by {name} × {count}: {rate}/h
+DETAILS_USED_BY,Used by {name} × {count}: {rate}/h
+DETAILS_USED_BY_PEOPLE,Eaten by the inhabitants: {rate}/h
+DETAILS_TAB_BLUEPRINTS,Blueprints
+DETAILS_BLUEPRINTS_INTRO,Modules that run on blueprints. Tap a type to see its blueprints and change them for many modules at once.
+DETAILS_BLUEPRINTS_EMPTY,No modules here run on blueprints.
+DETAILS_BLUEPRINTS_MISSING,{count} without a blueprint – standing still
+DETAILS_BLUEPRINTS_IN_USE,{count} blueprints in use
+DETAILS_BLUEPRINTS_ALL_ON,All on {name}
+DETAILS_BLUEPRINTS_NONE,None
+DETAILS_BLUEPRINTS_NO_BLUEPRINT,no blueprint
+DETAILS_BLUEPRINTS_UNKNOWN,Unknown blueprint
+DETAILS_BLUEPRINTS_BUILDING,{count} under construction – they get it too
+DETAILS_BLUEPRINTS_LOCATION,{count} cannot work here
+DETAILS_BLUEPRINTS_CHANGE,Change to …
+DETAILS_BLUEPRINTS_PICK,"Change {count} × {type} running {blueprint} to:"
+DETAILS_BLUEPRINTS_PICK_NONE,Choose a blueprint for {count} × {type} without one:
+DETAILS_BLUEPRINTS_RANGE,{low}–{high}
+DETAILS_BLUEPRINTS_YIELD_ALL,At all {spots} spots: {yield} each at full staff and power
+DETAILS_BLUEPRINTS_YIELD_SOME,"At {working} of {spots} spots: {yield} each at full staff and power; the other {idle} would stand still"
+DETAILS_BLUEPRINTS_YIELD_NONE,Nothing to extract at any of these {spots} spots – they would stand still.
+DETAILS_BLUEPRINTS_YIELD_LOADING,Yields at these spots: the ground is still loading …
+DETAILS_BLUEPRINTS_RESULT_SET,{count} set to {name}.
+DETAILS_BLUEPRINTS_RESULT_PARTLY,"{count} set to {name}, {refused} refused: {reasons}"
+DETAILS_BLUEPRINTS_RESULT_REFUSED,"None set, {refused} refused: {reasons}"
+DETAILS_BLUEPRINTS_UNCHANGED,Nothing to change – they already run it.
 PLACES_TITLE,Your places
 PLACES_EMPTY,None of your structures stands on a surface right now.
 PLACES_ROW,{body} · {count} structure(s)

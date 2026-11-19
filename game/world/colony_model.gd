@@ -98,6 +98,15 @@ var food_shortage := false
 ## per hour]; empty without taxes.
 var taxed: Array[Array] = []
 var storage_full := false
+## The balance per resource of the last rate solution (draft.28 `totals`), the buckets' effective
+## inputs and outputs, inhabitants per tier 1–5 and the share of them the life support carries
+## (micro, 1 000 000 = all).
+var totals: Array[ProductionBalance.Row] = []
+var production_flows: Array[ProductionBalance.Flow] = []
+var population: Array[int] = [0, 0, 0, 0, 0]
+var life_support_coverage := 1000000
+## Why the last load of the production failed; null after a good one.
+var production_error: ApiError = null
 ## Inhabitants per tier and who works where (from production, structure and PUT workforce).
 var workforce := Workforce.new()
 ## The structure rests in orbit or is under way: no ground to show (the screen shows panels).
@@ -576,7 +585,10 @@ func reload_production() -> void:
 	_production_due = false
 	var answer := await Services.api.get_json("/v2/structures/%d/production" % structure_id)
 	if not answer.is_ok():
+		production_error = answer.error
+		production_changed.emit()
 		return
+	production_error = null
 	var power_data := Wire.as_dict(answer.data.get("power"))
 	power = [Wire.as_int(power_data.get("production")), Wire.as_int(power_data.get("consumption"))]
 	var life_data := Wire.as_dict(answer.data.get("lifeSupport"))
@@ -598,6 +610,10 @@ func reload_production() -> void:
 	var micro := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
 	var bucket_rows: Array = answer.data.get("buckets") if typeof(answer.data.get("buckets")) == TYPE_ARRAY else []
 	buckets = ExtractionYield.buckets_from_wire(bucket_rows)
+	production_flows = ProductionBalance.flows_from_wire(bucket_rows)
+	totals = ProductionBalance.totals_from_wire(answer.data.get("totals"))
+	population = ProductionBalance.population_from_wire(answer.data.get("population"))
+	life_support_coverage = Wire.as_int(answer.data.get("lifeSupportCoverage"), micro)
 	_activity_by_type = ModuleMotion.activity_by_type(bucket_rows, micro)
 	_power_scale = clampf(Wire.as_int(power_data.get("scale"), micro) / float(maxi(micro, 1)), 0.0, 1.0)
 	_production_known = true
@@ -686,6 +702,20 @@ func set_blueprint(cell: Vector3i, blueprint: String) -> ApiResult:
 	if result.is_ok():
 		reload_production()
 	return result
+
+
+## Sends many `setBlueprint` ops (BlueprintGroups.ops) as one bestEffort batch: a refused module
+## does not hold back the others; `data.results` says per op what happened (BlueprintGroups.outcome).
+func set_blueprints(ops: Array[Dictionary]) -> ApiResult:
+	var result := await send_ops(ops, "bestEffort")
+	if result.is_ok():
+		reload_production()
+	return result
+
+
+## Whether a rate solution was loaded at all.
+func production_known() -> bool:
+	return _production_known
 
 
 ## How much a module works now (0..1), for its moving parts (ModuleMotion). Before the first
@@ -787,13 +817,14 @@ func site() -> LevelRules.Site:
 	return result
 
 
-## Sends a build batch (atomic) to the body; ops on a guest go the same way. Returns the result;
-## on success the home structure (store, guest list) and every changed guest reload.
-func send_ops(ops: Array[Dictionary]) -> ApiResult:
+## Sends a build batch to the body; ops on a guest go the same way. `mode` "atomic" (all or
+## nothing) or "bestEffort" (each op on its own; per-op results in `data.results`). Returns the
+## result; on success the home structure (store, guest list) and every changed guest reload.
+func send_ops(ops: Array[Dictionary], mode: String = "atomic") -> ApiResult:
 	if is_guest():
-		return await host.send_ops(ops)
+		return await host.send_ops(ops, mode)
 	var result := await Services.api.post_json("/v2/bodies/%s/ops" % body_id.uri_encode(), {
-		"mode": "atomic",
+		"mode": mode,
 		"ops": ops,
 	})
 	if result.is_ok():

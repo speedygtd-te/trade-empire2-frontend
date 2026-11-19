@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Blueprints: a drawing sheet unrolled from a roll, with a floor plan and a measure line -->
+  <path d="M10 8 L42 8 L42 43 L10 43 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="4" y="5" width="9" height="40" rx="4.5" fill="#24345e" stroke="#e3b341" stroke-width="3"/>
+  <path d="M19 15 L36 15 L36 33 L19 33 Z M19 25 L27 25 M27 15 L27 20" fill="none" stroke="#e3b341" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M19 38 L36 38" stroke="#e3b341" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="31" cy="29" r="2" fill="#e3b341"/>
+</svg>
