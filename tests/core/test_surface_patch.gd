@@ -96,5 +96,24 @@ func test_null_cells_are_unexplored_and_the_rows_still_count() -> void:
 	assert_bool(patch.is_hidden(1010, -4)).is_false()
 
 
+func test_impact_sites_are_read_with_their_cell() -> void:
+	# draft.32: `p` on a cell lists every probe that landed there, oldest first.
+	var stream := (
+		'{"rev":1,"gameTime":2,"bodyId":"b","bodyClass":"EARTH_LIKE","x0":10,"y0":0,"x1":11,"y1":0,"z":0,"rows":1}\n'
+		+ '{"y":0,"cells":[{"b":"PLAINS","v":0,"g":0,"e":0,"m":0,"p":[{"probeId":801,"ownerId":"4711","at":15419094}]},'
+		+ '{"b":"PLAINS","v":0,"g":0,"e":0,"m":0}]}\n'
+		+ '{"end":true,"rows":1}\n'
+	)
+	var patch := SurfacePatch.from_stream(Ndjson.parse(stream))
+
+	var impact := patch.cell(10, 0).impacts[0]
+	assert_int(impact.probe_id).is_equal(801)
+	assert_str(impact.owner_id).is_equal("4711")
+	assert_int(impact.at).is_equal(15419094)
+	assert_that(Vector2i(impact.x, impact.y)).is_equal(Vector2i(10, 0))
+	assert_bool(patch.cell(11, 0).impacts.is_empty()).is_true()
+	assert_int(patch.impact_cells().size()).is_equal(1)
+
+
 func test_other_answers_are_no_patch() -> void:
 	assert_object(SurfacePatch.from_stream(Ndjson.parse('{"error":"NO_SURFACE"}'))).is_null()

@@ -77,6 +77,62 @@ func test_launch_body_wraps_x_and_keeps_y_in_the_band() -> void:
 	assert_int(Probes.launch_body(1, "b", 5, -900, 1000, 1000)["y"]).is_equal(-500)
 
 
+func test_landed_probes_lie_on_their_body() -> void:
+	var list := Probes.from_wire(ANSWER)
+
+	assert_int(list.landed_on("planet-1", 100000).size()).is_equal(1)
+	# The one under way lies there only once its arrival time passed.
+	assert_int(list.landed_on("moon-1", 100000).size()).is_equal(0)
+	assert_int(list.landed_on("moon-1", 210000).size()).is_equal(1)
+
+
+func test_a_hull_over_the_cell_hides_the_wreck() -> void:
+	var landed := Probes.from_wire(ANSWER).landed_on("planet-1", 100000)
+	var impacts := Probes.impacts_by_cell(landed, "42", {}, 100000)
+
+	assert_int(Probes.visible_wrecks(impacts, {}).size()).is_equal(1)
+	assert_int(Probes.visible_wrecks(impacts, {Vector2i(50000, 3): true}).size()).is_equal(0)
+	# Cells are wrapped; a probe sent to x = 150 000 lies on x = 50 000.
+	var far := Probes.new()
+	far.apply({"probeId": 5, "bodyId": "planet-1", "x": 150000, "y": 3, "launchedAt": 0, "arrivesAt": 1, "status": "arrived"})
+	var far_impacts := Probes.impacts_by_cell(far.landed_on("planet-1", 10), "42", {}, 100000)
+	assert_bool(far_impacts.has(Vector2i(50000, 3))).is_true()
+	assert_int(Probes.visible_wrecks(far_impacts, {Vector2i(50000, 3): true}).size()).is_equal(0)
+
+
+func test_impacts_from_the_surface_and_own_probes_merge_once_per_probe() -> void:
+	var landed := Probes.from_wire(ANSWER).landed_on("planet-1", 100000)
+	# The surface (draft.32) names the own probe 1 and a foreign one on the same cell, and another
+	# foreign one elsewhere.
+	var surface := {
+		Vector2i(50000, 3): [Probes.Impact.from_wire({"probeId": 1, "ownerId": "42", "at": 70000}, 50000, 3),
+			Probes.Impact.from_wire({"probeId": 9, "ownerId": "7", "at": 20000}, 50000, 3)],
+		Vector2i(-10, 0): [Probes.Impact.from_wire({"probeId": 11, "ownerId": "7", "at": 5}, -10, 0)],
+	}
+
+	var impacts := Probes.impacts_by_cell(landed, "42", surface, 100000)
+
+	assert_int(impacts.size()).is_equal(2)
+	var here: Array = impacts[Vector2i(50000, 3)]
+	assert_int(here.size()).is_equal(2)
+	# Oldest first.
+	assert_int((here[0] as Probes.Impact).probe_id).is_equal(9)
+	assert_str((here[1] as Probes.Impact).owner_id).is_equal("42")
+	assert_bool(impacts.has(Vector2i(99990, 0))).is_true()
+
+
+func test_a_preview_names_flight_time_and_every_violated_condition() -> void:
+	var good := Probes.Quote.from_wire({"rev": 1, "gameTime": 100, "ok": true, "errors": [], "flightMs": 60000, "arrivesAt": 60100})
+	var bad := Probes.Quote.from_wire({"ok": false, "errors": ["SYSTEM_NOT_DISCOVERED", "NO_PROBE"], "flightMs": 3600000,
+		"arrivesAt": 3600100})
+
+	assert_bool(good.ok).is_true()
+	assert_int(good.flight_ms).is_equal(60000)
+	assert_int(good.arrives_at).is_equal(60100)
+	assert_bool(bad.ok).is_false()
+	assert_array(Array(bad.errors)).contains_exactly(["SYSTEM_NOT_DISCOVERED", "NO_PROBE"])
+
+
 func test_supported_only_with_the_launcher_in_the_game_data() -> void:
 	assert_bool(Probes.supported(null)).is_false()
 	assert_bool(Probes.is_launcher("PROBE_LAUNCHER")).is_true()

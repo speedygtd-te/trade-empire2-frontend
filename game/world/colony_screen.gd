@@ -258,6 +258,7 @@ func _ready() -> void:
 	_fleet.changed.connect(_on_fleet_changed)
 	_fleet.probes.reveal_changed.connect(_on_reveal_changed)
 	_fleet.probes.arrived.connect(_on_probe_arrived)
+	_fleet.probes.changed.connect(_show_wrecks)
 	_build_world()
 	# Stop sites the routes hold on this body (RouteStopLayer).
 	_stops = RouteStopLayer.new()
@@ -757,8 +758,10 @@ func _on_ready_to_show() -> void:
 	_view.set_fleet(_fleet.fleet)
 	_view.look_at_cell(_model.centre_cell())
 	_update_sun()
-	# Foreign structures probes have seen here (draft.31); nothing on an older server.
+	# Foreign structures probes have seen here and the own probes lying here (draft.31); nothing
+	# on an older server.
 	_fleet.probes.load_reveal(_model.body_id)
+	_show_wrecks()
 	# The head and the bottom cover parts of the view: shift the colony into the room between
 	# them (and from then on with every change of their heights).
 	await get_tree().process_frame
@@ -772,6 +775,27 @@ func _on_ready_to_show() -> void:
 func _on_reveal_changed(changed_body: String) -> void:
 	if changed_body == _model.body_id and not _model.detached:
 		_view.set_reveal(_fleet.probes.reveal(changed_body))
+
+
+## "Wreck of your probe (landed 3h 5m ago)." for the probes that landed on a field (oldest first),
+## with a new line in front; "" when none did.
+func _wreck_text(impacts: Array) -> String:
+	if impacts.is_empty():
+		return ""
+	var newest := impacts[impacts.size() - 1] as Probes.Impact
+	var account := Services.session.account
+	var own := account != null and newest.owner_id == account.player_id
+	var ago := TimeFormat.duration(maxi(Services.clock.now_ms() - newest.at, 0))
+	if impacts.size() > 1:
+		return "\n" + tr("PROBE_WRECKS").format({"count": impacts.size(), "ago": ago})
+	return "\n" + tr("PROBE_WRECK_OWN" if own else "PROBE_WRECK_FOREIGN").format({"ago": ago})
+
+
+## The own probes that landed on this body lie there as wrecks (the probe list changed).
+func _show_wrecks() -> void:
+	if _model.structure_id == 0 or _model.detached or _model.body_id.is_empty():
+		return
+	_view.set_landed_probes(_fleet.probes.list.landed_on(_model.body_id, Services.clock.now_ms()))
 
 
 ## A probe arrived: say so; on this body the newly explored ground loads.
@@ -1661,6 +1685,8 @@ func _refresh_view() -> void:
 		if _model.is_unexplored(target):
 			_info.text = tr("COLONY_UNEXPLORED")
 			_ground.visible = false
+		if target.z == 0:
+			_info.text += _wreck_text(_view.impacts_at(target.x, target.y))
 		_primary.visible = false
 		return
 	var hull_name := definitions.hull(hull_type).display_name if definitions.hull(hull_type) != null else ""

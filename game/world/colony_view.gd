@@ -174,6 +174,8 @@ var _trip_signature := ""
 var _trip_left := 0.0
 ## Foreign structures probes have seen nearby (draft.31 snapshots).
 var _sightings: SightingLayer
+## Landed probes lying where they came down (draft.31), hidden under hulls.
+var _wrecks: ProbeWreckLayer
 
 
 func setup(colony: ColonyModel) -> void:
@@ -215,6 +217,10 @@ func _ready() -> void:
 	_sightings.name = "Sightings"
 	_sightings.setup(self)
 	add_child(_sightings)
+	_wrecks = ProbeWreckLayer.new()
+	_wrecks.name = "ProbeWrecks"
+	_wrecks.setup(self)
+	add_child(_wrecks)
 
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -860,6 +866,17 @@ func set_reveal(reveal: RevealMap) -> void:
 	_sightings.show_sightings(seen)
 
 
+## The probes that landed on this body (draft.31): wrecks where no hull covers them.
+func set_landed_probes(landed: Array[Probes.Probe]) -> void:
+	_wrecks.show_landed(landed)
+
+
+## The probes that landed on a cell (Probes.Impact, oldest first), when their wreck shows there (no
+## hull over it); empty otherwise.
+func impacts_at(x: int, y: int) -> Array:
+	return _wrecks.impacts_at(x, y)
+
+
 ## More of the body was explored: the ground loads again around the camera.
 func _on_surface_reset() -> void:
 	if not is_inside_tree():
@@ -887,6 +904,8 @@ func _rebuild_structure() -> void:
 			_travelling[structure.structure_id] = structure
 		_build_structure(structure)
 	_perimeter.rebuild()
+	# A hull placed or removed over a wreck hides or shows it.
+	_wrecks.redraw()
 	_apply_highlight()
 	_travel.show_reserved(_reserved_cells(now))
 	_apply_trips(now)
@@ -1002,9 +1021,12 @@ func _redraw_ground() -> void:
 				_queue_ground(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)
 
 
-func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) -> void:
+func _on_surface_loaded(request: SurfaceBlocks.Request, patch: SurfacePatch) -> void:
 	for block: Vector2i in request.blocks:
 		_queue_ground(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
+	# Impact sites come with the ground (draft.32).
+	if not patch.impact_cells().is_empty():
+		_wrecks.redraw()
 
 
 ## Puts a ground block (its first cell) in line to be built; _process builds a few per frame.

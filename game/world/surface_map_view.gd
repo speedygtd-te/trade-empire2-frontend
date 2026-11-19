@@ -96,11 +96,7 @@ func _draw() -> void:
 		draw_circle(at, 5.0, COLOR_SEEN)
 	if reveal != null:
 		for sighting: RevealMap.Sighting in reveal.sightings:
-			var at := map.to_screen(Vector2(sighting.x, sighting.y))
-			var side := maxf(map.pixels(sighting.footprint_side()), 12.0)
-			var box := Rect2(at - Vector2(side, side) * 0.5, Vector2(side, side))
-			draw_rect(box, Color(COLOR_SEEN, 0.25))
-			draw_rect(box, COLOR_SEEN, false, 2.0)
+			_draw_sighting(sighting)
 	for cell: Vector2i in own:
 		var at := map.to_screen(Vector2(cell))
 		draw_circle(at, 9.0, AppTheme.COLOR_BACKGROUND)
@@ -187,6 +183,24 @@ func _draw_area(area: RevealMap.Area) -> void:
 		draw_arc(end, radius, turn - PI * 0.5, turn + PI * 0.5, CIRCLE_POINTS, COLOR_EXPLORED_EDGE, 2.0, true)
 	else:
 		draw_arc(start, radius, 0.0, TAU, CIRCLE_POINTS, COLOR_EXPLORED_EDGE, 2.0, true)
+
+
+## A foreign structure seen by a probe: its footprint's rows (draft.32) once a cell is at least a
+## pixel wide; otherwise, or without a footprint, a marker square of at least 12 px.
+func _draw_sighting(sighting: RevealMap.Sighting) -> void:
+	var origin := map.to_screen(Vector2(sighting.x, sighting.y))
+	var cell_px := map.pixels(1.0)
+	if sighting.has_footprint() and cell_px >= 1.0:
+		for run: Vector3i in sighting.footprint:
+			# Row y + dy spans cells x + dx0 … x + dx1; north is up on screen.
+			var left := origin + Vector2(run.y, -run.x - 1) * cell_px
+			var rect := Rect2(left, Vector2((run.z - run.y + 1) * cell_px, cell_px))
+			draw_rect(rect, Color(COLOR_SEEN, 0.45))
+		return
+	var side := maxf(map.pixels(sighting.footprint_side()), 12.0)
+	var box := Rect2(origin - Vector2(side, side) * 0.5, Vector2(side, side))
+	draw_rect(box, Color(COLOR_SEEN, 0.25))
+	draw_rect(box, COLOR_SEEN, false, 2.0)
 
 
 func _dashed_circle(at: Vector2, radius: float, color: Color) -> void:

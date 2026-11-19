@@ -75,6 +75,13 @@ func launch(structure_id: int, module_id: int, body_id: String, cell: Vector2i, 
 	return result
 
 
+## What launching there would do now (draft.32 `…/probes/preview`): flight time and every violated
+## condition; changes nothing. An older server answers 404.
+func preview(structure_id: int, module_id: int, body_id: String, cell: Vector2i, size_x: int, size_y: int) -> ApiResult:
+	return await Services.api.post_json("/v2/structures/%d/probes/preview" % structure_id,
+		Probes.launch_body(module_id, body_id, cell.x, cell.y, size_x, size_y))
+
+
 ## The explored areas of a body as loaded; null while unknown, or when the server has none (then
 ## everything is explored). `has_reveal` tells the two apart.
 func reveal(body_id: String) -> RevealMap:

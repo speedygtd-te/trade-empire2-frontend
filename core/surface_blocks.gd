@@ -92,6 +92,19 @@ func is_hidden(x: int, y: int) -> bool:
 	return patch != null and patch.is_hidden(WorldGrid.wrap_x(x, size_x), y)
 
 
+## Every impact site in the loaded blocks (draft.32): cell → Array of Probes.Impact.
+func impacts() -> Dictionary:
+	var result := {}
+	var done := {}
+	for patch: Variant in _blocks.values():
+		var loaded := patch as SurfacePatch
+		if loaded == null or done.has(loaded):
+			continue
+		done[loaded] = true
+		result.merge(loaded.impact_cells())
+	return result
+
+
 func is_loaded(block: Vector2i) -> bool:
 	return _blocks.get(block) != null
 
