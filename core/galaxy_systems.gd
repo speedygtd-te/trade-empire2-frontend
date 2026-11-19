@@ -24,6 +24,11 @@ class Entry:
 	var kelvin := 5800.0
 	var luminosity := 1.0
 	var mass := 1.0
+	## draft.30: radius (suns), spectral class ("G2 V") and catalog designation ("TEC 1:2:3/4");
+	## 0 and "" when the server did not send them.
+	var radius := 0.0
+	var spectral_class := ""
+	var catalog := ""
 	var planet_count := 0
 
 
@@ -58,6 +63,9 @@ static func entry_from_wire(data: Dictionary) -> Entry:
 		entry.kelvin = kelvin
 	entry.luminosity = maxf(SystemMap.number(star.get("luminosity")), 0.0)
 	entry.mass = maxf(SystemMap.number(star.get("mass")), 0.0)
+	entry.radius = maxf(SystemMap.number(star.get("radius")), 0.0)
+	entry.spectral_class = Wire.as_string(star.get("spectralClass")).strip_edges()
+	entry.catalog = Wire.as_string(star.get("catalog")).strip_edges()
 	entry.planet_count = maxi(Wire.as_int(data.get("planetCount")), 0)
 	return entry
 

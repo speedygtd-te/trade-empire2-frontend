@@ -254,7 +254,8 @@ func _load() -> void:
 	_view.ly_per_unit = _ly_per_unit
 	_view.system_position = GalaxySystems.vector(system.data.get("position"))
 	_header.set_title(_map.star_name)
-	_header.set_subtitle(tr("MAP_STAR_LINE").format({"type": BodyPanel.star_text(_map.star_type, self),
+	_header.set_subtitle(tr("MAP_STAR_LINE").format({
+		"type": BodyPanel.star_class_text(_map.star.spectral_class, _map.star_type, self),
 		"kelvin": AmountFormat.units(roundi(_map.star_kelvin)), "count": _map.bodies.size()}))
 	if _map.bodies.is_empty():
 		_show_state("MAP_EMPTY")

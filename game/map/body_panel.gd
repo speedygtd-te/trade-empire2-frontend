@@ -1,7 +1,8 @@
 class_name BodyPanel
 extends VBoxContainer
 ## Details of a body tapped on the system map: what it is, its size and orbit, air, whether it
-## has a surface to build on, the player's structures there and its deposits.
+## has a surface to build on, the player's structures there and its deposits. With draft.30 also
+## its physics and whether it lies in the habitable zone or beyond the frost line.
 
 ## The player closed the details.
 signal closed
@@ -77,6 +78,19 @@ static func star_text(type: String, translator: Object) -> String:
 	return translator.tr("MAP_STAR_TYPE_" + type) if STAR_TYPES.has(type) else translator.tr("MAP_STAR_TYPE_UNKNOWN")
 
 
+## What kind of star it is in short: its spectral class ("G2 V", draft.30) when sent, else the
+## type's text ("Yellow star (class G)").
+static func star_class_text(spectral_class: String, type: String, translator: Object) -> String:
+	return spectral_class if not spectral_class.is_empty() else star_text(type, translator)
+
+
+## The type's text with the spectral class in front when sent: "K3 III · Red giant".
+static func star_kind_text(spectral_class: String, type: String, translator: Object) -> String:
+	if spectral_class.is_empty():
+		return star_text(type, translator)
+	return translator.tr("MAP_STAR_KIND").format({"class": spectral_class, "type": star_text(type, translator)})
+
+
 ## Shows a body of the map. `structures` are the names of the player's structures there.
 func show_body(map: SystemMap, body_id: String, structures: PackedStringArray, is_home: bool) -> void:
 	var body := map.body(body_id)
@@ -98,15 +112,17 @@ func show_body(map: SystemMap, body_id: String, structures: PackedStringArray, i
 		_line(tr("MAP_STRUCTURES_HERE").format({"names": ", ".join(structures)}), AppTheme.COLOR_OK)
 
 	var environment := Wire.as_dict(body.data.get("environment"))
+	var surface_c := SystemMap.number(environment.get("temperature"))
 	_line(tr("MAP_SIZE").format({
 		"radius": AmountFormat.units(roundi(body.radius_km)),
-		"gravity": "%.1f" % SystemMap.number(environment.get("gravity")),
-		"temperature": "%d" % roundi(SystemMap.number(environment.get("temperature")))}))
+		"gravity": BodyPhysics.figure(SystemMap.number(environment.get("gravity"))),
+		"temperature": BodyPhysics.celsius(surface_c)}))
 	var period := TimeFormat.duration(roundi(body.period_s * 1000.0))
 	if body.is_moon():
 		_line(tr("MAP_ORBIT_PLANET").format({"planet": map.body(body.parent_id).name, "period": period}))
 	else:
-		_line(tr("MAP_ORBIT_STAR").format({"au": "%.2f" % body.orbit_au, "period": period}))
+		_line(tr("MAP_ORBIT_STAR").format({"au": BodyPhysics.figure(body.orbit_au), "period": period}))
+	_physics_lines(map, body, surface_c)
 
 	if Wire.as_dict(body.data.get("grid")).is_empty() or body.data.get("surfaceBuildable") == false:
 		_line(tr("MAP_SURFACE_NONE"))
@@ -134,6 +150,28 @@ func show_body(map: SystemMap, body_id: String, structures: PackedStringArray, i
 				"abundance": Wire.as_int(deposit.get("abundance")), "quality": Wire.as_int(deposit.get("quality"))}))
 	_scroll.scroll_vertical = 0
 	_fit_height.call_deferred()
+
+
+## The body's physics (draft.30, when sent): mass, density and escape velocity; distance and
+## starlight; the temperature from starlight alone against the surface's (the greenhouse effect).
+## Then whether it lies in the star's habitable zone or beyond its frost line (when the star
+## sends them; also without physics).
+func _physics_lines(map: SystemMap, body: SystemMap.Body, surface_c: float) -> void:
+	var physics := body.physics
+	var distance := map.star_distance_au(body.id)
+	if physics != null:
+		_line(tr("MAP_PHYSICS_MASS").format({"mass": BodyPhysics.figure(physics.mass_earth),
+			"density": BodyPhysics.figure(physics.density), "escape": BodyPhysics.figure(physics.escape_velocity)}))
+		var light_key := "MAP_PHYSICS_LIGHT_MOON" if body.is_moon() else "MAP_PHYSICS_LIGHT"
+		_line(tr(light_key).format({"au": BodyPhysics.figure(distance), "flux": BodyPhysics.figure(physics.flux)}))
+		var warming := roundi(physics.warming(surface_c))
+		var temperatures := {"equilibrium": BodyPhysics.celsius(physics.equilibrium_c),
+			"surface": BodyPhysics.celsius(surface_c), "change": BodyPhysics.celsius_change(warming)}
+		_line(tr("MAP_PHYSICS_WARMER" if warming >= 1 else "MAP_PHYSICS_NO_WARMING").format(temperatures))
+	if map.star.in_habitable_zone(distance):
+		_line(tr("MAP_IN_HABITABLE_ZONE"), AppTheme.COLOR_OK)
+	elif map.star.beyond_frost_line(distance):
+		_line(tr("MAP_BEYOND_FROST_LINE"), AppTheme.COLOR_MUTED)
 
 
 ## The list takes the room its lines need, up to MAX_LIST_HEIGHT; beyond that it scrolls.

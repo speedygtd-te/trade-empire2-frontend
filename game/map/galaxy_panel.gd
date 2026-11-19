@@ -1,7 +1,8 @@
 class_name GalaxyPanel
 extends VBoxContainer
 ## Details of a system tapped on the galaxy map: its star, planets, distance from home, whether
-## the player is there, and the way into its system map.
+## the player is there, and the way into its system map. With draft.30 the star's spectral class
+## stands before its type and its catalog designation at the end.
 
 ## The player closed the details.
 signal closed
@@ -44,7 +45,7 @@ func _ready() -> void:
 func show_system(entry: GalaxySystems.Entry, home: GalaxySystems.Entry, is_own: bool, ly_per_unit: float) -> void:
 	_system_id = entry.id
 	_title.text = entry.name if not entry.name.is_empty() else tr("GALAXY_UNNAMED")
-	_kind.text = BodyPanel.star_text(entry.star_type, self)
+	_kind.text = BodyPanel.star_kind_text(entry.spectral_class, entry.star_type, self)
 	for child: Node in _lines.get_children():
 		child.queue_free()
 	var is_home := home != null and home.id == entry.id
@@ -63,6 +64,8 @@ func show_system(entry: GalaxySystems.Entry, home: GalaxySystems.Entry, is_own: 
 	if home != null and not is_home:
 		var distance := home.position.distance_to(entry.position) * ly_per_unit
 		_line(tr("GALAXY_DISTANCE").format({"ly": GalaxyPanel.light_years(distance)}), AppTheme.COLOR_MUTED)
+	if not entry.catalog.is_empty():
+		_line(tr("GALAXY_CATALOG").format({"catalog": entry.catalog}), AppTheme.COLOR_MUTED)
 
 
 ## A value in suns: two significant digits below 10, whole numbers above.

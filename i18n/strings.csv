@@ -435,6 +435,17 @@ MAP_STAR_TYPE_WHITE_DWARF,White dwarf
 MAP_STAR_TYPE_RED_GIANT,Red giant
 MAP_STAR_TYPE_NEUTRON,Neutron star
 MAP_STAR_TYPE_UNKNOWN,Star
+MAP_STAR_KIND,{class} · {type}
+MAP_HABITABLE_ZONE,Habitable zone
+MAP_FROST_LINE,Frost line
+MAP_PHYSICS_MASS,{mass} Earth masses · density {density} g/cm³ · escape velocity {escape} km/s
+MAP_PHYSICS_LIGHT,{au} AU from the star · starlight {flux} × Earth's
+MAP_PHYSICS_LIGHT_MOON,"With its planet {au} AU from the star · starlight {flux} × Earth's"
+MAP_PHYSICS_WARMER,"Surface {surface} °C, starlight alone {equilibrium} °C: {change} °C from greenhouse and inner heat"
+MAP_PHYSICS_NO_WARMING,"Surface {surface} °C, as warm as starlight alone makes it ({equilibrium} °C)"
+MAP_IN_HABITABLE_ZONE,"In the star's habitable zone: liquid water is possible."
+MAP_BEYOND_FROST_LINE,"Beyond the star's frost line: water is ice here."
+GALAXY_CATALOG,Catalog {catalog}
 MAP_GALAXY,Galaxy
 GALAXY_TITLE,Galaxy
 GALAXY_LOADING,Loading the galaxy…
