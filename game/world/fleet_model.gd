@@ -19,6 +19,8 @@ var loaded := false
 var error: ApiError = null
 ## Names of the bodies the fleet is at or heading to: body id → name.
 var body_names: Dictionary = {}
+## The player's routes; loaded with the fleet.
+var routes: RouteModel
 
 var _loading := false
 var _again := false
@@ -27,6 +29,9 @@ var _again := false
 func _ready() -> void:
 	Services.events.event_received.connect(_on_event)
 	Services.events.resync_requested.connect(_on_resync)
+	routes = RouteModel.new()
+	routes.name = "Routes"
+	add_child(routes)
 
 
 ## Loads the list again, and the details of everything that can move.
@@ -45,6 +50,7 @@ func reload() -> void:
 	error = null
 	var items: Array = list.data.get("items")
 	fleet.apply_list(items)
+	routes.reload()
 	for entry: Fleet.Entry in fleet.entries():
 		if entry.can_fly() or entry.can_drive() or entry.where() == Fleet.Where.TRANSIT:
 			var details := await Services.api.get_json("/v2/structures/%d" % entry.structure_id)

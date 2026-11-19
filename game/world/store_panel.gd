@@ -10,6 +10,10 @@ const LIST_HEIGHT := 460
 ## Amounts offered for discarding and moving, in whole units; 0 stands for everything.
 const DISCARD_AMOUNTS: Array[int] = [1, 10, 0]
 const TRANSFER_AMOUNTS: Array[int] = [1, 10, 0]
+const MOVE_AMOUNTS: Array[int] = [1, 10, 0]
+## The two areas of a store: the own supply and the cargo hold (storage modules set to cargo).
+const AREA_SUPPLY := "selfUse"
+const AREA_CARGO := "transport"
 
 var _model: ColonyModel
 var _summary: Label
@@ -35,6 +39,12 @@ var _transfer_buttons: Array[Button] = []
 var _target_index := 0
 ## A result line (moved, refused) stays until another item is chosen.
 var _keep_status := false
+## The area of the chosen item: the own supply ("selfUse") or the cargo hold ("transport").
+var _area := AREA_SUPPLY
+## Moving the chosen item between the own supply and the cargo hold.
+var _move_bar: VBoxContainer
+var _move_label: Label
+var _move_buttons: Array[Button] = []
 
 
 func setup(model: ColonyModel) -> void:
@@ -89,6 +99,24 @@ func _ready() -> void:
 	_target_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_target_button.pressed.connect(_on_next_target)
 	amounts.add_child(_target_button)
+	_move_bar = Ui.column(8)
+	_move_bar.visible = false
+	add_child(_move_bar)
+	move_child(_move_bar, _discard_bar.get_index())
+	_move_label = Ui.dynamic_label()
+	_move_bar.add_child(_move_label)
+	var moves := HBoxContainer.new()
+	moves.add_theme_constant_override("separation", 12)
+	_move_bar.add_child(moves)
+	for amount: int in MOVE_AMOUNTS:
+		var button := Ui.secondary_button("")
+		button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(_on_move.bind(amount))
+		moves.add_child(button)
+		_move_buttons.append(button)
+	# Routes unload and load without a rate change of the transporter's cargo: follow them.
+	Services.events.event_received.connect(_on_event)
 
 
 ## Shows the energy and life support balance and warnings of the colony.
@@ -177,19 +205,157 @@ func show_inventory(inventory: Inventory) -> void:
 			label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_list.add_child(row_button)
 		_rows[key] = [amount_label, rate_label]
-	if not _rows.has(_selected):
+	_add_cargo(inventory)
+	var still := _rows.has(_selected) if _area == AREA_SUPPLY else inventory.cargo_amount(_selected) > 0
+	if not still:
 		_selected = ""
+		_area = AREA_SUPPLY
 	_update_discard_bar()
 	tick()
 
 
-func _select(item: String) -> void:
+## The cargo hold below the store: how full it is, what it holds (rows choose an item to move
+## back), and every storage module with its mode and a button to switch it.
+func _add_cargo(inventory: Inventory) -> void:
+	var modules: Array[StructureLayout.Module] = []
+	if _model != null:
+		modules = _model.storage_modules()
+	if not inventory.has_cargo_area() and modules.is_empty():
+		return
+	_list.add_child(Ui.spacer(8))
+	_list.add_child(Ui.label("STORE_CARGO_TITLE", AppTheme.VARIATION_HEADING))
+	var fill := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	if inventory.transport_capacity > 0:
+		@warning_ignore("integer_division")
+		fill.text = tr("STORE_CARGO_FILL").format({
+			"used": AmountFormat.units(inventory.transport_used / inventory.scale),
+			"capacity": AmountFormat.units(inventory.transport_capacity / inventory.scale)})
+	else:
+		fill.text = tr("STORE_CARGO_NONE")
+	_list.add_child(fill)
+	var keys := inventory.cargo_keys()
+	if keys.is_empty() and inventory.transport_capacity > 0:
+		_list.add_child(Ui.label("STORE_CARGO_EMPTY", AppTheme.VARIATION_MUTED))
+	for key: String in keys:
+		var row := ListButton.new()
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.text = tr("STORE_CARGO_ROW").format({"name": _item_name(key),
+			"count": AmountFormat.units(inventory.cargo_units(key))})
+		row.set_chosen(_area == AREA_CARGO and key == _selected)
+		row.set_meta("cargo", key)
+		row.tapped.connect(_select.bind(key, AREA_CARGO))
+		_list.add_child(row)
+	if modules.is_empty():
+		return
+	_list.add_child(Ui.label("STORE_MODULES_TITLE", AppTheme.VARIATION_HEADING))
+	for module: StructureLayout.Module in modules:
+		_list.add_child(_module_row(module, inventory.scale))
+
+
+## One storage module: its name, size and mode, and a button switching it to the other area.
+func _module_row(module: StructureLayout.Module, scale: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var definition := Services.definitions.module(module.module_type)
+	var cargo := module.storage_mode == AREA_CARGO
+	var label := Ui.dynamic_label()
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var mode := tr("STORE_MODE_CARGO") if cargo else tr("STORE_MODE_SUPPLY")
+	if module.is_building():
+		mode = tr("STORE_MODE_BUILDING").format({"mode": mode})
+	@warning_ignore("integer_division")
+	label.text = tr("STORE_MODULE_ROW").format({"module": definition.display_name if definition != null else tr("LOG_SOMETHING"),
+		"capacity": AmountFormat.units((definition.storage_capacity if definition != null else 0) / maxi(scale, 1)),
+		"mode": mode})
+	row.add_child(label)
+	# A swipe that starts on the button scrolls the list (ListButton).
+	var switch := ListButton.new()
+	switch.text = tr("STORE_TO_SUPPLY") if cargo else tr("STORE_TO_CARGO")
+	switch.custom_minimum_size = Vector2(220, AppTheme.TOUCH_MIN)
+	switch.size_flags_horizontal = Control.SIZE_SHRINK_END
+	switch.disabled = _busy
+	switch.tapped.connect(_on_switch_mode.bind(module.module_id, AREA_SUPPLY if cargo else AREA_CARGO))
+	row.add_child(switch)
+	return row
+
+
+func _on_switch_mode(module_id: int, mode: String) -> void:
+	if _busy or _model == null:
+		return
+	_busy = true
+	_refresh_buttons()
+	var result := await _model.set_storage_mode(module_id, mode)
+	_busy = false
+	if result.is_ok():
+		_show_status(tr("STORE_MODE_SET_CARGO") if mode == AREA_CARGO else tr("STORE_MODE_SET_SUPPLY"), AppTheme.COLOR_OK)
+	else:
+		_show_status(ErrorText.describe(result.error, self), AppTheme.COLOR_DANGER)
+	_refresh_buttons()
+
+
+## The row moving the chosen item between the own supply and the cargo hold: shown for a cargo
+## item, and for a store item when there is a cargo hold.
+func _update_move_bar() -> void:
+	var cargo := _area == AREA_CARGO
+	_move_bar.visible = not _selected.is_empty() and _inventory != null \
+		and (cargo or _inventory.transport_capacity > 0)
+	if not _move_bar.visible:
+		return
+	_move_label.text = tr("STORE_MOVE_TO_SUPPLY") if cargo else tr("STORE_MOVE_TO_CARGO")
+	for index: int in MOVE_AMOUNTS.size():
+		var amount := MOVE_AMOUNTS[index]
+		_move_buttons[index].text = tr("STORE_TRANSFER_ALL") if amount == 0 else str(amount)
+		_move_buttons[index].disabled = _busy
+
+
+func _on_move(amount: int) -> void:
+	if _busy or _selected.is_empty() or _model == null or _inventory == null:
+		return
+	_armed = -1
+	var from := _area
+	var have := _inventory.cargo_units(_selected) if from == AREA_CARGO else _inventory.units(_selected, Services.clock.now_ms())
+	var units := TransferPlan.units_for(amount, have)
+	if units <= 0:
+		_show_status(tr("STORE_TRANSFER_NOTHING"), AppTheme.COLOR_DANGER)
+		return
+	var micro := units * _inventory.scale
+	if from == AREA_SUPPLY and micro > _inventory.cargo_room():
+		_show_status(tr("STORE_MOVE_NO_ROOM"), AppTheme.COLOR_DANGER)
+		return
+	var item := _selected
+	_busy = true
+	_refresh_buttons()
+	var result := await _model.move_storage(from, item, micro)
+	_busy = false
+	if result.is_ok():
+		var key := "STORE_MOVED_TO_SUPPLY" if from == AREA_CARGO else "STORE_MOVED_TO_CARGO"
+		_show_status(tr(key).format({"count": AmountFormat.units(units), "name": _item_name(item)}), AppTheme.COLOR_OK)
+	else:
+		_show_status(ErrorText.describe(result.error, self), AppTheme.COLOR_DANGER)
+	_refresh_buttons()
+
+
+func _on_event(event: SseEvent) -> void:
+	if _model == null or _model.structure_id == 0 or not event.type.begins_with("route."):
+		return
+	if event.type != "route.arrived" and event.type != "route.departed":
+		return
+	var data := Wire.parse_object(event.data)
+	var id := _model.structure_id
+	if Wire.as_int(data.get("transporterId")) == id or Wire.as_int(data.get("stationId")) == id \
+			or Wire.as_int(data.get("fuelPayerId")) == id:
+		_model.reload_inventory()
+
+
+func _select(item: String, area: String = AREA_SUPPLY) -> void:
 	_selected = item
+	_area = area
 	for child: Node in _list.get_children():
 		if child is ListButton:
 			var row := child as ListButton
 			var tagged: String = row.get_meta("item", "")
-			row.set_chosen(tagged == item)
+			var cargo: String = row.get_meta("cargo", "")
+			row.set_chosen(tagged == item and area == AREA_SUPPLY or cargo == item and area == AREA_CARGO)
 	_armed = -1
 	_discard_status.remove_theme_color_override("font_color")
 	_discard_status.text = ""
@@ -198,8 +364,13 @@ func _select(item: String) -> void:
 
 
 func _update_discard_bar() -> void:
-	_discard_bar.visible = not _selected.is_empty()
-	if _selected.is_empty():
+	_update_move_bar()
+	# Discarding and moving to a guest or host work on the own supply only.
+	_discard_bar.visible = not _selected.is_empty() and _area == AREA_SUPPLY
+	if not _discard_bar.visible:
+		_transfer_bar.visible = false
+		if not _keep_status:
+			_discard_status.text = ""
 		return
 	var item_name := _item_name(_selected)
 	for index: int in DISCARD_AMOUNTS.size():
@@ -217,7 +388,7 @@ func _update_transfer_bar() -> void:
 	var others: Array[ColonyModel] = []
 	if _model != null:
 		others = _model.counterparts()
-	_transfer_bar.visible = not _selected.is_empty() and not others.is_empty()
+	_transfer_bar.visible = not _selected.is_empty() and _area == AREA_SUPPLY and not others.is_empty()
 	if not _transfer_bar.visible:
 		return
 	_target_index = posmod(_target_index, others.size())
@@ -272,6 +443,7 @@ func _refresh_buttons() -> void:
 	for button: Button in _discard_buttons:
 		button.disabled = _busy
 	_update_transfer_bar()
+	_update_move_bar()
 
 
 func _show_status(text: String, color: Color) -> void:

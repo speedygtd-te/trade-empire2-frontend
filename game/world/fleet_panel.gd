@@ -17,12 +17,19 @@ var _list: VBoxContainer
 var _state: Label
 var _retry: Button
 var _left := 0.0
+var _structures_tab: Button
+var _routes_tab: Button
+var _structures: VBoxContainer
+var _routes: RouteList
+var _editor: RouteEditor = null
+var _start_with_routes := false
 
 
-## `current`: the structure the colony screen shows.
-func setup(fleet: FleetModel, current: int) -> void:
+## `current`: the structure the colony screen shows; `routes`: open on the routes tab.
+func setup(fleet: FleetModel, current: int, routes: bool = false) -> void:
 	_fleet = fleet
 	_current = current
+	_start_with_routes = routes
 
 
 func _ready() -> void:
@@ -47,24 +54,79 @@ func _ready() -> void:
 	var close := Ui.secondary_button("COMMON_CLOSE")
 	close.pressed.connect(func() -> void: closed.emit())
 	top.add_child(close)
+	# Two tabs: the structures, and the routes between them.
+	var tabs := HBoxContainer.new()
+	column.add_child(tabs)
+	var group := ButtonGroup.new()
+	_structures_tab = Ui.tab_button("ROUTE_TAB_STRUCTURES", group)
+	_structures_tab.pressed.connect(_show_tab.bind(false))
+	tabs.add_child(_structures_tab)
+	_routes_tab = Ui.tab_button("ROUTE_TAB", group)
+	_routes_tab.pressed.connect(_show_tab.bind(true))
+	tabs.add_child(_routes_tab)
+	_structures = Ui.column(16)
+	_structures.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(_structures)
 	_state = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	column.add_child(_state)
+	_structures.add_child(_state)
 	_retry = Ui.secondary_button("COMMON_RETRY")
 	_retry.visible = false
 	_retry.pressed.connect(_on_retry)
-	column.add_child(_retry)
+	_structures.add_child(_retry)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(scroll)
+	_structures.add_child(scroll)
 	_list = Ui.column(10)
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_list)
+	_routes = RouteList.new()
+	_routes.setup(_fleet)
+	_routes.edit_requested.connect(func(route_id: int) -> void: open_route_editor(route_id))
+	_routes.new_requested.connect(func() -> void: open_route_editor(0))
+	column.add_child(_routes)
 	_fleet.changed.connect(_rebuild)
 	_fleet.load_failed.connect(_on_failed)
 	_rebuild()
+	_show_tab(_start_with_routes)
 	if not _fleet.loaded:
 		_fleet.reload()
+
+
+## Shows the structures or the routes.
+func _show_tab(routes: bool) -> void:
+	_structures_tab.set_pressed_no_signal(not routes)
+	_routes_tab.set_pressed_no_signal(routes)
+	_structures.visible = not routes
+	_routes.visible = routes
+
+
+## Opens the route editor over the panel: an existing route (its rules), or a new one (0),
+## prefilled with a transporter when `transporter_id` is not 0.
+func open_route_editor(route_id: int, transporter_id: int = 0) -> void:
+	if _editor != null:
+		_editor.queue_free()
+	_show_tab(true)
+	_editor = RouteEditor.new()
+	_editor.setup(_fleet, route_id, transporter_id)
+	_editor.closed.connect(_close_editor)
+	_editor.saved.connect(func(_route_id: int) -> void: _close_editor())
+	add_child(_editor)
+
+
+func _close_editor() -> void:
+	if _editor != null:
+		_editor.queue_free()
+		_editor = null
+
+
+## Back closes the route editor (or its picker) first; false when there was nothing to close
+## (the owner closes the panel then).
+func handle_back() -> bool:
+	if _editor != null:
+		_editor.handle_back()
+		return true
+	return false
 
 
 func _process(delta: float) -> void:
