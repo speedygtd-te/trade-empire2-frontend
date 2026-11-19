@@ -177,6 +177,7 @@ func _run() -> void:
 	await _wait_until(func() -> bool: return guest.inventory != null, 8000)
 	_check(guest.inventory != null, "the guest's own store loads (%d items)" % (
 		guest.inventory.item_keys().size() if guest.inventory != null else -1))
+	await _check_last_entrance(guest, second + UP)
 	var module_gone := await _send([_op("removeModule", first + UP)])
 	_check(module_gone.is_ok(), "remove the module -> ok (error: %s)" % _code(module_gone))
 	await _wait_until(func() -> bool: return _units(module_item) == modules_before, 8000)
@@ -186,6 +187,21 @@ func _run() -> void:
 
 	await _clean_up(first, second, docks_before, hulls_before)
 	_finish()
+
+
+## Paths on a guest (draft.29, its own level 0 is its ground): storage on its last free hull would
+## take its last entrance (and the smelter's corridor). Preview and server must agree.
+func _check_last_entrance(guest: ColonyModel, host_cell: Vector3i) -> void:
+	var local := DockRules.guest_cell(guest.layout, host_cell)
+	var preview := PathAccess.of(guest.layout, Services.definitions).check_place_module(Services.definitions, "BASIC_STORAGE", local)
+	var refused := await _send([_op("placeModule", host_cell, "BASIC_STORAGE")])
+	var expected := {BuildRules.Verdict.NO_ENTRANCE: "NO_ENTRANCE", BuildRules.Verdict.CUTS_OFF: "NOT_CONNECTED",
+		BuildRules.Verdict.NO_CORRIDOR: "NOT_CONNECTED", BuildRules.Verdict.LEVEL_NOT_CONNECTED: "LEVEL_NOT_CONNECTED"}
+	_check(not preview.ok() and Wire.as_string(expected.get(preview.verdict)) == _code(refused),
+		"storage on the guest's last entrance: preview and server agree (preview %s, server %s)" % [
+			_verdict(preview.verdict), _code(refused)])
+	if refused.is_ok():
+		await _send([_op("removeModule", host_cell)])
 
 
 ## Moves two iron to the guest and back again: both stores come from the answer, and the

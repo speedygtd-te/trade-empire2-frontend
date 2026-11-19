@@ -67,6 +67,13 @@ const COLOR_BUILDING := Color(0.984, 0.749, 0.141, 0.40)
 const COLOR_DISABLED := Color(0.55, 0.08, 0.08, 0.45)
 const COLOR_SELECTED := Color(0.133, 0.827, 0.933, 0.9)
 const COLOR_STRUCTURE := Color(0.133, 0.827, 0.933, 0.18)
+const COLOR_WAITING := Color(0.984, 0.749, 0.141, 0.45)
+## Paths in build mode (show_paths): reached corridors faintly cyan, cut-off ones amber, entrances
+## emerald arrows, modules without a corridor framed red.
+const COLOR_PATH_NEAR := Color(0.133, 0.827, 0.933, 0.20)
+const COLOR_PATH_CUT := Color(0.984, 0.749, 0.141, 0.34)
+const COLOR_PATH_ENTRANCE := Color(0.204, 0.827, 0.600, 0.95)
+const COLOR_PATH_UNCONNECTED := Color(0.973, 0.443, 0.443, 0.95)
 ## How high (cells) a landing structure starts its descent above its site.
 const LANDING_HEIGHT := 12.0
 ## How often (seconds) the view checks whether a trip changed what is drawn (a phase began).
@@ -115,6 +122,8 @@ var _modules: Node3D
 var _preview: Node3D
 ## The cells of a hull shape being marked (show_shape).
 var _shape: Node3D
+## Corridors, entrances and modules without a corridor in build mode (show_paths).
+var _paths: Node3D
 var _selection: Node3D
 var _sun: DirectionalLight3D
 var _night_fill: DirectionalLight3D
@@ -179,6 +188,7 @@ func _ready() -> void:
 	_modules = _child("Modules")
 	_preview = _child("Preview")
 	_shape = _child("Shape")
+	_paths = _child("Paths")
 	_selection = _frame(COLOR_SELECTED)
 	_selection.visible = false
 	add_child(_selection)
@@ -665,10 +675,12 @@ func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rota
 ## blocked) red; cells left out of both are not marked. Empty lists hide it. Each colour is one
 ## mesh, so a large shape stays cheap while it follows the finger.
 ## `on_hulls`: the cells carry hulls already (they lie on the floor plates, not the ground).
-func show_shape(good: Array[Vector3i], bad: Array[Vector3i], on_hulls: bool = false) -> void:
+## `waiting` cells amber (a module that has to wait until the level is connected).
+func show_shape(good: Array[Vector3i], bad: Array[Vector3i], on_hulls: bool = false,
+		waiting: Array[Vector3i] = []) -> void:
 	for child: Node in _shape.get_children():
 		child.queue_free()
-	for part: Array in [[good, COLOR_OK], [bad, COLOR_BAD]]:
+	for part: Array in [[good, COLOR_OK], [bad, COLOR_BAD], [waiting, COLOR_WAITING]]:
 		var cells: Array[Vector3i] = []
 		cells.assign(part[0] as Array)
 		if cells.is_empty():
@@ -693,6 +705,86 @@ func show_shape(good: Array[Vector3i], bad: Array[Vector3i], on_hulls: bool = fa
 		instance.mesh = mesh
 		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_shape.add_child(instance)
+
+
+## Shows the paths of the open structure's active level (absolute cells, all on hulls): `near`
+## corridors staff reach (faint cyan), `cut` corridors they do not (amber), `entrances` with the
+## side that opens outwards (`sides`, steps in the grid: an emerald arrow at that edge), and the
+## cells of modules without a corridor (`unconnected`: a red frame round them, drawn over the
+## models). One mesh per colour; empty lists hide it all.
+func show_paths(near: Array[Vector3i], cut: Array[Vector3i], entrances: Array[Vector3i], sides: Array[Vector3i],
+		unconnected: Array[Vector3i]) -> void:
+	for child: Node in _paths.get_children():
+		child.queue_free()
+	var lift := Vector3(0.0, HULL_FLOOR_HEIGHT + 0.004, 0.0)
+	for part: Array in [[near, COLOR_PATH_NEAR], [cut, COLOR_PATH_CUT]]:
+		var cells: Array[Vector3i] = []
+		cells.assign(part[0] as Array)
+		if cells.is_empty():
+			continue
+		var mesh := _path_mesh(part[1] as Color, false)
+		for cell: Vector3i in cells:
+			var centre := WorldGrid.to_scene(cell, origin, model.size_x) + lift
+			_add_quad(mesh, centre + Vector3(-0.47, 0, -0.47), centre + Vector3(0.47, 0, -0.47),
+				centre + Vector3(0.47, 0, 0.47), centre + Vector3(-0.47, 0, 0.47))
+		_finish_path_mesh(mesh)
+	if not entrances.is_empty():
+		var arrows := _path_mesh(COLOR_PATH_ENTRANCE, false)
+		for index: int in entrances.size():
+			var side := sides[index] if index < sides.size() else Vector3i(-1, 0, 0)
+			var centre := WorldGrid.to_scene(entrances[index], origin, model.size_x) + lift + Vector3(0.0, 0.003, 0.0)
+			# Grid y runs along scene −Z.
+			var out := Vector3(side.x, 0.0, -side.y)
+			var across := Vector3(-out.z, 0.0, out.x)
+			_add_quad(arrows, centre - out * 0.02 - across * 0.06, centre + out * 0.2 - across * 0.06,
+				centre + out * 0.2 + across * 0.06, centre - out * 0.02 + across * 0.06)
+			arrows.surface_add_vertex(centre + out * 0.2 - across * 0.2)
+			arrows.surface_add_vertex(centre + out * 0.46)
+			arrows.surface_add_vertex(centre + out * 0.2 + across * 0.2)
+		_finish_path_mesh(arrows)
+	if not unconnected.is_empty():
+		var taken: Dictionary = {}
+		for cell: Vector3i in unconnected:
+			taken[cell] = true
+		var frame := _path_mesh(COLOR_PATH_UNCONNECTED, true)
+		var width := 0.07
+		for cell: Vector3i in unconnected:
+			var centre := WorldGrid.to_scene(cell, origin, model.size_x) + lift
+			for side: Vector3i in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0)]:
+				if taken.has(cell + side):
+					continue
+				var out := Vector3(side.x, 0.0, -side.y)
+				var across := Vector3(-out.z, 0.0, out.x)
+				_add_quad(frame, centre + out * (0.5 - width) - across * 0.5, centre + out * 0.5 - across * 0.5,
+					centre + out * 0.5 + across * 0.5, centre + out * (0.5 - width) + across * 0.5)
+		_finish_path_mesh(frame)
+
+
+func _path_mesh(color: Color, on_top: bool) -> ImmediateMesh:
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = color
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if on_top:
+		material.no_depth_test = true
+		material.render_priority = 5
+	var mesh := ImmediateMesh.new()
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
+	return mesh
+
+
+func _finish_path_mesh(mesh: ImmediateMesh) -> void:
+	mesh.surface_end()
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_paths.add_child(instance)
+
+
+static func _add_quad(mesh: ImmediateMesh, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	for corner: Vector3 in [a, b, c, a, c, d]:
+		mesh.surface_add_vertex(corner)
 
 
 func _after_move() -> void:

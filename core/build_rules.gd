@@ -54,6 +54,15 @@ enum Verdict {
 	SHAFT_TOO_TALL,
 	## A hull of a shape here would found or extend a guest (HullShapes); Single places those.
 	GUEST_PLACEMENT,
+	## Paths (PathAccess): a module that needs staff or houses inhabitants needs a reached corridor
+	## beside it (by a side or a corner).
+	NO_CORRIDOR,
+	## Paths: such a module cannot go on a level that is not connected to the ground yet.
+	LEVEL_NOT_CONNECTED,
+	## Paths: the ground level has to keep an entrance (a free hull at the outer edge).
+	NO_ENTRANCE,
+	## Paths: connected modules or levels would be cut off from the corridors.
+	CUTS_OFF,
 }
 
 const _NEIGHBOURS: Array[Vector3i] = [

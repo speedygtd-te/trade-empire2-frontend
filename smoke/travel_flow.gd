@@ -150,9 +150,12 @@ func _build_fleet(vehicle: bool, ship: bool) -> void:
 		var second: Vector3i = row[1]
 		var built := await _send([_op("placeHull", first, "DOCK"), _op("placeHull", second, "DOCK")])
 		_check(built.is_ok(), "vehicle: two docks (error: %s)" % _code(built))
-		built = await _send([_op("placeHull", first + UP, "STARTER"), _op("placeHull", second + UP, "PLATFORM_OUTDOOR")])
+		# The second hull stays free as the vehicle's entrance (paths, draft.29); the solar panel
+		# goes on a platform on top of it.
+		built = await _send([_op("placeHull", first + UP, "STARTER"), _op("placeHull", second + UP, "STARTER")])
 		_check(built.is_ok(), "vehicle: founded on the docks (error: %s)" % _code(built))
-		built = await _send([_op("placeModule", first + UP, "WHEEL"), _op("placeModule", second + UP, "SOLAR_PANEL")])
+		built = await _send([_op("placeHull", second + UP * 2, "PLATFORM_OUTDOOR"), _op("placeModule", first + UP, "WHEEL"),
+			_op("placeModule", second + UP * 2, "SOLAR_PANEL")])
 		_check(built.is_ok(), "vehicle: wheel and solar panel (error: %s)" % _code(built))
 		await _base.reload_layout()
 	if ship:
@@ -170,8 +173,11 @@ func _build_fleet(vehicle: bool, ship: bool) -> void:
 		_check(built.is_ok(), "ship: founded on the docks (error: %s)" % _code(built))
 		var results: Array = built.data.get("results") if built.is_ok() else []
 		var ship_id := Wire.as_int(Wire.as_dict(results[0]).get("structureId")) if not results.is_empty() else 0
-		built = await _send([_op("placeModule", cells[0] + UP, "CHEMICAL_THRUSTER"), _op("placeModule", cells[1] + UP, "SOLAR_PANEL"),
-			_op("placeModule", cells[2] + UP, "INTERSTELLAR_NAVIGATION"), _op("placeModule", cells[3] + UP, "BASIC_STORAGE")])
+		# The storage goes on a hull on top: the hull below it stays free as the ship's entrance and
+		# the navigation's corridor (paths, draft.29).
+		built = await _send([_op("placeHull", cells[3] + UP * 2, "STARTER"),
+			_op("placeModule", cells[0] + UP, "CHEMICAL_THRUSTER"), _op("placeModule", cells[1] + UP, "SOLAR_PANEL"),
+			_op("placeModule", cells[2] + UP, "INTERSTELLAR_NAVIGATION"), _op("placeModule", cells[3] + UP * 2, "BASIC_STORAGE")])
 		_check(built.is_ok(), "ship: thruster, solar, navigation, storage (error: %s)" % _code(built))
 		# Modules are placed in a few seconds (placement time).
 		await get_tree().create_timer(8.0).timeout

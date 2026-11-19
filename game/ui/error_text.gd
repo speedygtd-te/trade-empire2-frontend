@@ -43,6 +43,10 @@ const HANDLED_CODES: PackedStringArray = [
 	"NOT_VERTICAL_ACCESS",
 	"BASE_BUILDING",
 	"SHAFT_TOO_TALL",
+	# Paths in a structure (Backend-V2 docs/SPEC-wege.md; announced, not in the contract yet).
+	"NOT_CONNECTED",
+	"LEVEL_NOT_CONNECTED",
+	"NO_ENTRANCE",
 	# Combat and the core module (draft.22).
 	"CORE_MODULE_LOCKED",
 	"HULL_DESTROYED",

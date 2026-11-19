@@ -219,7 +219,9 @@ func _build_vehicles() -> void:
 
 
 ## Founds a guest on the docks under `cells` (host cells), extends it over all of them and
-## places one module on each.
+## places one module on each — the last one on a hull on top of the last cell: the hull below it
+## stays free as the guest's entrance (paths, draft.29: the ground level keeps a free hull at its
+## edge).
 func _found_guest(cells: Array[Vector3i], modules: Array[String]) -> bool:
 	var hulls: Array[Dictionary] = []
 	for cell: Vector3i in cells:
@@ -228,9 +230,11 @@ func _found_guest(cells: Array[Vector3i], modules: Array[String]) -> bool:
 	if not founded.is_ok():
 		_note("guest hulls refused: %s" % _code(founded))
 		return false
-	var ops: Array[Dictionary] = []
+	var last := cells.size() - 1
+	var ops: Array[Dictionary] = [_op("placeHull", cells[last] + UP * 2, HULL)]
 	for index: int in cells.size():
-		ops.append(_op("placeModule", cells[index] + UP, modules[index]))
+		var at := cells[index] + (UP * 2 if index == last else UP)
+		ops.append(_op("placeModule", at, modules[index]))
 	var placed := await _model.send_ops(ops)
 	if not placed.is_ok():
 		_note("guest modules refused: %s" % _code(placed))

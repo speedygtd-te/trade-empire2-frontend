@@ -25,6 +25,14 @@ extends Control
 ## founds a guest; on an open guest a hull goes next to or on top of it. A guest is built from the
 ## home structure's store (contract), which the palette shows.
 ##
+## Paths (PathAccess, draft.29): in Build the active level of the home structure shows its
+## corridors (reached faintly cyan, cut off amber), the entrances (arrows) and the modules without
+## a corridor (red frame); a chosen module marks every free INDOOR hull cyan, red or amber (level
+## not connected). Placing, removing a hull or a shaft and hull shapes are refused in the preview
+## when they would leave a module without a corridor, cut modules or levels off or close the last
+## entrance. The state shown is the server's `access` from the layout header; the what-ifs are
+## reckoned here. Inspect names a module without a corridor in red.
+##
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects.
 ##
 ## Hull shapes (like V1, without circles): under a chosen hull the palette switches between Single
@@ -209,6 +217,12 @@ var _shape_plan: HullShapes.Plan = null
 var _shape_shown := false
 ## With a staircase or elevator chosen: why fields are red ("" when none is).
 var _shaft_hint := ""
+## What the paths said about the last placement checked (_verdict); null when they had no say.
+var _path_check: PathAccess.Check = null
+## What the paths layer shows now (to skip redrawing the same).
+var _paths_key := ""
+## A module without a corridor in Inspect: says so in red.
+var _path_note: Label
 ## The count at the shape's end cell.
 var _shape_badge: ShapeBadge
 ## Absolute cells the server refused because of a structure this client cannot see (another
@@ -594,6 +608,11 @@ func _build_overlay() -> void:
 	# Info, status and actions: in the bottom while building, on the inspect card in Inspect.
 	_info = Ui.dynamic_label()
 	_rows.add_child(_info)
+	_path_note = Ui.dynamic_label()
+	_path_note.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
+	_path_note.text = tr("COLONY_PATH_NOT_CONNECTED")
+	_path_note.visible = false
+	_rows.add_child(_path_note)
 	_staff_row = HBoxContainer.new()
 	_staff_row.add_theme_constant_override("separation", 12)
 	_staff_row.visible = false
@@ -880,7 +899,7 @@ func _move_details(on_card: bool) -> void:
 	var target: Control = _inspect.content() if on_card else _rows
 	if _info.get_parent() == target:
 		return
-	for node: Control in [_info, _staff_row, _ground, _status, _actions]:
+	for node: Control in [_info, _path_note, _staff_row, _ground, _status, _actions]:
 		node.reparent(target, false)
 
 
@@ -1181,12 +1200,16 @@ func _show_shaft_spots() -> void:
 	var layout := _focus.layout
 	var good: Array[Vector3i] = []
 	var bad: Array[Vector3i] = []
+	# Paths: a shaft on the last entrance would close it.
+	var spots := PathAccess.of(layout, Services.definitions).placement_spots(Services.definitions, module_def.key,
+		_local_level(layout))
 	for local: Vector3i in layout.hull_cells():
 		var cell := layout.to_absolute(local)
 		if cell.z != _level or layout.module_at(local) != null:
 			continue
 		var verdict := BuildRules.check_place_module(layout, Services.definitions, module_def.key, local, 0)
-		if verdict == BuildRules.Verdict.OK:
+		var path := spots.checks.get(local) as PathAccess.Check
+		if verdict == BuildRules.Verdict.OK and (path == null or path.ok()):
 			good.append(cell)
 		else:
 			bad.append(cell)
@@ -1196,6 +1219,125 @@ func _show_shaft_spots() -> void:
 		_shaft_hint = tr("LEVEL_SHAFT_SPOTS_NONE")
 	elif not bad.is_empty():
 		_shaft_hint = tr("LEVEL_SHAFT_SPOTS")
+
+
+## With any other module for INDOOR hulls chosen: every free INDOOR hull of the active level
+## marked (PathAccess.placement_spots), cyan where it can stand, red where the paths forbid it (no
+## corridor beside it, it would cut others off or close the last entrance), amber where it waits
+## for the level to be connected (a module with staff or inhabitants, W4).
+func _show_module_spots() -> void:
+	var module_def := Services.definitions.module(_tool.get_slice(":", 1)) if _tool.begins_with("module:") else null
+	if module_def == null or module_def.vertical_access or not module_def.positioning.has("INDOOR") or not _uses_levels():
+		return
+	var layout := _focus.layout
+	var spots := PathAccess.of(layout, Services.definitions).placement_spots(Services.definitions, module_def.key,
+		_local_level(layout), _rotation)
+	var good := _absolute(layout, spots.good)
+	var bad := _absolute(layout, spots.bad)
+	var waiting := _absolute(layout, spots.waiting)
+	_shape_shown = true
+	_view.show_shape(good, bad, true, waiting)
+	if not waiting.is_empty():
+		_shaft_hint = tr("COLONY_PATH_SPOTS_WAITING")
+	elif not bad.is_empty():
+		_shaft_hint = tr("COLONY_PATH_SPOTS")
+
+
+## The active level as a local level of `layout`.
+func _local_level(layout: StructureLayout) -> int:
+	return layout.to_local(Vector3i(0, 0, _level)).z
+
+
+func _absolute(layout: StructureLayout, cells: Array[Vector3i]) -> Array[Vector3i]:
+	var result: Array[Vector3i] = []
+	for cell: Vector3i in cells:
+		result.append(layout.to_absolute(cell))
+	return result
+
+
+## Whether a hull type takes INDOOR modules (its free hulls are corridors).
+func _is_indoor(hull_type: String) -> bool:
+	var hull_def := Services.definitions.hull(hull_type)
+	return hull_def != null and hull_def.module_positioning == "INDOOR"
+
+
+## In build mode on the home structure: the corridors of the active level (reached faintly cyan,
+## cut off amber; left out while a module's spots are marked on them), the entrances on the ground
+## level and the modules without a corridor (red frame). The state is the server's `access` where
+## the layout brought one.
+func _update_paths() -> void:
+	var show := _opened and _mode == Mode.BUILD and _uses_levels() and Services.definitions != null
+	if not show:
+		if not _paths_key.is_empty():
+			_paths_key = ""
+			var none: Array[Vector3i] = []
+			_view.show_paths(none, none, none, none, none)
+		return
+	var layout := _focus.layout
+	var access := PathAccess.of(layout, Services.definitions)
+	var z := _local_level(layout)
+	var spots_shown := _tool.begins_with("module:") and not _shape_active()
+	var key := "%d|%d|%s|%s" % [access.get_instance_id(), z, spots_shown, _view.origin]
+	if key == _paths_key:
+		return
+	_paths_key = key
+	var near: Array[Vector3i] = []
+	var cut: Array[Vector3i] = []
+	if not spots_shown:
+		# The server names no corridors: these are reckoned here.
+		var corridors := access.corridors(z)
+		var reached: Array[Vector3i] = []
+		reached.assign(corridors[0])
+		var unreached: Array[Vector3i] = []
+		unreached.assign(corridors[1])
+		near = _absolute(layout, reached)
+		cut = _absolute(layout, unreached)
+	var entrances: Array[Vector3i] = []
+	var sides: Array[Vector3i] = []
+	for cell: Vector3i in access.entrance_cells():
+		if cell.z == z:
+			entrances.append(layout.to_absolute(cell))
+			sides.append(access.open_side(cell))
+	var unconnected: Array[Vector3i] = []
+	for module_id: int in access.unconnected_modules():
+		var placed := layout.module(module_id)
+		if placed == null:
+			continue
+		for cell: Vector3i in placed.cells():
+			if cell.z == z:
+				unconnected.append(layout.to_absolute(cell))
+	_view.show_paths(near, cut, entrances, sides, unconnected)
+
+
+## Why the active level has no way for staff: it is not connected (or the ground level has no
+## entrance). "" when it has, or holds no hulls.
+func _level_path_line() -> String:
+	if not _uses_levels() or Services.definitions == null:
+		return ""
+	var layout := _focus.layout
+	var access := PathAccess.of(layout, Services.definitions)
+	var z := _local_level(layout)
+	if not access.levels.has(z) or access.level_connected(z):
+		return ""
+	return tr("COLONY_PATH_NO_ENTRANCE") if z == access.ground() else tr("BUILD_VERDICT_LEVEL_NOT_CONNECTED")
+
+
+## What the paths say against a build, as a sentence: how many modules or levels it would cut off.
+func _path_text(check: PathAccess.Check, layout: StructureLayout) -> String:
+	if check.verdict != BuildRules.Verdict.CUTS_OFF:
+		var key: String = BuildRules.Verdict.keys()[check.verdict]
+		return tr("BUILD_VERDICT_" + key)
+	var parts := PackedStringArray()
+	if check.modules.size() == 1:
+		parts.append(tr("COLONY_PATH_CUTS_MODULE_ONE"))
+	elif check.modules.size() > 1:
+		parts.append(tr("COLONY_PATH_CUTS_MODULES").format({"count": check.modules.size()}))
+	if check.levels.size() == 1:
+		var z := layout.to_absolute(Vector3i(0, 0, check.levels[0])).z
+		parts.append(tr("COLONY_PATH_CUTS_LEVEL_ONE").format({"level": _level_text(z)}))
+	elif check.levels.size() > 1:
+		parts.append(tr("COLONY_PATH_CUTS_LEVELS").format({"count": check.levels.size()}))
+	return " ".join(parts) if not parts.is_empty() else tr("BUILD_VERDICT_CUTS_OFF")
 
 
 func _hide_shape() -> void:
@@ -1222,6 +1364,14 @@ func _refresh_shape() -> void:
 	var units := _hull_units()
 	var count := plan.place.size()
 	var ok := plan.buildable(units)
+	# Paths: the new hulls together must not close the last entrance (platforms before it).
+	var path: PathAccess.Check = null
+	if count > 0:
+		var locals: Array[Vector3i] = []
+		for cell: Vector3i in plan.place:
+			locals.append(_model.layout.to_local(cell))
+		path = PathAccess.of(_model.layout, Services.definitions).check_place_hulls(locals, _is_indoor(_tool.get_slice(":", 1)))
+		ok = ok and path.ok()
 	_shape_shown = true
 	_view.show_shape(plan.place, plan.bad_cells())
 	# The badge: the count, the size, what is skipped, and the store when it runs short.
@@ -1244,6 +1394,8 @@ func _refresh_shape() -> void:
 		var reasons := plan.reasons()
 		lines.append(tr("COLONY_SHAPE_SKIPPED").format({"count": plan.skipped.size(),
 			"reason": _shape_reason_text(plan, reasons[0])}))
+	if path != null and not path.ok():
+		lines.append(_path_text(path, _model.layout))
 	if count == 0 and not plan.blocked():
 		lines.append(tr("COLONY_SHAPE_NOTHING"))
 	elif count > units:
@@ -1396,7 +1548,10 @@ func _refresh() -> void:
 	_staff.visible = false
 	_jump.visible = false
 	_ground.visible = false
+	_path_note.visible = false
+	_path_check = null
 	_update_levels()
+	_update_paths()
 	if not _shape_active():
 		_hide_shape()
 	if not _opened:
@@ -1468,6 +1623,12 @@ func _refresh_view() -> void:
 		_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "hull" else tr("COLONY_REMOVE_HULL")
 		var host_cell := _model.layout.to_local(target)
 		var verdict := DockRules.check_remove_hull(_model.layout, _model.guest_layouts(), layout, host_cell)
+		if verdict == BuildRules.Verdict.OK:
+			# Nothing connected may be cut off, the last entrance stays (paths).
+			var path := PathAccess.of(layout, definitions).check_remove_hull(local)
+			if not path.ok():
+				_info.text += "\n" + _path_text(path, layout)
+				_primary.disabled = true
 		if verdict != BuildRules.Verdict.OK:
 			_info.text += "\n" + _verdict_text(verdict)
 			_primary.disabled = true
@@ -1491,6 +1652,9 @@ func _refresh_view() -> void:
 			_info.text += "\n" + yield_line
 		if placed.is_disabled():
 			_info.text += "\n" + tr("COLONY_MODULE_DISABLED")
+	# A module that needs staff or houses inhabitants but reaches no corridor (it keeps working).
+	var paths := PathAccess.of(layout, definitions)
+	_path_note.visible = paths.is_required(placed.module_id) and not paths.module_connected(placed.module_id)
 	_primary.visible = true
 	_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "module" else tr("COLONY_REMOVE_MODULE")
 	if layout.is_shaft(placed):
@@ -1542,6 +1706,14 @@ func _refresh_shaft(placed: StructureLayout.Module, local: Vector3i) -> void:
 	_secondary.disabled = _busy or verdict != BuildRules.Verdict.OK
 	if verdict != BuildRules.Verdict.OK:
 		lines.append(_verdict_text(verdict))
+	# The whole shaft goes: it must not cut levels or modules off.
+	var ids: Array[int] = []
+	for floor_module: StructureLayout.Module in floors:
+		ids.append(floor_module.module_id)
+	var path := PathAccess.of(layout, Services.definitions).check_remove_modules(ids)
+	if not path.ok():
+		lines.append(_path_text(path, layout))
+		_primary.disabled = true
 	if _uses_levels():
 		_jump.visible = true
 		_jump.icon = SHAFT_UP_ICON if _level < ends.y else SHAFT_DOWN_ICON
@@ -1720,6 +1892,11 @@ func _refresh_build() -> void:
 		supply_line = "\n" + tr("COLONY_SUPPLY_FROM_HOST").format({"host": _model.structure_name})
 	if _tool.is_empty():
 		_info.text = tr("COLONY_HINT_BUILD") + supply_line
+		var level_line := _level_path_line()
+		if not level_line.is_empty():
+			_info.text += "\n" + level_line
+		if _uses_levels():
+			_info.text += "\n" + tr("COLONY_PATH_LEGEND")
 		_primary.disabled = true
 		_view.show_preview([], false)
 		return
@@ -1728,6 +1905,7 @@ func _refresh_build() -> void:
 		return
 	_shaft_hint = ""
 	_show_shaft_spots()
+	_show_module_spots()
 	var tool_name := _tool_name()
 	if _cell == null:
 		_info.text = tr("COLONY_HINT_PLACE").format({"name": tool_name}) + supply_line
@@ -1825,14 +2003,29 @@ func _verdict() -> BuildRules.Verdict:
 	if _tool.begins_with("hull:"):
 		if supply == null or supply.units(Services.definitions.hull(key).item, now) <= 0:
 			return BuildRules.Verdict.NO_ITEM
-		return DockRules.check_place_hull(_model.layout, _model.guest_layouts(), _model.layout.to_local(target),
+		var host_cell := _model.layout.to_local(target)
+		var hull_verdict := DockRules.check_place_hull(_model.layout, _model.guest_layouts(), host_cell,
 			key, Services.definitions, _model.site())
+		if hull_verdict != BuildRules.Verdict.OK or DockRules.placement(_model.layout, _model.guest_layouts(), host_cell) \
+				!= DockRules.Placement.HOST:
+			return hull_verdict
+		# Paths: a platform may close the last entrance's open side.
+		_path_check = PathAccess.of(_model.layout, Services.definitions).check_place_hulls([host_cell], _is_indoor(key))
+		return _path_check.verdict
 	if supply == null or supply.units(Services.definitions.module(key).item, now) <= 0:
 		return BuildRules.Verdict.NO_ITEM
-	return BuildRules.check_place_module(_focus.layout, Services.definitions, key, _focus.layout.to_local(target), _rotation)
+	var local := _focus.layout.to_local(target)
+	var verdict := BuildRules.check_place_module(_focus.layout, Services.definitions, key, local, _rotation)
+	if verdict != BuildRules.Verdict.OK:
+		return verdict
+	# Paths: a corridor beside it, its level connected, nothing cut off, an entrance kept.
+	_path_check = PathAccess.of(_focus.layout, Services.definitions).check_place_module(Services.definitions, key, local, _rotation)
+	return _path_check.verdict
 
 
 func _verdict_text(verdict: BuildRules.Verdict) -> String:
+	if verdict == BuildRules.Verdict.CUTS_OFF and _path_check != null:
+		return _path_text(_path_check, _focus.layout)
 	var key: String = BuildRules.Verdict.keys()[verdict]
 	if verdict == BuildRules.Verdict.POSITIONING:
 		var module_def := Services.definitions.module(_tool.get_slice(":", 1))

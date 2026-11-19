@@ -23,6 +23,19 @@ class Guest:
 	var dock_z: int = 0
 
 
+## The paths of the structure as the server reports them (header `access`, draft.29; all local).
+class Access:
+	extends RefCounted
+	## The level that counts as the ground: it needs an entrance.
+	var ground: int = 0
+	## Entrance hulls, sorted.
+	var entrances: Array[Vector3i] = []
+	## Every level with hulls → whether it is connected down to the ground level.
+	var levels: Dictionary = {}
+	## Modules that need a corridor and reach none.
+	var unreachable_modules: Array[int] = []
+
+
 class Module:
 	extends RefCounted
 	var module_id: int = 0
@@ -80,6 +93,8 @@ var kind: String = ""
 var rev: int = -1
 ## Guests docked on this structure, by id (from the last header).
 var guests: Array[Guest] = []
+## The paths as the server reports them (from the last header); null while it sends none.
+var access: Access = null
 ## Module types that form shafts (staircase, elevator; GameDefinitions.vertical_types). Each
 ## floor of a shaft is a module of its own; the cell above the top floor is the shaft head: it
 ## is not in the layout, but it is taken (module_at answers the shaft there).
@@ -121,6 +136,7 @@ func apply(stream: Ndjson) -> bool:
 	host_id = Wire.as_int(anchor.get("hostId")) if anchor_type == "docked" else 0
 	kind = Wire.as_string(header.get("kind"))
 	guests = _read_guests(header.get("guests"))
+	access = read_access(header.get("access"))
 	if not header.has("since"):
 		_clear()
 	for chunk: Dictionary in chunks:
@@ -349,6 +365,36 @@ static func _read_module(data: Dictionary) -> Module:
 	entry.blueprint = Wire.as_string(data.get("blueprint"))
 	entry.storage_mode = Wire.as_string(data.get("storageMode"))
 	return entry
+
+
+## An `Access` object of the wire (layout header, structure view); null when there is none.
+static func read_access(value: Variant) -> Access:
+	if typeof(value) != TYPE_DICTIONARY:
+		return null
+	var data: Dictionary = value
+	var result := Access.new()
+	result.ground = Wire.as_int(data.get("ground"))
+	for entry: Variant in data.get("entrances") if typeof(data.get("entrances")) == TYPE_ARRAY else []:
+		result.entrances.append(_position(Wire.as_dict(entry)))
+	result.entrances.sort()
+	for entry: Variant in data.get("levels") if typeof(data.get("levels")) == TYPE_ARRAY else []:
+		var level := Wire.as_dict(entry)
+		result.levels[Wire.as_int(level.get("z"))] = level.get("connected") == true
+	for entry: Variant in data.get("unreachableModules") if typeof(data.get("unreachableModules")) == TYPE_ARRAY else []:
+		result.unreachable_modules.append(Wire.as_int(entry))
+	result.unreachable_modules.sort()
+	return result
+
+
+## The level that counts as the ground (local): the server's word when it sends `access`;
+## otherwise absolute level 0 for a structure on a surface (a base), local level 0 for a ship,
+## vehicle, station or guest.
+func ground_level() -> int:
+	if access != null:
+		return access.ground
+	if anchor_type == "surface" and not ["SHIP", "VEHICLE", "STATION"].has(kind.to_upper()):
+		return -(offset.z + base.z)
+	return 0
 
 
 static func _read_guests(value: Variant) -> Array[Guest]:

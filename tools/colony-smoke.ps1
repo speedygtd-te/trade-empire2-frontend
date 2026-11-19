@@ -38,8 +38,9 @@ foreach ($accountName in $accountNames) {
         Pop-Location
     }
 }
-$log = Join-Path $env:TEMP 'te-colony-smoke.log'
-$errLog = Join-Path $env:TEMP 'te-colony-smoke.err.log'
+# One log per run: several sessions may run smokes at the same time.
+$log = Join-Path $env:TEMP "te-colony-smoke-$Scene-$PID.log"
+$errLog = Join-Path $env:TEMP "te-colony-smoke-$Scene-$PID.err.log"
 
 Push-Location -LiteralPath $root
 try {
