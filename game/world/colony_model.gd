@@ -798,6 +798,16 @@ func ground_cell(cell: Vector3i) -> SurfacePatch.Cell:
 	return found
 
 
+## Whether the ground under an absolute cell is loaded and unexplored (fog, draft.31): it has no
+## terrain or deposits for the player, ground_cell stays null.
+func is_unexplored(cell: Vector3i) -> bool:
+	var z := ExtractionYield.ground_level(cell.z)
+	var blocks := deposit_levels.get(z) as SurfaceBlocks
+	if blocks != null and blocks.is_hidden(cell.x, cell.y):
+		return true
+	return z == 0 and surface.is_hidden(cell.x, cell.y)
+
+
 ## Loads the cells of a small rectangle of one level with their deposits.
 func _load_deposits(request: SurfaceBlocks.Request, z: int, blocks: SurfaceBlocks) -> void:
 	var path := "/v2/bodies/%s/surface?x0=%d&y0=%d&x1=%d&y1=%d&includeDeposits=true" % [

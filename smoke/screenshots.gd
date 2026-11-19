@@ -137,6 +137,10 @@ func _run() -> void:
 		await _capture_telescope(colony)
 		await _finish(shell, session, had_session)
 		return
+	if OS.get_cmdline_user_args().has("--only=fog"):
+		await _capture_fog(colony)
+		await _finish(shell, session, had_session)
+		return
 
 	var layout := colony._model.layout
 	var with_module := layout.modules()
@@ -1071,6 +1075,37 @@ func _capture_telescope(colony: ColonyScreen) -> void:
 	scope.upgrade_to = 0
 	colony._model.reload_telescopes()
 	colony._select(null)
+
+
+## The surface fog of draft.31 on the live server: a fresh base sees 1 000 cells around itself, so
+## the camera goes to the edge of that circle (east of the base), close and far; then a tap on an
+## unexplored cell (the structure is open) shows what Inspect says there.
+func _capture_fog(colony: ColonyScreen) -> void:
+	var model := colony._model
+	var centre := model.centre_cell()
+	var edge := Vector3i(centre.x + 1000, centre.y, 0)
+	_centre(colony, edge)
+	colony._view.zoom = 14.0
+	colony._view._update_camera()
+	await _until(func() -> bool: return model.surface.is_loaded(model.surface.block_of(edge.x, edge.y)), 10000)
+	await get_tree().create_timer(3.0).timeout
+	await _capture("colony_fog_edge")
+	print("FOG  edge at %s: hidden %s, inside hidden %s" % [edge, model.surface.is_hidden(edge.x + 8, edge.y),
+		model.surface.is_hidden(edge.x - 8, edge.y)])
+	colony._view.zoom = ColonyView.ZOOM_MAX
+	colony._view._update_camera()
+	model.ensure_surface(edge)
+	await get_tree().create_timer(4.0).timeout
+	await _capture("colony_fog_far")
+	colony._view.zoom = ColonyView.ZOOM_DEFAULT
+	colony._view._update_camera()
+	var unknown := Vector3i(edge.x + 6, edge.y, 0)
+	colony._select(unknown)
+	await get_tree().create_timer(1.5).timeout
+	await _capture("colony_inspect_unexplored")
+	print("FOG  inspect unexplored: %s | %s" % [colony._info.text, colony._ground.text])
+	colony._select(null)
+	colony.recentre()
 
 
 ## A hull of the ground level without a module (local); NO_CELL when every hull carries one.

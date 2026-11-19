@@ -1151,3 +1151,9 @@ COLONY_PATH_LEGEND,"Cyan floor: corridors staff can reach. Amber: cut off. Arrow
 ERROR_NOT_CONNECTED,This would leave modules without a corridor to the entrance.
 ERROR_LEVEL_NOT_CONNECTED,This level is not connected to the ground yet – build a staircase or elevator.
 ERROR_NO_ENTRANCE,Keep at least one entrance on the ground level: a free hull at the outer edge.
+COLONY_UNEXPLORED,Unexplored — send a probe to see this ground.
+COLONY_GROUND_UNEXPLORED,Unexplored: terrain and deposits are unknown.
+ERROR_SURFACE_NOT_REVEALED,"This ground is unexplored. Land only where you have explored, or send a probe first."
+ERROR_NOT_A_PROBE_LAUNCHER,This module is not a probe launcher.
+ERROR_LAUNCHER_NOT_READY,"The probe launcher is not ready: it must be finished, fully powered and its structure at rest."
+ERROR_NO_PROBE,There is no probe in the own supply of this structure.

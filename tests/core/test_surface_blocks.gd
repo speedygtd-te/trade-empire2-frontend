@@ -88,3 +88,27 @@ func test_stored_patch_answers_cells_including_wrapped_ones() -> void:
 	assert_str(blocks.cell(63, 0).biome).is_equal("PLAINS")
 	assert_str(blocks.cell(-1, 0).biome).is_equal("PLAINS")
 	assert_object(blocks.cell(0, 0)).is_null()
+
+
+func test_unexplored_cells_are_hidden_once_loaded() -> void:
+	var blocks := SurfaceBlocks.new(64, 4)
+	var requests := blocks.missing_around(0, 0, 0)
+	assert_bool(blocks.is_hidden(1, 0)).is_false()
+	var patch := SurfacePatch.from_stream(Ndjson.parse(
+		'{"bodyId":"b","x0":0,"y0":0,"x1":3,"y1":3,"z":0,"rows":4}\n'
+		+ '{"y":0,"cells":[{"b":"PLAINS","v":0,"g":0,"e":0,"m":0},null,null,null]}\n'
+		+ '{"y":1,"cells":[null,null,null,null]}\n'
+		+ '{"y":2,"cells":[null,null,null,null]}\n'
+		+ '{"y":3,"cells":[null,null,null,null]}\n'
+		+ '{"end":true,"rows":4}'
+	))
+
+	blocks.store(requests[0], patch)
+
+	assert_bool(blocks.is_hidden(0, 0)).is_false()
+	assert_bool(blocks.is_hidden(1, 0)).is_true()
+	assert_object(blocks.cell(1, 0)).is_null()
+	# Wrapped: x = 65 is x = 1.
+	assert_bool(blocks.is_hidden(65, 3)).is_true()
+	# Not loaded is not hidden.
+	assert_bool(blocks.is_hidden(8, 0)).is_false()

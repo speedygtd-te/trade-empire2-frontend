@@ -1637,6 +1637,9 @@ func _refresh_view() -> void:
 	_ground.visible = not _ground.text.is_empty()
 	if hull_type.is_empty():
 		_info.text = tr("COLONY_FREE_GROUND") if target.z == 0 else tr("LEVEL_EMPTY")
+		if _model.is_unexplored(target):
+			_info.text = tr("COLONY_UNEXPLORED")
+			_ground.visible = false
 		_primary.visible = false
 		return
 	var hull_name := definitions.hull(hull_type).display_name if definitions.hull(hull_type) != null else ""
@@ -1869,6 +1872,8 @@ func _ground_text(cell: Vector3i) -> String:
 		return ""
 	var ground := _model.ground_cell(cell)
 	if ground == null:
+		if _model.is_unexplored(cell):
+			return tr("COLONY_GROUND_UNEXPLORED")
 		return tr("COLONY_GROUND_FAILED") if _model.deposits_failed else tr("COLONY_GROUND_LOADING")
 	var lines := PackedStringArray()
 	var biome_key := "COLONY_BIOME_" + ground.biome

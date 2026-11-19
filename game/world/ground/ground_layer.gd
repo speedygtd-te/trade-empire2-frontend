@@ -4,6 +4,7 @@ extends Node3D
 ## square, one draw call), textured per cell from the biome atlas by ground.gdshader. Each block
 ## has a small cell texture (GroundTiles.cell_image) with the ring of its neighbours, so borders
 ## blend across blocks too; when a block arrives, the blocks beside it renew their ring.
+## Unexplored cells (draft.31) are drawn as fog, with a soft, noisy edge toward the explored ground.
 
 const SHADER := preload("res://game/world/ground/ground.gdshader")
 const ATLAS := preload("res://game/world/ground/ground_atlas.webp")
@@ -99,7 +100,7 @@ func _instances() -> Array[MeshInstance3D]:
 func _update_cells(instance: MeshInstance3D) -> void:
 	var x0: int = instance.get_meta("x0")
 	var y0: int = instance.get_meta("y0")
-	var image := _tiles.cell_image(x0, y0, SurfaceBlocks.BLOCK, _size_x, _surface.cell)
+	var image := _tiles.cell_image(x0, y0, SurfaceBlocks.BLOCK, _size_x, _surface.cell, _surface.is_hidden)
 	var material := instance.material_override as ShaderMaterial
 	var texture := material.get_shader_parameter("cells") as ImageTexture
 	if texture == null:

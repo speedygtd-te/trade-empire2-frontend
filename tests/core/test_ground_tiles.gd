@@ -109,6 +109,29 @@ func test_missing_ring_cells_repeat_the_edge_and_missing_cells_fall_back() -> vo
 	assert_int(data[(2 * 4 + 2) * 4]).is_equal(FALLBACK)
 
 
+func test_unexplored_cells_carry_the_fog_flag_also_in_the_ring() -> void:
+	var cells := {Vector2i(0, 0): _cell("MOUNTAIN", 1), Vector2i(1, 0): _cell("PLAINS", 0)}
+	var unexplored := {Vector2i(0, 1): true, Vector2i(1, 1): true, Vector2i(2, 0): true}
+	var lookup := func(x: int, y: int) -> SurfacePatch.Cell:
+		return cells.get(Vector2i(x, y)) as SurfacePatch.Cell
+	var fog := func(x: int, y: int) -> bool:
+		return unexplored.has(Vector2i(x, y))
+
+	var data := _tiles().cell_image(0, 0, 2, 0, lookup, fog).get_data()
+
+	# Texel (1, 1) is cell (0, 0): explored.
+	assert_int(data[(1 * 4 + 1) * 4 + 3]).is_equal(255)
+	# Texel (1, 2) is cell (0, 1): unexplored.
+	assert_int(data[(2 * 4 + 1) * 4 + 3]).is_equal(GroundTiles.FOG_ALPHA)
+	# Ring texel (3, 1) is cell (2, 0): unexplored, so it stays fog instead of repeating the edge.
+	assert_int(data[(1 * 4 + 3) * 4 + 3]).is_equal(GroundTiles.FOG_ALPHA)
+	# Ring texel (0, 1) is cell (-1, 0): not loaded, so it repeats the explored edge.
+	assert_int(data[(1 * 4 + 0) * 4 + 3]).is_equal(255)
+	# Without the fog callable every cell counts as explored.
+	var plain := _tiles().cell_image(0, 0, 2, 0, lookup).get_data()
+	assert_int(plain[(2 * 4 + 1) * 4 + 3]).is_equal(255)
+
+
 func test_orientation_uses_the_wrapped_cell() -> void:
 	var cells := {Vector2i(0, 0): _cell("PLAINS", 0)}
 	var lookup := func(x: int, y: int) -> SurfacePatch.Cell:

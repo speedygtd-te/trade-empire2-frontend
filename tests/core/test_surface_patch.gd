@@ -74,5 +74,27 @@ func test_missing_row_is_incomplete() -> void:
 	assert_bool(SurfacePatch.from_stream(Ndjson.parse(without_row)).complete).is_false()
 
 
+func test_null_cells_are_unexplored_and_the_rows_still_count() -> void:
+	# Shape of a real draft.31 answer of the live server at the edge of the explored area.
+	var stream := (
+		'{"rev":519,"gameTime":8765883,"bodyId":"b","bodyClass":"EARTH_LIKE","x0":1007,"y0":-4,"x1":1009,"y1":-3,'
+		+ '"z":0,"includeDeposits":false,"deepThreshold":-6,"rows":2}\n'
+		+ '{"y":-4,"cells":[{"b":"MOUNTAIN","v":2,"g":0,"e":728,"m":652},{"b":"MOUNTAIN","v":2,"g":0,"e":728,"m":652},null]}\n'
+		+ '{"y":-3,"cells":[{"b":"MOUNTAIN","v":0,"g":0,"e":729,"m":652},null,null]}\n'
+		+ '{"end":true,"rows":2}\n'
+	)
+	var patch := SurfacePatch.from_stream(Ndjson.parse(stream))
+
+	assert_bool(patch.complete).is_true()
+	assert_int(patch.cell_count()).is_equal(3)
+	assert_int(patch.hidden_count()).is_equal(3)
+	assert_bool(patch.is_hidden(1009, -4)).is_true()
+	assert_object(patch.cell(1009, -4)).is_null()
+	assert_bool(patch.is_hidden(1008, -4)).is_false()
+	assert_str(patch.cell(1008, -4).biome).is_equal("MOUNTAIN")
+	# Outside the patch nothing is hidden.
+	assert_bool(patch.is_hidden(1010, -4)).is_false()
+
+
 func test_other_answers_are_no_patch() -> void:
 	assert_object(SurfacePatch.from_stream(Ndjson.parse('{"error":"NO_SURFACE"}'))).is_null()

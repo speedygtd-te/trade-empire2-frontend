@@ -93,6 +93,11 @@ const HANDLED_CODES: PackedStringArray = [
 	"TELESCOPE_UPGRADE_RUNNING",
 	"TELESCOPE_MAX_LEVEL",
 	"FORBIDDEN",
+	# Probes and surface fog (draft.31).
+	"SURFACE_NOT_REVEALED",
+	"NOT_A_PROBE_LAUNCHER",
+	"LAUNCHER_NOT_READY",
+	"NO_PROBE",
 	# Workforce (PUT /v2/structures/{id}/workforce).
 	"TIER_TOO_LOW",
 	"INSUFFICIENT_WORKERS",
