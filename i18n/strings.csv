@@ -1038,3 +1038,24 @@ COLONY_YIELD_SHORT,{resource}: {rate}
 COLONY_STAFF,Staff
 COLONY_STAFF_VALUE,{assigned} of {needed}
 LEVEL_BONUS,Level bonus: {change}
+BUILD_VERDICT_GUEST_PLACEMENT,This field would found or extend a docked vessel: place it with Single.
+COLONY_SHAPE_SINGLE,Single
+COLONY_SHAPE_RECTANGLE,Rectangle
+COLONY_SHAPE_SQUARE,Square
+COLONY_SHAPE_HOME_ONLY,"On a docked vessel hulls go one by one; rectangles and squares are built on the home structure."
+COLONY_SHAPE_HINT,"Drag with one finger from field to field to mark {name}. Two fingers move the view."
+COLONY_SHAPE_SIZE,{width} × {height}
+COLONY_SHAPE_SKIPPED_SHORT,{count} red
+COLONY_SHAPE_STORE_SHORT,{count} in store
+COLONY_SHAPE_SUMMARY,"{name}: {count} new hulls ({width} × {height})."
+COLONY_SHAPE_SUMMARY_ONE,"{name}: 1 new hull ({width} × {height})."
+COLONY_SHAPE_OWN,{count} fields already built are left as they are.
+COLONY_SHAPE_FOREIGN,Red fields are too close to another player's buildings. Make the shape smaller.
+COLONY_SHAPE_SKIPPED,{count} red fields are skipped: {reason}
+COLONY_SHAPE_NOTHING,No field of this shape can take a new hull.
+COLONY_SHAPE_NOT_ENOUGH,"Not enough hulls: {count} needed, {stock} in the store."
+COLONY_SHAPE_RELEASE,Lift the finger to keep the shape.
+COLONY_SHAPE_BUILD,Build {count} hulls
+COLONY_SHAPE_BUILD_ONE,Build 1 hull
+COLONY_SHAPE_DONE,{count} hulls placed.
+COLONY_SHAPE_DONE_ONE,1 hull placed.

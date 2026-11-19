@@ -1,7 +1,8 @@
 extends Node
 ## End-to-end check of building against the server, with the development account of
 ## tools/dev-account.cjs: place a hull next to the colony, a module on it, remove both again,
-## and check that layout and store follow. Leaves the colony as it was.
+## place a 3×2 hull rectangle half over the colony's edge (HullShapes) and remove it, and check
+## that layout and store follow. Leaves the colony as it was.
 ##
 ## Root script of smoke/colony_build.tscn (needs the Services autoload); run through
 ## tools\colony-smoke.ps1.
@@ -118,6 +119,7 @@ func _run() -> void:
 	await _wait_until(func() -> bool: return _units(hull_item) == hulls_before, 8000)
 	_check(_units(hull_item) == hulls_before, "store: hull back (%d)" % _units(hull_item))
 
+	await _check_shape(layout)
 	await _check_recipes(layout)
 	await _check_discard_and_log()
 	await _check_workforce()
@@ -217,6 +219,95 @@ func _check_discard_and_log() -> void:
 			unknown += 1
 	panel.free()
 	_check(unknown == 0, "every log entry has a sentence (%d without)" % unknown)
+
+
+## Hull shapes: a 3×2 rectangle from the colony's edge outwards — its first column lies on the
+## colony and is ignored — goes to the server as one atomic batch in the plan's order. Every new
+## hull must join the colony, the store must lose exactly that many hulls, and the layout must show
+## them; then they are removed again (the account is as before).
+func _check_shape(layout: StructureLayout) -> void:
+	var local := _shape_corner(layout)
+	if local == Vector3i(-9999, 0, 0):
+		print("SKIP  shape (no free 2×2 next to the colony)")
+		return
+	var start := layout.to_absolute(local)
+	# The biome decides the environment of the ground level: wait for the ground there.
+	_model.ensure_surface(start)
+	await _wait_until(func() -> bool: return not _model.site().biome(start.x + 2, start.y + 1).is_empty(), 10000)
+	var cells := HullShapes.cells(HullShapes.Shape.RECTANGLE, start, start + Vector3i(2, 1, 0), _model.size_x)
+	var guests := _model.guest_layouts()
+	var neighbours: Array[StructureLayout] = []
+	for structure: ColonyModel in _model.drawn_structures():
+		if structure != _model and not guests.has(structure.layout):
+			neighbours.append(structure.layout)
+	var plan := HullShapes.plan(cells, layout, guests, neighbours, {}, HULL, Services.definitions, _model.site())
+	print("shape: %s from %s: %d new, %d own, %d skipped" % [plan.extent, start, plan.place.size(), plan.own.size(),
+		plan.skipped.size()])
+	_check(plan.extent == Vector2i(3, 2) and plan.own.size() == 2, "shape plan: 3 × 2, the colony's two cells ignored")
+	_check(not plan.place.is_empty(), "shape plan: new hulls to place (%d)" % plan.place.size())
+	var hull_item := Services.definitions.hull(HULL).item
+	var before := _units(hull_item)
+	_check(plan.buildable(before), "shape plan fits the store (%d new, %d in store)" % [plan.place.size(), before])
+	if not plan.buildable(before):
+		return
+	var placed := await _model.send_ops(HullShapes.place_ops(HULL, plan.place))
+	_check(placed.is_ok(), "shape -> ok in one atomic batch (error: %s)" % _code(placed))
+	if not placed.is_ok():
+		return
+	var results: Array = placed.data.get("results") if typeof(placed.data.get("results")) == TYPE_ARRAY else []
+	var joined := 0
+	for entry: Variant in results:
+		var result := Wire.as_dict(entry)
+		if result.get("ok") == true and Wire.as_string(result.get("kind")) == "hullPlaced" \
+				and Wire.as_int(result.get("structureId")) == _model.structure_id:
+			joined += 1
+	_check(joined == plan.place.size(), "server: every new hull joined the colony (%d of %d)" % [joined, plan.place.size()])
+	var all_there := func() -> bool:
+		for cell: Vector3i in plan.place:
+			if layout.hull_at(layout.to_local(cell)) != HULL:
+				return false
+		return true
+	await _wait_until(all_there, 8000)
+	var there: bool = all_there.call()
+	_check(there, "layout shows the shape's hulls")
+	await _wait_until(func() -> bool: return _units(hull_item) == before - plan.place.size(), 8000)
+	_check(_units(hull_item) == before - plan.place.size(),
+		"store: %d hulls less (%d -> %d)" % [plan.place.size(), before, _units(hull_item)])
+	# The same shape again: every cell is own now, nothing to place.
+	var again := HullShapes.plan(cells, layout, guests, neighbours, {}, HULL, Services.definitions, _model.site())
+	_check(again.place.is_empty() and again.own.size() == 2 + plan.place.size(),
+		"the same shape again: nothing new (%d own)" % again.own.size())
+	# Take them down again, last placed first.
+	var removal: Array[Dictionary] = []
+	for index: int in range(plan.place.size() - 1, -1, -1):
+		var cell := plan.place[index]
+		removal.append({"op": "removeHull", "x": cell.x, "y": cell.y, "z": cell.z})
+	var removed := await _model.send_ops(removal)
+	_check(removed.is_ok(), "remove the shape's hulls -> ok (error: %s)" % _code(removed))
+	var all_gone := func() -> bool:
+		for cell: Vector3i in plan.place:
+			if not layout.hull_at(layout.to_local(cell)).is_empty():
+				return false
+		return true
+	await _wait_until(all_gone, 8000)
+	var gone: bool = all_gone.call()
+	_check(gone, "layout: the shape's hulls are gone")
+	await _wait_until(func() -> bool: return _units(hull_item) == before, 8000)
+	_check(_units(hull_item) == before, "store: hulls back (%d)" % _units(hull_item))
+
+
+## A ground-level hull whose northern neighbour is a hull too, with the 2×2 east of both free (local).
+func _shape_corner(layout: StructureLayout) -> Vector3i:
+	for cell: Vector3i in layout.hull_cells():
+		if cell.z != 0 or layout.hull_at(cell + Vector3i(0, 1, 0)).is_empty():
+			continue
+		var free := true
+		for step: Vector3i in [Vector3i(1, 0, 0), Vector3i(2, 0, 0), Vector3i(1, 1, 0), Vector3i(2, 1, 0)]:
+			if not layout.hull_at(cell + step).is_empty():
+				free = false
+		if free:
+			return cell
+	return Vector3i(-9999, 0, 0)
 
 
 func _free_neighbour(layout: StructureLayout) -> Vector3i:

@@ -10,7 +10,8 @@ extends Control
 ## with their tabs, the Fleet tab with a structure's details, the Map tab with the galaxy as
 ## layers, the Profile tab with the enterprise as a layer, and the Back chains between them.
 ## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map and
-## the galaxy (`--only=galaxy` does the same).
+## the galaxy (`--only=galaxy` does the same); `--only=shapes` goes from the opened colony straight to the hull
+## shapes in Build.
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 ## No cell found (_free_hull).
@@ -128,6 +129,10 @@ func _run() -> void:
 	await _capture("colony_opened")
 	print("ENTER  double tap opened: %s, shell nav %s, structure nav %s" % [colony._opened, shell.nav_visible(),
 		colony._structure_nav.visible])
+	if OS.get_cmdline_user_args().has("--only=shapes"):
+		await _capture_shapes(colony)
+		await _finish(shell, session, had_session)
+		return
 
 	var layout := colony._model.layout
 	var with_module := layout.modules()
@@ -197,6 +202,7 @@ func _run() -> void:
 	colony._choose_tool("module:SMELTER")
 	colony._select(layout.to_absolute(Vector3i(0, 0, 0)))
 	await _capture("colony_build_blocked")
+	await _capture_shapes(colony)
 
 	colony._set_mode(ColonyScreen.Mode.STORE)
 	await _capture("colony_store")
@@ -328,6 +334,192 @@ func _dock_screens(shell: MainShell, colony: ColonyScreen) -> void:
 	print("DOCK  remove the guest: ", "ok" if removed.is_ok() else removed.error.code)
 	await _until(func() -> bool: return model.guests.is_empty())
 	await _remove_docks(model, first, second)
+
+
+## Hull shapes in Build, driven through the screen's own input (touch and mouse): the switch and
+## its hint, a rectangle while the finger is still down and after it lifted, a square, a rectangle
+## over the structure (its cells ignored), red cells on level 1 (overhang), foreign cells (a
+## client-only sample: this account has no foreign neighbour), a second finger taking over the
+## camera, and a small rectangle built with Build — then removed again.
+func _capture_shapes(colony: ColonyScreen) -> void:
+	var model := colony._model
+	var layout := model.layout
+	var low := Vector2i(1 << 30, 1 << 30)
+	var high := -low
+	for cell: Vector3i in layout.hull_cells():
+		if cell.z == 0:
+			var at := layout.to_absolute(cell)
+			low = low.min(Vector2i(at.x, at.y))
+			high = high.max(Vector2i(at.x, at.y))
+	colony._set_level(0)
+	colony._set_mode(ColonyScreen.Mode.BUILD)
+	colony._choose_tool("hull:STARTER")
+	colony._palette._shapes.tab(1).emit_signal("tapped")
+	print("SHAPE  switch shown: %s, shape now %d" % [colony._palette.shapes_shown(), colony._shape])
+	await _capture("colony_shape_hint")
+
+	# A 6 × 4 rectangle east of the structure, the finger still down.
+	var start := Vector3i(high.x + 1, low.y, 0)
+	_centre(colony, start + Vector3i(2, 2, 0))
+	_touch(colony, 0, start, true)
+	for step: int in range(1, 6):
+		_drag(colony, 0, start + Vector3i(step, mini(step, 3), 0))
+	await _capture("colony_shape_drag")
+	print("SHAPE  dragging: badge %s, info: %s" % [colony._shape_badge.texts(), colony._info.text.replace("\n", " / ")])
+	_touch(colony, 0, start + Vector3i(5, 3, 0), false)
+	await _capture("colony_shape_rectangle")
+	print("SHAPE  rectangle: badge %s, build %s (disabled %s)" % [colony._shape_badge.texts(), colony._primary.text,
+		colony._primary.disabled])
+
+	# A second finger: the camera, and the rectangle before the drag comes back.
+	var focus_before := colony._view.focus
+	_touch(colony, 0, start + Vector3i(0, 2, 0), true)
+	_drag(colony, 0, start + Vector3i(1, 2, 0))
+	_touch(colony, 1, start + Vector3i(3, -2, 0), true)
+	_drag(colony, 1, start + Vector3i(4, -3, 0))
+	_touch(colony, 1, start + Vector3i(4, -3, 0), false)
+	_touch(colony, 0, start + Vector3i(1, 2, 0), false)
+	print("SHAPE  two fingers: camera moved %s, rectangle kept %s" % [not colony._view.focus.is_equal_approx(focus_before),
+		colony._shape_start == start and colony._shape_end == start + Vector3i(5, 3, 0)])
+	colony.recentre()
+
+	# A square with the mouse: left drag marks, right drag pans.
+	colony._palette._shapes.tab(2).emit_signal("tapped")
+	_centre(colony, start + Vector3i(2, 2, 0))
+	_mouse(colony, MOUSE_BUTTON_LEFT, start, true)
+	_mouse_move(colony, start + Vector3i(3, 1, 0))
+	_mouse(colony, MOUSE_BUTTON_LEFT, start + Vector3i(3, 1, 0), false)
+	await _capture("colony_shape_square")
+	print("SHAPE  square: badge %s" % [colony._shape_badge.texts()])
+
+	# A rectangle across the structure: its own cells are ignored, the new ones around it count.
+	colony._palette._shapes.tab(1).emit_signal("tapped")
+	var across := Vector3i(low.x + 1, low.y + 1, 0)
+	@warning_ignore("integer_division")
+	_centre(colony, Vector3i((low.x + high.x) / 2 + 2, (low.y + high.y) / 2 + 1, 0))
+	_touch(colony, 0, across, true)
+	_drag(colony, 0, Vector3i(high.x + 2, high.y + 1, 0))
+	_touch(colony, 0, Vector3i(high.x + 2, high.y + 1, 0), false)
+	await _capture("colony_shape_over_structure")
+	print("SHAPE  over the structure: badge %s, info: %s" % [colony._shape_badge.texts(), colony._info.text.replace("\n", " / ")])
+
+	# Level 1: beyond the structure the hulls would hang in the air (overhang): red, skipped.
+	colony._set_level(1)
+	colony._palette._shapes.tab(1).emit_signal("tapped")
+	var upper := Vector3i(high.x - 1, low.y, 1)
+	_centre(colony, upper + Vector3i(2, 1, -1))
+	_touch(colony, 0, upper, true)
+	_drag(colony, 0, upper + Vector3i(4, 2, 0))
+	_touch(colony, 0, upper + Vector3i(4, 2, 0), false)
+	await _capture("colony_shape_overhang")
+	print("SHAPE  level 1: badge %s, info: %s" % [colony._shape_badge.texts(), colony._info.text.replace("\n", " / ")])
+	colony._set_level(0)
+
+	# Foreign cells (client-only sample: the account has no foreign neighbour, so two cells are
+	# marked as the server would refuse them).
+	colony._palette._shapes.tab(1).emit_signal("tapped")
+	_centre(colony, start + Vector3i(2, 1, 0))
+	_touch(colony, 0, start, true)
+	_drag(colony, 0, start + Vector3i(4, 2, 0))
+	_touch(colony, 0, start + Vector3i(4, 2, 0), false)
+	colony._foreign[start + Vector3i(4, 2, 0)] = true
+	colony._foreign[start + Vector3i(4, 1, 0)] = true
+	colony._refresh()
+	var sample := Label.new()
+	sample.text = "CLIENT-ONLY SAMPLE: two foreign cells injected"
+	sample.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	sample.position = Vector2(24, 190)
+	add_child(sample)
+	await _capture("colony_shape_foreign_sample")
+	print("SHAPE  foreign (sample): build disabled %s, info: %s" % [colony._primary.disabled, colony._info.text.replace("\n", " / ")])
+	sample.queue_free()
+	colony._foreign.clear()
+
+	# Built for real: a 3 × 2 rectangle half over the structure's edge, then taken down again.
+	var edge := _edge_cell(layout)
+	_centre(colony, edge + Vector3i(1, 1, 0))
+	_touch(colony, 0, edge, true)
+	_drag(colony, 0, edge + Vector3i(2, 1, 0))
+	_touch(colony, 0, edge + Vector3i(2, 1, 0), false)
+	await _capture("colony_shape_small")
+	var placed: Array[Vector3i] = colony._shape_plan.place.duplicate() if colony._shape_plan != null else []
+	print("SHAPE  small: badge %s, %s" % [colony._shape_badge.texts(), colony._primary.text])
+	colony._on_primary()
+	await _until(func() -> bool: return not colony._busy and colony._shape_start == null)
+	await _until(func() -> bool:
+		for cell: Vector3i in placed:
+			if layout.hull_at(layout.to_local(cell)).is_empty():
+				return false
+		return true)
+	await _capture("colony_shape_built")
+	print("SHAPE  built: %s" % colony._status.text)
+	if not placed.is_empty():
+		var removal: Array[Dictionary] = []
+		for index: int in range(placed.size() - 1, -1, -1):
+			removal.append({"op": "removeHull", "x": placed[index].x, "y": placed[index].y, "z": placed[index].z})
+		var removed := await model.send_ops(removal)
+		print("SHAPE  removed again: ", "ok" if removed.is_ok() else removed.error.code)
+		await _until(func() -> bool: return layout.hull_at(layout.to_local(placed[0])).is_empty())
+	colony._palette._shapes.tab(0).emit_signal("tapped")
+
+
+## A ground-level hull (absolute) with a hull north of it and the 2 × 2 east of both free.
+func _edge_cell(layout: StructureLayout) -> Vector3i:
+	for cell: Vector3i in layout.hull_cells():
+		if cell.z != 0 or layout.hull_at(cell + Vector3i(0, 1, 0)).is_empty():
+			continue
+		var free := true
+		for step: Vector3i in [Vector3i(1, 0, 0), Vector3i(2, 0, 0), Vector3i(1, 1, 0), Vector3i(2, 1, 0)]:
+			free = free and layout.hull_at(cell + step).is_empty()
+		if free:
+			return layout.to_absolute(cell)
+	return layout.to_absolute(_free_neighbour(layout))
+
+
+## Puts an absolute cell in the middle of the room between the head and the bottom.
+func _centre(colony: ColonyScreen, cell: Vector3i) -> void:
+	colony._view.look_at_cell(cell)
+	colony._applied_shift = 0.0
+	colony._follow_bars()
+
+
+## The screen position (in the colony screen) of an absolute cell's floor.
+func _screen_point(colony: ColonyScreen, cell: Vector3i) -> Vector2:
+	var view := colony._view
+	var point := WorldGrid.to_scene(cell, view.origin, colony._model.size_x) + Vector3(0.0, ColonyView.HULL_FLOOR_HEIGHT, 0.0)
+	return view._camera.unproject_position(point) / colony._scale()
+
+
+func _touch(colony: ColonyScreen, index: int, cell: Vector3i, pressed: bool) -> void:
+	var event := InputEventScreenTouch.new()
+	event.index = index
+	event.position = _screen_point(colony, cell)
+	event.pressed = pressed
+	colony._on_world_input(event)
+
+
+func _drag(colony: ColonyScreen, index: int, cell: Vector3i) -> void:
+	var event := InputEventScreenDrag.new()
+	event.index = index
+	event.position = _screen_point(colony, cell)
+	var before: Vector2 = colony._touches.get(index, event.position)
+	event.relative = event.position - before
+	colony._on_world_input(event)
+
+
+func _mouse(colony: ColonyScreen, button: MouseButton, cell: Vector3i, pressed: bool) -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = button
+	event.pressed = pressed
+	event.position = _screen_point(colony, cell)
+	colony._on_world_input(event)
+
+
+func _mouse_move(colony: ColonyScreen, cell: Vector3i) -> void:
+	var event := InputEventMouseMotion.new()
+	event.position = _screen_point(colony, cell)
+	event.relative = Vector2(40, 0)
+	colony._on_world_input(event)
 
 
 func _remove_docks(model: ColonyModel, first: Vector3i, second: Vector3i) -> void:

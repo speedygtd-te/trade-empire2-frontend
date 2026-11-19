@@ -2,6 +2,7 @@
 #
 #   powershell -File tools\screenshots.ps1 [output folder]
 #   powershell -File tools\screenshots.ps1 -Only map   # signed in, straight to the system map and galaxy
+#   powershell -File tools\screenshots.ps1 -Only shapes   # signed in, straight to the hull shapes in Build
 #
 # Default output: build\screenshots (ignored by git). The signed-in screen needs the local dev
 # backend (tools\dev-backend.ps1 start). The run is stopped after -TimeoutSeconds, so a stuck

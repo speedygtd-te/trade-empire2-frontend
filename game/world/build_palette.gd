@@ -6,10 +6,14 @@ extends VBoxContainer
 
 ## The player chose what to build: "hull:STARTER" or "module:PUMP".
 signal chosen(tool: String)
+## The player chose how hulls are placed (HullShapes.Shape).
+signal shape_chosen(shape: HullShapes.Shape)
 
 const CATEGORY_COLUMNS := 3
 ## About three rows of items; the list scrolls.
 const LIST_HEIGHT := 280
+## Text keys of the shape switch, in the order of HullShapes.Shape.
+const SHAPE_KEYS: Array[String] = ["COLONY_SHAPE_SINGLE", "COLONY_SHAPE_RECTANGLE", "COLONY_SHAPE_SQUARE"]
 
 var _entries: Array[BuildCatalog.Entry] = []
 var _category := ""
@@ -25,6 +29,11 @@ var _hint: Label
 var _hint_text := ""
 var _compact: HBoxContainer
 var _compact_label: Label
+## The shape switch under a chosen hull, and why it is missing where it is (on a guest).
+var _shapes: TabStrip
+var _shape_note: Label
+var _shapes_offered := false
+var _shape_note_text := ""
 
 
 func _ready() -> void:
@@ -57,6 +66,13 @@ func _ready() -> void:
 	var change := Ui.secondary_button("COLONY_BUILD_CHANGE")
 	change.pressed.connect(_on_change)
 	_compact.add_child(change)
+	_shapes = TabStrip.new()
+	for key: String in SHAPE_KEYS:
+		_shapes.add_tab(key)
+	_shapes.tab_selected.connect(func(index: int) -> void: shape_chosen.emit(index as HullShapes.Shape))
+	add_child(_shapes)
+	_shape_note = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	add_child(_shape_note)
 	_rebuild()
 
 
@@ -78,7 +94,30 @@ func show_entries(entries: Array[BuildCatalog.Entry], tool: String, hint: String
 		_rebuild()
 
 
+## Offers the shape switch under the chosen hull (`offered`) with `shape` chosen; `note` says why
+## it is not offered ("" for nothing to say).
+func show_shapes(offered: bool, shape: HullShapes.Shape, note: String = "") -> void:
+	_shapes_offered = offered
+	_shape_note_text = note
+	_shapes.select(shape)
+	if is_inside_tree():
+		_show_shape_row()
+
+
+## Whether the shape switch is on screen (for checks).
+func shapes_shown() -> bool:
+	return _shapes.visible
+
+
+func _show_shape_row() -> void:
+	var hull_chosen := not _browsing and _tool.begins_with("hull:") and not _entries.is_empty()
+	_shapes.visible = hull_chosen and _shapes_offered
+	_shape_note.text = _shape_note_text
+	_shape_note.visible = hull_chosen and not _shapes_offered and not _shape_note_text.is_empty()
+
+
 func _rebuild() -> void:
+	_show_shape_row()
 	for child: Node in _grid.get_children():
 		child.queue_free()
 	for child: Node in _list.get_children():
