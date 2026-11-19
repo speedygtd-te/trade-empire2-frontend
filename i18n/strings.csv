@@ -686,3 +686,4 @@ LEVEL_EXTEND_SHAFT,Extend shaft
 LEVEL_REMOVE_SHAFT,Remove shaft
 LEVEL_GO_UP,Go up
 LEVEL_GO_DOWN,Go down
+LEVEL_EMPTY,Nothing built here on this level.

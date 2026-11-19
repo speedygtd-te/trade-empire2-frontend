@@ -7,14 +7,17 @@
 # delete (takes minutes: the timeout defaults to 15 minutes, use 1800 on a fresh account). With
 # -Scene travel_flow (smoke/travel_flow.tscn, its own account .local/travel-account.json): builds
 # a vehicle and a ship if missing, drives with a waypoint and back onto the docks, flies into
-# orbit and docks again — real minutes, so the timeout defaults to 25 minutes there.
+# orbit and docks again — real minutes, so the timeout defaults to 25 minutes there. With
+# -Scene level_build (smoke/level_build.tscn, its own account .local/levels-account.json): builds
+# on level 1 and 2 and below the ground, checks overhang, height limits and environments, runs a
+# staircase shaft up two levels and removes it, and compares every preview with the server.
 #
-#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build|route_flow|travel_flow] [-TimeoutSeconds 120]
+#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build|route_flow|travel_flow|level_build] [-TimeoutSeconds 120]
 #
 # Needs the development account (node tools/dev-account.cjs creates it). Runs without window.
 # Exit code: 0 = green, 1 = a check failed, 2 = no account, 3 = stopped after the timeout.
 param(
-    [ValidateSet('colony_build', 'dock_build', 'route_flow', 'travel_flow')][string]$Scene = 'colony_build',
+    [ValidateSet('colony_build', 'dock_build', 'route_flow', 'travel_flow', 'level_build')][string]$Scene = 'colony_build',
     [int]$TimeoutSeconds = 0
 )
 
@@ -22,7 +25,7 @@ $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = 'F:\Tools\Godot\godot_console.exe' }
-$accountName = switch ($Scene) { 'route_flow' { 'routes' } 'travel_flow' { 'travel' } default { 'dev' } }
+$accountName = switch ($Scene) { 'route_flow' { 'routes' } 'travel_flow' { 'travel' } 'level_build' { 'levels' } default { 'dev' } }
 if ($TimeoutSeconds -le 0) { $TimeoutSeconds = switch ($Scene) { 'travel_flow' { 1500 } 'route_flow' { 900 } default { 120 } } }
 if (-not (Test-Path -LiteralPath (Join-Path $root ".local\$accountName-account.json"))) {
     Push-Location -LiteralPath $root
@@ -47,7 +50,7 @@ try {
     foreach ($file in @($log, $errLog)) {
         if (Test-Path -LiteralPath $file) {
             Get-Content -LiteralPath $file | ForEach-Object { ([string]$_) -replace '[0-9a-f]{64}', '<token>' } |
-                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|ROUTE|docks|server|TRAVEL)|ERROR|SCRIPT' }
+                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|ROUTE|LEVEL|docks|server|TRAVEL)|ERROR|SCRIPT' }
         }
     }
     if (-not $finished) { Write-Output "stopped after $TimeoutSeconds s"; exit 3 }

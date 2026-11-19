@@ -20,6 +20,9 @@ var _grid: GridContainer
 var _scroll: ScrollContainer
 var _list: VBoxContainer
 var _empty: Label
+## Why some items are not offered here (hulls that cannot stand on the active level).
+var _hint: Label
+var _hint_text := ""
 var _compact: HBoxContainer
 var _compact_label: Label
 
@@ -40,6 +43,8 @@ func _ready() -> void:
 	_scroll.add_child(_list)
 	_empty = Ui.label("COLONY_NOTHING_TO_BUILD", AppTheme.VARIATION_MUTED)
 	add_child(_empty)
+	_hint = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	add_child(_hint)
 	_compact = HBoxContainer.new()
 	_compact.add_theme_constant_override("separation", 16)
 	add_child(_compact)
@@ -55,10 +60,12 @@ func _ready() -> void:
 	_rebuild()
 
 
-## Shows what the store offers; `tool` is the item chosen now ("" when none).
-func show_entries(entries: Array[BuildCatalog.Entry], tool: String) -> void:
+## Shows what the store offers; `tool` is the item chosen now ("" when none). `hint` says what is
+## left out here and why ("" for nothing).
+func show_entries(entries: Array[BuildCatalog.Entry], tool: String, hint: String = "") -> void:
 	_entries = entries
 	_tool = tool
+	_hint_text = hint
 	var present := BuildCatalog.categories(entries)
 	var of_tool := BuildCatalog.category_of(entries, tool)
 	if not of_tool.is_empty():
@@ -81,10 +88,12 @@ func _rebuild() -> void:
 	_grid.visible = _browsing and not _entries.is_empty()
 	_scroll.visible = _grid.visible
 	_compact.visible = not _browsing and not _entries.is_empty()
+	_hint.text = _hint_text
+	_hint.visible = _browsing and not _hint_text.is_empty() and _category == BuildCatalog.HULLS
 	if _compact.visible:
 		for entry: BuildCatalog.Entry in _entries:
 			if entry.tool == _tool:
-				_compact_label.text = tr("COLONY_ITEM_COUNT").format({"name": entry.display_name, "count": entry.count})
+				_compact_label.text = _row_text(entry)
 		return
 	var group := ButtonGroup.new()
 	for category: String in categories:
@@ -101,13 +110,20 @@ func _rebuild() -> void:
 	for entry: BuildCatalog.Entry in BuildCatalog.in_category(_entries, _category):
 		# A swipe that starts on a row scrolls the list (ListButton).
 		var row := ListButton.new()
-		row.text = tr("COLONY_ITEM_COUNT").format({"name": entry.display_name, "count": entry.count})
+		row.text = _row_text(entry)
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.set_chosen(entry.tool == _tool)
 		row.tapped.connect(_on_item.bind(entry.tool))
 		_list.add_child(row)
 	_scroll.scroll_vertical = 0
+
+
+## "Mine ×12", or with a note "Mine ×12 · +6 %".
+func _row_text(entry: BuildCatalog.Entry) -> String:
+	if entry.note.is_empty():
+		return tr("COLONY_ITEM_COUNT").format({"name": entry.display_name, "count": entry.count})
+	return tr("LEVEL_ITEM_WITH_CHANGE").format({"name": entry.display_name, "count": entry.count, "change": entry.note})
 
 
 func _on_category(category: String) -> void:

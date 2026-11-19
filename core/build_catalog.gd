@@ -17,6 +17,8 @@ class Entry:
 	var display_name := ""
 	var count := 0
 	var category := ""
+	## A short note the palette adds to the row (the production change on this level); "" for none.
+	var note := ""
 
 
 ## The entries for a store: `units` maps an item (`HULL_STARTER`, `PUMP_MODULE` …) to the whole

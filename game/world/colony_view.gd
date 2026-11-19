@@ -42,6 +42,14 @@ const LAMP_DAY := 0.25
 const LAMP_NIGHT := 1.5
 ## How much darker the ground gets on an airless body, so the lit colony stands out (V1).
 const AIRLESS_GROUND_DARKENING := 0.45
+## Cutaway below the ground: no sun and no sky, a warm lamp light from above instead, a dim warm
+## fill, and a dark rock-coloured background beyond the loaded floor.
+const UNDERGROUND_LAMP_COLOR := Color(1.0, 0.80, 0.58)
+const UNDERGROUND_LAMP_ENERGY := 0.95
+const UNDERGROUND_AMBIENT_COLOR := Color(1.0, 0.86, 0.70)
+const UNDERGROUND_AMBIENT := 0.42
+const UNDERGROUND_BACKGROUND := Color(0.035, 0.03, 0.028)
+const UNDERGROUND_FLOOR_TINT := Color(0.9, 0.84, 0.78)
 
 const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
@@ -79,6 +87,12 @@ var zoom := ZOOM_DEFAULT
 ## the outdoor modules; StructureLook). Only `open_id` is open: the home structure or a guest.
 var opened := false
 var open_id := 0
+## The active level (absolute z) while `level_cut` is on (the home structure is open with its
+## level selector): levels of the open structure above it are hidden; at a level below the ground
+## the view cuts the surface away (cutaway: ground, plants, perimeter and every level but the
+## active one hidden, the rock of that level as floor, UndergroundLayer).
+var level := 0
+var level_cut := false
 
 var _camera: Camera3D
 var _ground: GroundLayer
@@ -92,9 +106,17 @@ var _preview: Node3D
 var _selection: Node3D
 var _sun: DirectionalLight3D
 var _night_fill: DirectionalLight3D
+## Warm light from above in the cutaway view (instead of the sun).
+var _lamp_light: DirectionalLight3D
 var _world: WorldEnvironment
+## The rock floor and footprint outline of an underground level (cutaway).
+var _underground: UndergroundLayer
+## The last arguments of set_sun, to light the surface again after the cutaway.
+var _sun_args: Array = []
 var _scenes: Dictionary = {}
 var _hull_meshes: Dictionary = {}
+## Meshes of a shaft head (opening, rails, post), made once.
+var _head_meshes: Array[Mesh] = []
 ## Materials of the loaded models that glow (instance id → material), and their strength now.
 var _lamps: Dictionary = {}
 var _lamp_energy := LAMP_DAY
@@ -136,6 +158,9 @@ func _ready() -> void:
 	_perimeter = PerimeterLayer.new()
 	_perimeter.name = "Perimeter"
 	add_child(_perimeter)
+	_underground = UndergroundLayer.new()
+	_underground.name = "Underground"
+	add_child(_underground)
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_preview = _child("Preview")
@@ -156,6 +181,7 @@ func _ready() -> void:
 	if model != null:
 		_props.setup(self)
 		_perimeter.setup(self)
+		_underground.setup(self)
 	_update_camera()
 
 
@@ -204,6 +230,81 @@ func cell_at(screen_point: Vector2, height: float = 0.0) -> Variant:
 	return cell
 
 
+## The absolute cell of level `z` under a point of the view (the ray cut at that level's floor
+## plates), or null when the ray misses.
+func cell_on_level(screen_point: Vector2, z: int) -> Variant:
+	var found: Variant = cell_at(screen_point, float(z - origin.z) + HULL_FLOOR_HEIGHT)
+	if found == null:
+		return null
+	var cell: Vector3i = found
+	return Vector3i(cell.x, cell.y, z)
+
+
+## Sets the active level (absolute z) and whether it cuts the open structure (see `level`). Below
+## the ground it switches to the cutaway view.
+func set_level(z: int, cut: bool) -> void:
+	if level == z and level_cut == cut:
+		return
+	var was_cutaway := cutaway()
+	level = z
+	level_cut = cut
+	_apply_cutaway(was_cutaway)
+	_rebuild_structure()
+
+
+## Whether the view shows an underground level cut open (the surface away).
+func cutaway() -> bool:
+	return level_cut and opened and level < 0
+
+
+## The rock floor layer of the cutaway view.
+func underground_layer() -> UndergroundLayer:
+	return _underground
+
+
+## Whether a level (absolute z) of a structure is drawn: in the cutaway only the active level; on
+## the open structure while its levels are cut the levels from the ground up to the active one;
+## otherwise every level from the ground up (below the ground is hidden under it).
+func shows_level(structure: ColonyModel, z: int) -> bool:
+	if cutaway():
+		return z == level
+	if level_cut and structure.structure_id == open_id:
+		return z >= 0 and z <= level
+	return z >= 0
+
+
+## Surface layers off and the rock floor and lamp light on in the cutaway, and back.
+func _apply_cutaway(was_cutaway: bool) -> void:
+	var below := cutaway()
+	_ground.visible = not below
+	_props.visible = not below
+	_perimeter.visible = not below
+	_travel.visible = not below
+	_underground.show_level(level if below else 0)
+	if below:
+		_apply_lamp_light()
+	elif was_cutaway:
+		_lamp_light.visible = false
+		_world.environment.background_color = Color(0.039, 0.059, 0.110)
+		if not _sun_args.is_empty():
+			callv("set_sun", _sun_args)
+
+
+## Lamp light instead of the sun: below the ground neither sun nor sky reach.
+func _apply_lamp_light() -> void:
+	_sun.visible = false
+	_night_fill.visible = false
+	_lamp_light.visible = true
+	var environment := _world.environment
+	environment.ambient_light_color = UNDERGROUND_AMBIENT_COLOR
+	environment.ambient_light_energy = UNDERGROUND_AMBIENT
+	environment.background_color = UNDERGROUND_BACKGROUND
+	_lamp_energy = LAMP_NIGHT
+	for material: StandardMaterial3D in _lamps.values():
+		material.emission_energy_multiplier = _lamp_energy
+	_underground.set_tint(UNDERGROUND_FLOOR_TINT)
+
+
 ## Height at which cell_at meets the floor of a structure's lowest level (for taps on it).
 func floor_height(structure: ColonyModel) -> float:
 	var levels := structure.layout.levels()
@@ -223,10 +324,12 @@ func pick_structure(screen_point: Vector2) -> int:
 	for structure: ColonyModel in _structures():
 		var layout := structure.layout
 		var shut := structure.structure_id != open_id
-		for level: int in layout.levels():
-			var level_z := layout.to_absolute(Vector3i(0, 0, level)).z
+		for local_level: int in layout.levels():
+			var level_z := layout.to_absolute(Vector3i(0, 0, local_level)).z
+			if not shows_level(structure, level_z):
+				continue
 			for height: float in [HULL_CLOSED_HEIGHT, HULL_FLOOR_HEIGHT]:
-				var distance := (_level_y(structure, level) + height - from.y) / direction.y
+				var distance := (_level_y(structure, local_level) + height - from.y) / direction.y
 				if distance < 0.0 or distance >= best_distance:
 					continue
 				var hit := from + direction * distance
@@ -252,8 +355,11 @@ func set_opened(value: bool) -> void:
 func open_structure(structure_id: int) -> void:
 	if open_id == structure_id:
 		return
+	var was_cutaway := cutaway()
 	open_id = structure_id
 	opened = structure_id != 0
+	if was_cutaway != cutaway():
+		_apply_cutaway(was_cutaway)
 	_rebuild_structure()
 
 
@@ -483,17 +589,22 @@ func select_cell(cell: Variant, guest: bool = false) -> void:
 
 ## Shows what a build would look like: `cells` (absolute) tinted by whether it can work, and
 ## optionally a model standing on them. An empty list hides the preview. `guest` as in
-## select_cell.
-func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rotation: int = 0, guest: bool = false) -> void:
+## select_cell. `extra`: further cells marked only (the landing a staircase takes above it).
+func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rotation: int = 0, guest: bool = false,
+		extra: Array[Vector3i] = []) -> void:
 	for child: Node in _preview.get_children():
 		child.queue_free()
 	if cells.is_empty():
 		return
 	var drop := GUEST_DROP if guest else 0.0
-	for cell: Vector3i in cells:
+	var marked: Array[Vector3i] = []
+	marked.append_array(cells)
+	marked.append_array(extra)
+	for cell: Vector3i in marked:
 		var mark := _outline(COLOR_OK if ok else COLOR_BAD, true)
-		# A mark above the ground lies on the floor below it (a dock or a lower level).
-		var floor_lift := 0.004 if cell.z == origin.z else HULL_FLOOR_HEIGHT + 0.004
+		# A mark above the ground lies on the floor plate below it (a dock or a lower level); on
+		# and under the ground on the ground or the rock.
+		var floor_lift := 0.004 if cell.z <= origin.z else HULL_FLOOR_HEIGHT + 0.004
 		mark.position = WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift - drop, 0.0)
 		_preview.add_child(mark)
 	if scene_key.is_empty():
@@ -519,6 +630,8 @@ func _after_move() -> void:
 		_rebuild_all()
 	_update_camera()
 	model.ensure_surface(cell)
+	if cutaway():
+		model.ensure_level_surface(cell, level)
 
 
 func _update_camera() -> void:
@@ -536,6 +649,7 @@ func _rebuild_all() -> void:
 	_ground.clear()
 	_redraw_ground()
 	_props.rebuild()
+	_underground.redraw()
 	_rebuild_structure()
 	_travel.redraw()
 
@@ -581,6 +695,8 @@ func _build_structure(structure: ColonyModel) -> void:
 	# Hulls: one MultiMesh per model; a closed structure shows its indoor hulls shut.
 	var by_model: Dictionary = {}
 	for cell: Vector3i in layout.hull_cells():
+		if not shows_level(structure, layout.to_absolute(cell).z):
+			continue
 		var hull_type := layout.hull_at(cell).to_lower()
 		var key := "hull_" + hull_type
 		if shut and StructureLook.cell_closed(layout, definitions, cell):
@@ -611,6 +727,8 @@ func _build_structure(structure: ColonyModel) -> void:
 
 	# Modules: one scene each.
 	for placed: StructureLayout.Module in layout.modules():
+		if not shows_level(structure, layout.to_absolute(placed.origin).z):
+			continue
 		if shut and not StructureLook.module_visible_closed(layout, definitions, placed):
 			continue
 		var node := _instance(placed.module_type.to_lower())
@@ -629,6 +747,21 @@ func _build_structure(structure: ColonyModel) -> void:
 			_tint(node, COLOR_DISABLED)
 		module_group.add_child(node)
 		_mover.add(node, structure, placed)
+
+	# Shaft heads: the landing the top floor of a staircase or elevator takes on the level above.
+	for head: Vector3i in layout.shaft_heads():
+		var placed := layout.module_at(head)
+		var absolute := layout.to_absolute(head)
+		if placed == null or not shows_level(structure, absolute.z):
+			continue
+		if shut and StructureLook.cell_closed(layout, definitions, head):
+			continue
+		var landing := _shaft_head()
+		landing.position = WorldGrid.to_scene(absolute, origin, model.size_x) + Vector3(0.0, HULL_FLOOR_HEIGHT, 0.0) + lift
+		landing.rotation.y = -deg_to_rad(placed.rotation)
+		if placed.is_building():
+			_tint(landing, COLOR_BUILDING)
+		module_group.add_child(landing)
 
 
 ## Draws every loaded ground block near the camera (after the origin moved).
@@ -778,6 +911,47 @@ func _placeholder(module_type: String) -> Node3D:
 	return holder
 
 
+## The head of a shaft: the dark opening the stairs or the cabin come up through, with a railing
+## on three sides (the open side faces the module's +x, turned with it).
+func _shaft_head() -> Node3D:
+	var holder := Node3D.new()
+	holder.name = "ShaftHead"
+	if _head_meshes.is_empty():
+		var opening := StandardMaterial3D.new()
+		opening.albedo_color = Color(0.05, 0.055, 0.06)
+		opening.roughness = 1.0
+		var steel := StandardMaterial3D.new()
+		steel.albedo_color = Color(0.52, 0.55, 0.58)
+		steel.metallic = 0.6
+		steel.roughness = 0.45
+		var hole := BoxMesh.new()
+		hole.size = Vector3(0.72, 0.012, 0.72)
+		hole.material = opening
+		var rail_x := BoxMesh.new()
+		rail_x.size = Vector3(0.78, 0.035, 0.035)
+		rail_x.material = steel
+		var rail_z := BoxMesh.new()
+		rail_z.size = Vector3(0.035, 0.035, 0.78)
+		rail_z.material = steel
+		var post := BoxMesh.new()
+		post.size = Vector3(0.035, 0.34, 0.035)
+		post.material = steel
+		_head_meshes = [hole, rail_x, rail_z, post]
+	var parts: Array[Array] = [
+		[0, Vector3(0.0, 0.006, 0.0)],
+		[1, Vector3(0.0, 0.34, -0.39)], [1, Vector3(0.0, 0.34, 0.39)], [2, Vector3(-0.39, 0.34, 0.0)],
+		[1, Vector3(0.0, 0.18, -0.39)], [1, Vector3(0.0, 0.18, 0.39)], [2, Vector3(-0.39, 0.18, 0.0)],
+		[3, Vector3(-0.39, 0.17, -0.39)], [3, Vector3(-0.39, 0.17, 0.39)],
+		[3, Vector3(0.39, 0.17, -0.39)], [3, Vector3(0.39, 0.17, 0.39)],
+	]
+	for part: Array in parts:
+		var instance := MeshInstance3D.new()
+		instance.mesh = _head_meshes[part[0] as int] as Mesh
+		instance.position = part[1] as Vector3
+		holder.add_child(instance)
+	return holder
+
+
 ## Lays a translucent colour over every mesh of a model.
 func _tint(node: Node3D, color: Color) -> void:
 	var overlay := StandardMaterial3D.new()
@@ -877,6 +1051,15 @@ func _add_environment() -> void:
 	_night_fill.visible = false
 	add_child(_night_fill)
 
+	# The cutaway's lamps: warm, from above and a little from the camera's side, no shadows.
+	_lamp_light = DirectionalLight3D.new()
+	_lamp_light.rotation_degrees = Vector3(-62.0, CAMERA_YAW_DEGREES - 25.0, 0.0)
+	_lamp_light.light_color = UNDERGROUND_LAMP_COLOR
+	_lamp_light.light_energy = UNDERGROUND_LAMP_ENERGY
+	_lamp_light.shadow_enabled = false
+	_lamp_light.visible = false
+	add_child(_lamp_light)
+
 
 ## Sets the sun from its height and direction (radians, SunPosition), the star's surface
 ## temperature (Kelvin) and the atmosphere's density (SkyLight): low sun through air turns red,
@@ -884,6 +1067,7 @@ func _add_environment() -> void:
 ## light stays, so the colony remains readable on a phone.
 func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, density: float = 1.0,
 		star_brightness: float = 1.0, star_size: float = 1.0) -> void:
+	_sun_args = [elevation, azimuth, star_kelvin, density, star_brightness, star_size]
 	var to_sun := Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
 	_to_sun = to_sun
 	_sun_up = elevation > ModuleMotion.SUN_UP
@@ -919,6 +1103,9 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 	var darkening := AIRLESS_GROUND_DARKENING * lerpf(1.0, AIRLESS_DARKENING_AT_NIGHT, night)
 	var ground := 1.0 - darkening * SkyLight.airless(density)
 	_ground.set_tint(Color(ground, ground, ground))
+	# Below the ground neither sun nor sky reach: the lamps stay on.
+	if cutaway():
+		_apply_lamp_light()
 
 
 ## Applies a detail tier: shadows, edge smoothing and render resolution (DetailGovernor).
@@ -927,6 +1114,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	_sun.shadow_enabled = tier != DetailGovernor.Tier.SLOW
 	# Soft biome borders cost up to four texture reads per ground pixel.
 	_ground.set_soft(tier != DetailGovernor.Tier.SLOW)
+	_underground.set_soft(tier != DetailGovernor.Tier.SLOW)
 	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
 	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
 	_props.apply_detail(tier)

@@ -16,6 +16,8 @@ signal inventory_changed
 signal production_changed
 ## A surface patch arrived; it covers `request`.
 signal surface_loaded(request: SurfaceBlocks.Request, patch: SurfacePatch)
+## A patch of an underground level (z < 0) arrived (cutaway view).
+signal level_surface_loaded(z: int, request: SurfaceBlocks.Request)
 ## Loading the colony failed; `error` says why.
 signal load_failed(error: ApiError)
 ## Everything needed to draw the colony is there.
@@ -59,6 +61,14 @@ var sun: SunPosition = null
 var size_x := 0
 ## Depth of the body's grid in y (0 while unknown).
 var size_y := 0
+## Whether the body has a grid (gas and ice giants do not), its level range (inclusive) and the
+## level from which down the ground is DEEP_UNDERGROUND.
+var has_grid := false
+var min_z := 0
+var max_z := 0
+var deep_threshold := 0
+## Underground levels loaded for the cutaway view: z → SurfaceBlocks.
+var level_surfaces: Dictionary = {}
 var layout := StructureLayout.new()
 var inventory: Inventory = null
 var surface := SurfaceBlocks.new()
@@ -190,9 +200,15 @@ func _load_body() -> ApiError:
 	body_name = Wire.as_string(body.data.get("name"))
 	system_id = Wire.as_string(body.data.get("systemId"))
 	body_type = Wire.as_string(body.data.get("type"))
-	size_x = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeX"))
-	size_y = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeY"))
+	var grid := Wire.as_dict(body.data.get("grid"))
+	size_x = Wire.as_int(grid.get("sizeX"))
+	size_y = Wire.as_int(grid.get("sizeY"))
+	has_grid = not grid.is_empty()
+	min_z = Wire.as_int(grid.get("minZ"))
+	max_z = Wire.as_int(grid.get("maxZ"))
+	deep_threshold = Wire.as_int(body.data.get("deepThreshold"))
 	surface = SurfaceBlocks.new(size_x)
+	level_surfaces.clear()
 	var environment := Wire.as_dict(body.data.get("environment"))
 	var air: Variant = environment.get("atmosphereDensity")
 	if typeof(air) == TYPE_FLOAT:
@@ -256,6 +272,12 @@ func _make_sibling(id: int) -> ColonyModel:
 	other.body_type = body_type
 	other.system_id = system_id
 	other.size_x = size_x
+	other.size_y = size_y
+	other.has_grid = has_grid
+	other.min_z = min_z
+	other.max_z = max_z
+	other.deep_threshold = deep_threshold
+	other.level_surfaces = level_surfaces
 	other.star_kelvin = star_kelvin
 	other.star_luminosity = star_luminosity
 	other.star_distance_au = star_distance_au
@@ -673,6 +695,40 @@ func ensure_surface(cell: Vector3i) -> void:
 		_load_surface(request)
 
 
+## Makes sure the ground of an underground level around an absolute column is loaded (cutaway).
+func ensure_level_surface(cell: Vector3i, z: int) -> void:
+	if z >= 0:
+		ensure_surface(cell)
+		return
+	for request: SurfaceBlocks.Request in level_surface(z).missing_around(cell.x, cell.y, SURFACE_RADIUS):
+		_load_surface(request, z)
+
+
+## The loaded blocks of an underground level (created empty on first use); the surface for z ≥ 0.
+func level_surface(z: int) -> SurfaceBlocks:
+	if z >= 0:
+		return surface
+	if not level_surfaces.has(z):
+		level_surfaces[z] = SurfaceBlocks.new(size_x)
+	return level_surfaces[z] as SurfaceBlocks
+
+
+## What the level rules need to know about this body (LevelRules.Site); the biome of the ground
+## level comes from the loaded surface.
+func site() -> LevelRules.Site:
+	var result := LevelRules.Site.new()
+	result.has_grid = has_grid
+	result.min_z = min_z
+	result.max_z = max_z
+	result.deep_threshold = deep_threshold
+	result.body_type = body_type
+	var blocks := surface
+	result.biome_at = func(x: int, y: int) -> String:
+		var cell := blocks.cell(x, y)
+		return cell.biome if cell != null else ""
+	return result
+
+
 ## Sends a build batch (atomic) to the body; ops on a guest go the same way. Returns the result;
 ## on success the home structure (store, guest list) and every changed guest reload.
 func send_ops(ops: Array[Dictionary]) -> ApiResult:
@@ -722,6 +778,8 @@ func _load_layout(full: bool) -> ApiError:
 	var answer := await Services.api.get_ndjson(path)
 	_layout_loading = false
 	var failure: ApiError = answer.error
+	if Services.definitions != null:
+		layout.vertical_types = Services.definitions.vertical_types()
 	if answer.is_ok():
 		if layout.apply(answer.stream):
 			if not is_guest():
@@ -793,16 +851,23 @@ func _name_guests(items: Array) -> void:
 		guests_changed.emit()
 
 
-func _load_surface(request: SurfaceBlocks.Request) -> void:
+## Loads a rectangle of the ground level, or with `z` < 0 of an underground level (its rock biomes).
+func _load_surface(request: SurfaceBlocks.Request, z: int = 0) -> void:
 	var path := "/v2/bodies/%s/surface?x0=%d&y0=%d&x1=%d&y1=%d" % [
 		body_id.uri_encode(), request.x0, request.y0, request.x1, request.y1]
+	if z != 0:
+		path += "&z=%d" % z
+	var blocks := level_surface(z)
 	var answer := await Services.api.get_ndjson(path)
 	var patch := SurfacePatch.from_stream(answer.stream) if answer.is_ok() else null
 	if patch == null or not patch.complete:
-		surface.forget(request)
+		blocks.forget(request)
 		return
-	surface.store(request, patch)
-	surface_loaded.emit(request, patch)
+	blocks.store(request, patch)
+	if z < 0:
+		level_surface_loaded.emit(z, request)
+	else:
+		surface_loaded.emit(request, patch)
 
 
 func _on_event(event: SseEvent) -> void:

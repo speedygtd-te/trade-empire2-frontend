@@ -15,6 +15,13 @@ extends Control
 ## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects a field. Building is two
 ## taps — choose the field, then confirm — and removing is two-step as well.
 ##
+## Levels: while the home structure is open, a level selector at the right edge (Up / "Level 2" /
+## Down, with the environment of the level) chooses the active level: taps, building and the
+## inspection work on it, the levels above it are hidden, and below the ground the view cuts the
+## surface away (ColonyView.cutaway). Staircases and elevators form shafts between levels: they
+## take the hull above as their landing, extend by a floor, are removed as a whole and offer a
+## jump to their other end. A guest keeps its own stacking (DockRules.target_cell).
+##
 ## The screen shows one own structure (`start_structure`, else the home colony) with the other own
 ## structures on the same body drawn next to it (neighbours: a tap offers to go there). The fleet
 ## (button "Fleet" while there is more than one structure) lists them all; choosing one asks the
@@ -96,6 +103,17 @@ var _trip_info: TravelInfoPanel
 var _site: TravelSiteScreen = null
 ## Whether the map is open to pick a body for a trip: to land on it (true) or to orbit it.
 var _picking_land := false
+## The level selector (home structure open) and its parts; the active level (absolute z).
+var _levels: PanelContainer
+var _level_up: Button
+var _level_down: Button
+var _level_name: Label
+var _level_env: Label
+var _level := 0
+## Jumps to the other end of the selected shaft.
+var _jump: Button
+## Stop sites of the routes on the surface (hidden in the cutaway).
+var _stops: RouteStopLayer
 ## A short message over the bottom panel (a trip started, arrived or was stopped).
 var _notice: Label
 var _notice_left := 0.0
@@ -138,9 +156,9 @@ func _ready() -> void:
 	_fleet.changed.connect(_on_fleet_changed)
 	_build_world()
 	# Stop sites the routes hold on this body (RouteStopLayer).
-	var stops := RouteStopLayer.new()
-	stops.setup(_view, _fleet.routes)
-	_view.add_child(stops)
+	_stops = RouteStopLayer.new()
+	_stops.setup(_view, _fleet.routes)
+	_view.add_child(_stops)
 	_build_overlay()
 	_model.layout_changed.connect(_refresh)
 	_model.guests_changed.connect(_on_guests_changed)
@@ -287,10 +305,35 @@ func _build_overlay() -> void:
 	_menu_button.pressed.connect(_on_menu)
 	top_row.add_child(_menu_button)
 
+	# Middle: the colony, and the level selector at the right edge.
+	var middle := HBoxContainer.new()
+	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	middle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(middle)
 	var filler := Control.new()
-	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	filler.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	filler.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_child(filler)
+	middle.add_child(filler)
+	_levels = PanelContainer.new()
+	_levels.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_levels.visible = false
+	middle.add_child(_levels)
+	var level_box := Ui.column(8)
+	level_box.custom_minimum_size = Vector2(176, 0)
+	_levels.add_child(level_box)
+	_level_up = Ui.secondary_button("LEVEL_UP")
+	_level_up.pressed.connect(_step_level.bind(1))
+	level_box.add_child(_level_up)
+	_level_name = Ui.dynamic_label(AppTheme.VARIATION_HEADING)
+	_level_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_level_name.autowrap_mode = TextServer.AUTOWRAP_OFF
+	level_box.add_child(_level_name)
+	_level_env = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_level_env.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_box.add_child(_level_env)
+	_level_down = Ui.secondary_button("LEVEL_DOWN")
+	_level_down.pressed.connect(_step_level.bind(-1))
+	level_box.add_child(_level_down)
 
 	# Bottom: tabs, palette, info, actions.
 	_bottom = PanelContainer.new()
@@ -383,6 +426,11 @@ func _build_overlay() -> void:
 	_travel.visible = false
 	_actions.add_child(_travel)
 	_actions.move_child(_travel, 0)
+	_jump = Ui.secondary_button("LEVEL_GO_UP")
+	_jump.pressed.connect(_on_jump)
+	_jump.visible = false
+	_actions.add_child(_jump)
+	_actions.move_child(_jump, 0)
 
 	_loading = CenterContainer.new()
 	_loading.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -489,6 +537,9 @@ func _on_guests_changed() -> void:
 		_focus = _model
 		if was_open:
 			_opened = false
+			_level = 0
+			_view.set_level(0, false)
+			_stops.visible = true
 			_view.open_structure(0)
 			_view.show_preview([], false)
 			_menu_button.text = tr("COLONY_MENU")
@@ -549,12 +600,14 @@ func _set_mode(mode: Mode) -> void:
 	_tool = ""
 	_armed = ""
 	_status.text = ""
+	_update_levels()
 	_fill_palette()
 	_refresh()
 
 
 ## The palette offers what the store that builds the open structure holds: its own, or the
-## host's for a guest.
+## host's for a guest. On the home structure hulls that cannot stand on the active level are left
+## out (named in a hint), and modules whose production depends on the level show the change here.
 func _fill_palette() -> void:
 	var definitions := Services.definitions
 	var supply := _focus.supply().inventory if _focus != null else null
@@ -571,7 +624,158 @@ func _fill_palette() -> void:
 	for key: String in definitions.module_keys():
 		var item := definitions.module(key).item
 		units[item] = supply.units(item, now)
-	_palette.show_entries(BuildCatalog.entries(definitions, units), _tool)
+	var entries := BuildCatalog.entries(definitions, units)
+	var hidden := PackedStringArray()
+	if _uses_levels():
+		var environment := _level_environment()
+		var kept: Array[BuildCatalog.Entry] = []
+		for entry: BuildCatalog.Entry in entries:
+			if entry.tool.begins_with("hull:") and not _hull_offered(entry.tool.get_slice(":", 1), environment):
+				hidden.append(entry.display_name)
+				if entry.tool == _tool:
+					_tool = ""
+				continue
+			if entry.tool.begins_with("module:"):
+				entry.note = _change_text(LevelRules.z_percent(definitions.module(entry.tool.get_slice(":", 1)), _level))
+			kept.append(entry)
+		entries = kept
+	var hint := tr("LEVEL_HULLS_HIDDEN").format({"names": ", ".join(hidden)}) if not hidden.is_empty() else ""
+	_palette.show_entries(entries, _tool, hint)
+
+
+# --- levels ---------------------------------------------------------------------------------
+
+## Whether the open structure is built level by level (the home structure on a body with a grid;
+## a guest keeps its own stacking).
+func _uses_levels() -> bool:
+	return _opened and _focus == _model and not _model.detached and _model.has_grid
+
+
+## The levels the selector offers (absolute z, inclusive).
+func _level_range() -> Vector2i:
+	return LevelRules.level_range(_model.layout.absolute_levels(), _model.site())
+
+
+## Environment of the active level: of the selected field, or of the level as such.
+func _level_environment() -> String:
+	if _cell != null:
+		var at: Vector3i = _cell
+		return LevelRules.environment_of(_model.site(), Vector3i(at.x, at.y, _level))
+	return LevelRules.environment_at(_level, "", _model.deep_threshold, _model.body_type)
+
+
+## Whether a hull type can stand on the active level in `environment` (type, height limit, environment).
+func _hull_offered(hull_type: String, environment: String) -> bool:
+	var hull_def := Services.definitions.hull(hull_type)
+	return hull_def != null and LevelRules.SURFACE_HULLS.has(hull_type) \
+		and LevelRules.hull_z_allowed(hull_type, _level) and hull_def.environments.has(environment)
+
+
+## "Ground", "Level 2", "Level -1".
+func _level_text(z: int) -> String:
+	return tr("LEVEL_GROUND") if z == 0 else tr("LEVEL_NAME").format({"level": z})
+
+
+## "+6 %", "-4 %"; "" for no change.
+func _change_text(percent: int) -> String:
+	if percent > 0:
+		return tr("LEVEL_CHANGE_UP").format({"percent": percent})
+	if percent < 0:
+		return tr("LEVEL_CHANGE_DOWN").format({"percent": -percent})
+	return ""
+
+
+## The production change of a module type at level `z` as a sentence; "" when it does not care.
+func _z_line(module_def: GameDefinitions.ModuleDef, z: int) -> String:
+	if module_def == null or module_def.z_bonus_percent == 0:
+		return ""
+	var change := _change_text(LevelRules.z_percent(module_def, z))
+	if change.is_empty():
+		change = tr("LEVEL_CHANGE_UP").format({"percent": 0})
+	return tr("LEVEL_Z_BETTER_HIGH" if module_def.z_prefer_high else "LEVEL_Z_BETTER_DEEP").format({"change": change})
+
+
+## Shows or hides the level selector and writes its level and environment.
+func _update_levels() -> void:
+	if _levels == null:
+		return
+	_levels.visible = _uses_levels() and (_mode == Mode.VIEW or _mode == Mode.BUILD) and not _travel_panel.visible
+	if not _levels.visible:
+		return
+	var bounds := _level_range()
+	_level_name.text = _level_text(_level)
+	_level_env.text = tr("LEVEL_ENV_" + LevelRules.environment_at(_level, "", _model.deep_threshold, _model.body_type))
+	_level_up.disabled = _level >= bounds.y
+	_level_down.disabled = _level <= bounds.x
+
+
+func _step_level(step: int) -> void:
+	var bounds := _level_range()
+	_set_level(clampi(_level + step, bounds.x, bounds.y))
+
+
+## Makes `z` the active level: the selected field keeps its column, the view hides the levels
+## above (and cuts the surface away below the ground), the palette follows.
+func _set_level(z: int) -> void:
+	_level = z
+	_view.set_level(z, _uses_levels())
+	_stops.visible = not _view.cutaway()
+	if _cell != null:
+		var at: Vector3i = _cell
+		_cell = Vector3i(at.x, at.y, z)
+	_armed = ""
+	_status.text = ""
+	_update_levels()
+	_fill_palette()
+	_refresh()
+
+
+## Jumps to the other end of the selected shaft: to its head from below, to its lowest floor from
+## the head.
+func _on_jump() -> void:
+	var placed := _selected_shaft()
+	if placed == null:
+		return
+	var ends := _shaft_ends(placed)
+	_set_level(ends.y if _level < ends.y else ends.x)
+
+
+## The shaft (any of its floors) at the selected field of the open structure; null when none.
+func _selected_shaft() -> StructureLayout.Module:
+	if _cell == null:
+		return null
+	var layout := _focus.layout
+	var placed := layout.module_at(layout.to_local(_target() as Vector3i))
+	return placed if layout.is_shaft(placed) else null
+
+
+## Absolute levels of a shaft's lowest floor (x) and its head (y).
+func _shaft_ends(placed: StructureLayout.Module) -> Vector2i:
+	var layout := _focus.layout
+	var floors := layout.shaft_of(placed)
+	return Vector2i(layout.to_absolute(floors[0].origin).z, layout.to_absolute(layout.shaft_head(placed)).z)
+
+
+## Adds a floor on top of the selected shaft (`extendShaft`).
+func _extend_shaft() -> void:
+	var placed := _selected_shaft()
+	if placed == null or _busy:
+		return
+	var at := _focus.layout.to_absolute(placed.origin)
+	_send([{"op": "extendShaft", "x": at.x, "y": at.y, "z": at.z}])
+
+
+## Why the selected shaft cannot get another floor; OK when it can.
+func _extend_verdict(placed: StructureLayout.Module) -> BuildRules.Verdict:
+	var layout := _focus.layout
+	var verdict := BuildRules.check_extend_shaft(layout, Services.definitions, placed.origin)
+	if verdict != BuildRules.Verdict.OK:
+		return verdict
+	var supply := _focus.supply().inventory
+	var module_def := Services.definitions.module(placed.module_type)
+	if supply == null or module_def == null or supply.units(module_def.item, Services.clock.now_ms()) <= 0:
+		return BuildRules.Verdict.NO_ITEM
+	return BuildRules.Verdict.OK
 
 
 func _choose_tool(tool: String) -> void:
@@ -592,6 +796,9 @@ func _select(cell: Variant) -> void:
 	_status.text = ""
 	if cell == null:
 		_view.select_cell(null)
+	# The field's environment decides which hulls fit (under water on the ground level).
+	if _mode == Mode.BUILD and _uses_levels() and _level == 0:
+		_fill_palette()
 	_refresh()
 
 
@@ -616,6 +823,9 @@ func _open_structure(mode: Mode) -> void:
 	_focus.activate()
 	_view.highlight(0)
 	_view.open_structure(_focus.structure_id)
+	# A structure opens on the ground level.
+	_level = 0
+	_view.set_level(0, _uses_levels())
 	_store.setup(_focus)
 	_log.setup(_focus)
 	_menu_button.text = tr("COLONY_MENU") if _model.detached else tr("COLONY_CLOSE_STRUCTURE")
@@ -642,6 +852,9 @@ func _close_structure() -> void:
 	if _model.detached:
 		return
 	_opened = false
+	_level = 0
+	_view.set_level(0, false)
+	_stops.visible = true
 	_view.open_structure(0)
 	_view.show_preview([], false)
 	_menu_button.text = tr("COLONY_MENU")
@@ -658,6 +871,8 @@ func _refresh() -> void:
 		return
 	_staff.visible = false
 	_travel.visible = false
+	_jump.visible = false
+	_update_levels()
 	if _travel_panel.visible:
 		return
 	if not _opened:
@@ -740,7 +955,7 @@ func _refresh_view() -> void:
 	var placed := layout.module_at(local)
 	var definitions := Services.definitions
 	if hull_type.is_empty():
-		_info.text = tr("COLONY_FREE_GROUND")
+		_info.text = tr("COLONY_FREE_GROUND") if target.z == 0 else tr("LEVEL_EMPTY")
 		_primary.visible = false
 		return
 	var hull_name := definitions.hull(hull_type).display_name if definitions.hull(hull_type) != null else ""
@@ -769,6 +984,12 @@ func _refresh_view() -> void:
 			_info.text += "\n" + tr("COLONY_MODULE_DISABLED")
 	_primary.visible = true
 	_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "module" else tr("COLONY_REMOVE_MODULE")
+	if layout.is_shaft(placed):
+		_refresh_shaft(placed, local)
+		return
+	var z_line := _z_line(definitions.module(placed.module_type), target.z)
+	if not z_line.is_empty():
+		_info.text += "\n" + z_line
 	# The core module shields the home colony; neither it nor its hull can be removed.
 	if placed.module_type == CORE_MODULE:
 		_info.text += "\n" + tr("COLONY_CORE_MODULE")
@@ -783,6 +1004,31 @@ func _refresh_view() -> void:
 " + tr("WORKFORCE_LINE").format({"assigned": group.assigned(),
 			"needed": group.needed(), "modules": group.modules})
 		_staff.visible = true
+
+
+## A staircase or elevator: its floors and ends, a further floor on top, the jump to its other
+## end, and the removal of the whole shaft (two-step, with the number of floors).
+func _refresh_shaft(placed: StructureLayout.Module, local: Vector3i) -> void:
+	var layout := _focus.layout
+	var floors := layout.shaft_of(placed)
+	var ends := _shaft_ends(placed)
+	var lines := PackedStringArray([_info.text, tr("LEVEL_SHAFT_LINE").format({
+		"floors": floors.size(), "low": _level_text(ends.x), "high": _level_text(ends.y)})])
+	if layout.is_shaft_head(local):
+		lines.append(tr("LEVEL_SHAFT_HEAD"))
+	_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "module" else tr("LEVEL_REMOVE_SHAFT")
+	if _armed == "module":
+		lines.append(tr("LEVEL_SHAFT_REMOVES").format({"floors": floors.size()}))
+	_secondary.visible = true
+	_secondary.text = tr("LEVEL_EXTEND_SHAFT")
+	var verdict := _extend_verdict(placed)
+	_secondary.disabled = _busy or verdict != BuildRules.Verdict.OK
+	if verdict != BuildRules.Verdict.OK:
+		lines.append(_verdict_text(verdict))
+	if _uses_levels():
+		_jump.visible = true
+		_jump.text = tr("LEVEL_GO_UP") if _level < ends.y else tr("LEVEL_GO_DOWN")
+	_info.text = "\n".join(lines)
 
 
 ## What the module makes, or why it stands still.
@@ -826,11 +1072,21 @@ func _refresh_build() -> void:
 	var scene_key := _tool.get_slice(":", 1).to_lower()
 	if _tool.begins_with("hull:"):
 		scene_key = "hull_" + scene_key
-	_view.show_preview(cells, verdict == BuildRules.Verdict.OK, scene_key, _rotation, _target_on_guest())
+	var module_def := Services.definitions.module(_tool.get_slice(":", 1)) if _tool.begins_with("module:") else null
+	# A staircase or elevator also takes the hull above as its landing: mark it.
+	var extra: Array[Vector3i] = []
+	if module_def != null and module_def.vertical_access:
+		extra.append((_target() as Vector3i) + Vector3i(0, 0, 1))
+	_view.show_preview(cells, verdict == BuildRules.Verdict.OK, scene_key, _rotation, _target_on_guest(), extra)
 	_info.text = tool_name if verdict == BuildRules.Verdict.OK else _verdict_text(verdict)
+	if verdict == BuildRules.Verdict.OK and module_def != null and module_def.vertical_access:
+		_info.text = tr("LEVEL_SHAFT_PLACE").format({"name": tool_name})
 	if verdict == BuildRules.Verdict.OK and _tool.begins_with("hull:") and DockRules.placement(
 			_model.layout, _model.guest_layouts(), _model.layout.to_local(_target() as Vector3i)) == DockRules.Placement.FOUND:
 		_info.text = tr("COLONY_FOUNDS_GUEST").format({"name": tool_name})
+	var z_line := _z_line(module_def, (_target() as Vector3i).z)
+	if not z_line.is_empty():
+		_info.text += "\n" + z_line
 	_info.text += supply_line
 	_primary.disabled = _busy or verdict != BuildRules.Verdict.OK
 	if _is_multi_cell():
@@ -852,15 +1108,16 @@ func _is_multi_cell() -> bool:
 	return module_def != null and module_def.size.x != module_def.size.y
 
 
-## The absolute cell the selected column aims at: the topmost hull of the open structure there,
-## or — for a new hull — the cell on top (on a dock, on a guest) or next to it (DockRules).
+## The absolute cell the selected column aims at: on the home structure the cell on the active
+## level (a new hull on a dock goes on top of it); on a guest its topmost hull there, or for a new
+## hull the cell on top (DockRules.target_cell).
 func _target() -> Variant:
 	if _cell == null:
 		return null
 	var host := _model.layout
 	var tapped := host.to_local(_cell as Vector3i)
 	var new_hull := _mode == Mode.BUILD and _tool.begins_with("hull:")
-	return host.to_absolute(DockRules.target_cell(host, _focus.layout, Vector2i(tapped.x, tapped.y), new_hull))
+	return host.to_absolute(DockRules.target_cell(host, _focus.layout, Vector2i(tapped.x, tapped.y), new_hull, _level))
 
 
 ## Whether the target cell is drawn as part of a guest (on a guest, or a hull that would found
@@ -893,7 +1150,8 @@ func _verdict() -> BuildRules.Verdict:
 	if _tool.begins_with("hull:"):
 		if supply == null or supply.units(Services.definitions.hull(key).item, now) <= 0:
 			return BuildRules.Verdict.NO_ITEM
-		return DockRules.check_place_hull(_model.layout, _model.guest_layouts(), _model.layout.to_local(target))
+		return DockRules.check_place_hull(_model.layout, _model.guest_layouts(), _model.layout.to_local(target),
+			key, Services.definitions, _model.site())
 	if supply == null or supply.units(Services.definitions.module(key).item, now) <= 0:
 		return BuildRules.Verdict.NO_ITEM
 	return BuildRules.check_place_module(_focus.layout, Services.definitions, key, _focus.layout.to_local(target), _rotation)
@@ -907,6 +1165,9 @@ func _verdict_text(verdict: BuildRules.Verdict) -> String:
 		for slot: String in module_def.positioning:
 			slots.append(tr("SLOT_" + slot))
 		return tr("BUILD_VERDICT_POSITIONING").format({"slots": ", ".join(slots)})
+	if verdict == BuildRules.Verdict.INCOMPATIBLE_HULL and _cell != null:
+		var environment := LevelRules.environment_of(_model.site(), _target() as Vector3i)
+		return tr("BUILD_VERDICT_INCOMPATIBLE_HULL").format({"environment": tr("LEVEL_ENV_" + environment)})
 	return tr("BUILD_VERDICT_" + key)
 
 
@@ -948,7 +1209,9 @@ func _on_secondary() -> void:
 		return
 	if _mode == Mode.VIEW and _cell != null:
 		var placed := _focus.layout.module_at(_focus.layout.to_local(_target() as Vector3i))
-		if placed != null:
+		if _focus.layout.is_shaft(placed):
+			_extend_shaft()
+		elif placed != null:
 			_open_recipes(placed)
 		return
 	_set_mode(Mode.VIEW)
@@ -1178,7 +1441,7 @@ func _open_travel() -> void:
 	if _busy or not _can_travel(_focus):
 		return
 	for node: Control in [_info, _status, _actions, _tabs, _store, _log, _research, _palette, _trip_info,
-			_recipes, _workforce_panel]:
+			_recipes, _workforce_panel, _levels]:
 		node.visible = false
 	_travel_panel.visible = true
 	_travel_panel.open(_fleet, _focus)
@@ -1419,7 +1682,9 @@ func _on_tap(position_in_container: Vector2) -> void:
 		_focus = picked
 		_select_structure(true)
 		return
-	var cell: Variant = _view.cell_at(position_in_container * _scale(), _view.floor_height(_focus))
+	# The home structure is tapped on its active level, a guest on its lowest one.
+	var cell: Variant = _view.cell_on_level(position_in_container * _scale(), _level) if _uses_levels() \
+		else _view.cell_at(position_in_container * _scale(), _view.floor_height(_focus))
 	if cell != null and _cell != null and (cell as Vector3i) == (_cell as Vector3i) and _mode == Mode.VIEW:
 		_select(null)
 		return
