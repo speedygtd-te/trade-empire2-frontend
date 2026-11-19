@@ -98,13 +98,15 @@ static func resource_icon(key: String, size: int = ResourceIcon.ROW_SIZE, keep_r
 	return node
 
 
-## Puts the icon of a resource on a list row button, left of its text, ROW_SIZE wide. Without an
-## icon nothing, or with *keep_room* a clear square, so the texts of a list stay in line.
+## Puts the icon of a resource or item on a list row button, left of its text, ROW_SIZE wide and
+## ROW_GAP away from it. Without an icon nothing, or with *keep_room* a clear square, so the texts
+## of a list stay in line.
 static func add_resource_icon(button: Button, key: String, keep_room: bool = false) -> void:
 	button.icon = ResourceIcon.texture(key)
 	if button.icon == null and keep_room:
 		button.icon = ResourceIcon.blank()
 	button.add_theme_constant_override("icon_max_width", ResourceIcon.ROW_SIZE)
+	button.add_theme_constant_override("h_separation", ResourceIcon.ROW_GAP)
 	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 
 

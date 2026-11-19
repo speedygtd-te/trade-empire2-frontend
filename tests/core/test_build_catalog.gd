@@ -51,3 +51,12 @@ func test_a_category_lists_its_entries_by_name() -> void:
 	assert_int(production[1].count).is_equal(2)
 	assert_str(BuildCatalog.category_of(list, "hull:STARTER")).is_equal("HULLS")
 	assert_str(BuildCatalog.category_of(list, "module:LASER")).is_empty()
+
+
+func test_an_entry_names_the_store_item_it_is_built_from() -> void:
+	var items := {}
+	for entry: BuildCatalog.Entry in BuildCatalog.entries(_definitions, _units()):
+		items[entry.tool] = entry.item
+
+	assert_str(items["hull:STARTER"]).is_equal("HULL_STARTER")
+	assert_str(items["module:PUMP"]).is_equal("PUMP_MODULE")

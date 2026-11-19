@@ -28,6 +28,7 @@ var _empty: Label
 var _hint: Label
 var _hint_text := ""
 var _compact: HBoxContainer
+var _compact_icon: TextureRect
 var _compact_label: Label
 ## The shape switch under a chosen hull, and why it is missing where it is (on a guest).
 var _shapes: TabStrip
@@ -57,6 +58,8 @@ func _ready() -> void:
 	_compact = HBoxContainer.new()
 	_compact.add_theme_constant_override("separation", 16)
 	add_child(_compact)
+	_compact_icon = Ui.resource_icon("")
+	_compact.add_child(_compact_icon)
 	_compact_label = Ui.dynamic_label()
 	_compact_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_compact_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -133,6 +136,8 @@ func _rebuild() -> void:
 		for entry: BuildCatalog.Entry in _entries:
 			if entry.tool == _tool:
 				_compact_label.text = _row_text(entry)
+				_compact_icon.texture = ResourceIcon.texture(entry.item)
+				_compact_icon.visible = _compact_icon.texture != null
 		return
 	var group := ButtonGroup.new()
 	for category: String in categories:
@@ -151,6 +156,7 @@ func _rebuild() -> void:
 		var row := ListButton.new()
 		row.text = _row_text(entry)
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		Ui.add_resource_icon(row, entry.item, true)
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.set_chosen(entry.tool == _tool)
 		row.tapped.connect(_on_item.bind(entry.tool))

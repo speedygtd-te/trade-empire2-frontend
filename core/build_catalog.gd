@@ -14,6 +14,8 @@ class Entry:
 	extends RefCounted
 	## "hull:STARTER" or "module:PUMP" (the build tool).
 	var tool := ""
+	## The store item it is built from (`HULL_STARTER`, `PUMP_MODULE`), for its icon.
+	var item := ""
 	var display_name := ""
 	var count := 0
 	var category := ""
@@ -29,11 +31,11 @@ static func entries(definitions: GameDefinitions, units: Dictionary) -> Array[En
 		return result
 	for key: String in definitions.hull_keys():
 		var hull := definitions.hull(key)
-		_add(result, "hull:" + key, hull.display_name, Wire.as_int(units.get(hull.item)), HULLS)
+		_add(result, "hull:" + key, hull.item, hull.display_name, Wire.as_int(units.get(hull.item)), HULLS)
 	for key: String in definitions.module_keys():
 		var module_def := definitions.module(key)
 		var category := module_def.category if ORDER.has(module_def.category) else OTHER
-		_add(result, "module:" + key, module_def.display_name, Wire.as_int(units.get(module_def.item)), category)
+		_add(result, "module:" + key, module_def.item, module_def.display_name, Wire.as_int(units.get(module_def.item)), category)
 	return result
 
 
@@ -69,11 +71,12 @@ static func category_of(list: Array[Entry], tool: String) -> String:
 	return ""
 
 
-static func _add(result: Array[Entry], tool: String, display_name: String, count: int, category: String) -> void:
+static func _add(result: Array[Entry], tool: String, item: String, display_name: String, count: int, category: String) -> void:
 	if count <= 0:
 		return
 	var entry := Entry.new()
 	entry.tool = tool
+	entry.item = item
 	entry.display_name = display_name
 	entry.count = count
 	entry.category = category
