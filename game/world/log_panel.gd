@@ -64,6 +64,9 @@ func _load_page(query: String) -> void:
 		_empty.text = ErrorText.describe(answer.error, self) if answer.error != null else tr("LOG_EMPTY")
 		return
 	await _load_names(page)
+	await _name_travel_places(page.entries)
+	if not is_inside_tree():
+		return
 	var now := Services.clock.now_ms()
 	for entry: StructureLog.Entry in page.entries:
 		var text := describe(entry)
@@ -154,11 +157,11 @@ func describe(entry: StructureLog.Entry) -> String:
 		"hullRepaired":
 			return tr("LOG_HULL_REPAIRED")
 		"travelStarted":
-			return tr("LOG_TRAVEL_STARTED")
+			return _travel_started(fields)
 		"travelArrived":
-			return tr("LOG_TRAVEL_ARRIVED")
+			return _travel_arrived(fields)
 		"travelBlocked":
-			return tr("LOG_TRAVEL_BLOCKED")
+			return _travel_blocked(fields)
 		"routeArrived":
 			return tr("LOG_ROUTE_ARRIVED")
 		"routeDeparted":
@@ -180,6 +183,74 @@ func describe(entry: StructureLog.Entry) -> String:
 		"telescopeUpgraded":
 			return tr("LOG_TELESCOPE_UPGRADED")
 	return ""
+
+
+## Names of bodies and own structures that trips mention ("body:<id>" / "structure:<id>" →
+## name), kept for the session.
+static var _travel_names: Dictionary = {}
+
+
+## Looks up the names of the places the trips of a page mention that are not known yet.
+func _name_travel_places(entries: Array[StructureLog.Entry]) -> void:
+	for entry: StructureLog.Entry in entries:
+		if not entry.type.begins_with("travel"):
+			continue
+		var body := Wire.as_string(entry.fields.get("bodyId"))
+		if not body.is_empty() and not _travel_names.has("body:" + body):
+			var answer := await Services.api.get_json("/v2/bodies/" + body.uri_encode())
+			if answer.is_ok():
+				_travel_names["body:" + body] = Wire.as_string(answer.data.get("name"))
+		var host := Wire.as_int(entry.fields.get("hostId"))
+		if host != 0 and not _travel_names.has("structure:%d" % host):
+			var answer := await Services.api.get_json("/v2/structures/%d" % host)
+			if answer.is_ok():
+				_travel_names["structure:%d" % host] = Wire.as_string(answer.data.get("name"))
+
+
+func _travel_place(fields: Dictionary, kind: String) -> String:
+	var key := "body:" + Wire.as_string(fields.get("bodyId")) if kind == "body" else "structure:%d" % Wire.as_int(fields.get("hostId"))
+	var known := Wire.as_string(_travel_names.get(key))
+	return known if not known.is_empty() else tr("LOG_SOMETHING")
+
+
+## "Set off for …" with the target and the fuel taken for the trip.
+func _travel_started(fields: Dictionary) -> String:
+	var text := tr("LOG_TRAVEL_STARTED")
+	match Wire.as_string(fields.get("target")):
+		"orbit":
+			text = tr("LOG_TRAVEL_STARTED_ORBIT").format({"body": _travel_place(fields, "body")})
+		"surface":
+			text = tr("LOG_TRAVEL_STARTED_SURFACE").format({"body": _travel_place(fields, "body"),
+				"x": Wire.as_int(fields.get("x")), "y": Wire.as_int(fields.get("y"))})
+		"dock":
+			text = tr("LOG_TRAVEL_STARTED_DOCK").format({"host": _travel_place(fields, "host")})
+	var fuel: Array[Array] = []
+	if typeof(fields.get("fuel")) == TYPE_ARRAY:
+		var rows: Array = fields.get("fuel")
+		for value: Variant in rows:
+			var row := Wire.as_dict(value)
+			fuel.append([Wire.as_string(row.get("resource")), Wire.as_int(row.get("amount"))])
+	if not fuel.is_empty():
+		text += " " + tr("LOG_TRAVEL_FUEL").format({"items": _items(fuel)})
+	return text
+
+
+func _travel_arrived(fields: Dictionary) -> String:
+	match Wire.as_string(fields.get("anchor")):
+		"orbit":
+			return tr("LOG_TRAVEL_ARRIVED_ORBIT").format({"body": _travel_place(fields, "body")})
+		"surface":
+			return tr("LOG_TRAVEL_ARRIVED_SURFACE").format({"body": _travel_place(fields, "body")})
+		"docked":
+			return tr("LOG_TRAVEL_ARRIVED_DOCKED").format({"host": _travel_place(fields, "host")})
+	return tr("LOG_TRAVEL_ARRIVED")
+
+
+func _travel_blocked(fields: Dictionary) -> String:
+	var reason := ApiError.new()
+	reason.code = Wire.as_string(fields.get("reason"))
+	return tr("LOG_TRAVEL_BLOCKED_REASON").format({"reason": ErrorText.describe(reason, self),
+		"body": _travel_place(fields, "body")})
 
 
 func _module_name(key: String) -> String:

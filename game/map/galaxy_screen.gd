@@ -14,6 +14,8 @@ extends Control
 
 ## The player left the galaxy.
 signal closed
+## Pick mode: the player chose a body in a system map opened from here.
+signal body_picked(body_id: String)
 
 ## Seconds the camera has to rest before the systems around it load.
 const DEBOUNCE := 0.35
@@ -22,6 +24,10 @@ const MAX_OWN_LOOKUPS := 12
 ## The glow of each galaxy, kept for the session: computing it takes a moment.
 static var _glow_cache: Dictionary = {}
 
+## Pick mode of the system maps opened from here (MapScreen.pick); set before adding.
+var pick := ""
+## The player's fleet (set before adding): flights between systems are drawn.
+var fleet: FleetModel = null
 var _from_system := ""
 var _home_system := ""
 var _home_body := ""
@@ -295,6 +301,9 @@ func _load() -> void:
 	_subtitle.text = tr("GALAXY_SUBTITLE_SPIRAL").format({"arms": _shape.arm_count, "across": across}) 		if _shape.arm_count > 0 else tr("GALAXY_SUBTITLE").format({"across": across})
 	_view.marks = marks
 	_view.home_id = _home_system
+	_update_trips()
+	if fleet != null and not fleet.changed.is_connected(_update_trips):
+		fleet.changed.connect(_update_trips)
 	_home_button.disabled = _home == null
 	_bottom.visible = true
 	await get_tree().process_frame
@@ -305,6 +314,18 @@ func _load() -> void:
 	if start != null:
 		_view.look_at_point(Vector2(start.position.x, start.position.y), GalaxyCamera.HOME_RADIUS)
 	_show_status()
+
+
+## The fleet's flights between systems, for the view.
+func _update_trips() -> void:
+	var trips: Array[TravelMotion] = []
+	if fleet != null:
+		var now := Services.clock.now_ms()
+		for entry: Fleet.Entry in fleet.fleet.entries():
+			if entry.motion != null and entry.is_moving(now) and TravelTrack.is_interstellar(entry.motion):
+				trips.append(entry.motion)
+	_view.trips = trips
+	_view.redraw_marks()
 
 
 ## The glow image, computed on a worker thread once per galaxy and session (`_process` picks
@@ -326,6 +347,8 @@ func _make_glow() -> void:
 ## Work done on worker threads arrives here; waiting in `_process` instead of an await keeps a
 ## closed screen from resuming.
 func _process(_delta: float) -> void:
+	if not _view.trips.is_empty():
+		_view.redraw_marks()
 	if _glow_task >= 0 and WorkerThreadPool.is_task_completed(_glow_task):
 		WorkerThreadPool.wait_for_task_completion(_glow_task)
 		_glow_task = -1
@@ -423,6 +446,9 @@ func _open_system(system_id: String) -> void:
 		return
 	_system_map = MapScreen.new()
 	_system_map.setup(system_id, _home_body, true)
+	_system_map.pick = pick
+	_system_map.fleet = fleet
+	_system_map.body_picked.connect(func(body_id: String) -> void: body_picked.emit(body_id))
 	_system_map.closed.connect(_close_system)
 	add_child(_system_map)
 	_content.visible = false

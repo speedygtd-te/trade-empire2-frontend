@@ -24,7 +24,7 @@ extends Control
 ## The player wants to see another own structure.
 signal switch_requested(structure_id: int)
 
-enum Mode { VIEW, BUILD, STORE, LOG, RESEARCH }
+enum Mode { VIEW, BUILD, STORE, LOG, RESEARCH, TRIP }
 
 ## Pointer travel (canvas px) below which a press counts as a tap, not a drag.
 const TAP_SLOP := 18.0
@@ -87,6 +87,20 @@ var _fleet: FleetModel
 var _fleet_button: Button
 ## The fleet list over the colony while it is open; null otherwise.
 var _fleet_panel: FleetPanel = null
+## Travel: the action in the closed structure's details, the choice of the target in the bottom
+## panel, the trip tab of a structure without ground, and the surface picker over the colony.
+var _travel: Button
+var _travel_panel: TravelPanel
+var _trip_tab: Button
+var _trip_info: TravelInfoPanel
+var _site: TravelSiteScreen = null
+## Whether the map is open to pick a body for a trip: to land on it (true) or to orbit it.
+var _picking_land := false
+## A short message over the bottom panel (a trip started, arrived or was stopped).
+var _notice: Label
+var _notice_left := 0.0
+## How long a notice stays (seconds).
+const NOTICE_SECONDS := 12.0
 
 ## Whether the structure is open for building and editing; closed it shows from outside.
 var _opened := false
@@ -134,6 +148,7 @@ func _ready() -> void:
 	_model.production_changed.connect(_on_production_changed)
 	_model.ready_to_show.connect(_on_ready_to_show)
 	_model.load_failed.connect(_on_load_failed)
+	Services.events.event_received.connect(_on_travel_event)
 	if Services.definitions == null:
 		Services.definitions_loaded.connect(_on_definitions_loaded, CONNECT_ONE_SHOT)
 	else:
@@ -151,9 +166,15 @@ func _process(delta: float) -> void:
 	if _sun_left <= 0.0 and _model.structure_id != 0:
 		_sun_left = SUN_SECONDS
 		_update_sun()
+	if _notice_left > 0.0:
+		_notice_left -= delta
+		if _notice_left <= 0.0:
+			_notice.visible = false
 	_refresh_left -= delta
 	if _refresh_left <= 0.0:
 		_refresh_left = REFRESH_SECONDS
+		if _mode == Mode.TRIP and _trip_info.visible:
+			_trip_info.tick()
 		if _model.detached:
 			_show_names()
 		if not _opened and _structure_selected:
@@ -169,13 +190,17 @@ func _process(delta: float) -> void:
 ## Android back: close the menu or the recipes, clear the selected field, shut the open
 ## structure, clear the selected structure — never quit.
 func handle_back() -> void:
-	if _fleet_panel != null:
+	if _site != null:
+		_site.handle_back()
+	elif _fleet_panel != null:
 		if not _fleet_panel.handle_back():
 			_close_fleet()
 	elif _map != null:
 		_map.handle_back()
 	elif _menu != null and _menu.visible:
 		_menu.visible = false
+	elif _travel_panel.visible:
+		_travel_panel.handle_back()
 	elif _opened and _mode == Mode.RESEARCH and _research.handle_back():
 		pass
 	elif _recipes.visible:
@@ -272,6 +297,9 @@ func _build_overlay() -> void:
 	column.add_child(_bottom)
 	var rows := Ui.column(16)
 	_bottom.add_child(rows)
+	_notice = Ui.dynamic_label()
+	_notice.visible = false
+	rows.add_child(_notice)
 	_tabs = HBoxContainer.new()
 	rows.add_child(_tabs)
 	var group := ButtonGroup.new()
@@ -290,6 +318,9 @@ func _build_overlay() -> void:
 	_research_tab = Ui.tab_button("COLONY_TAB_RESEARCH", group)
 	_research_tab.pressed.connect(_set_mode.bind(Mode.RESEARCH))
 	_tabs.add_child(_research_tab)
+	_trip_tab = Ui.tab_button("TRAVEL_TAB_TRIP", group)
+	_trip_tab.pressed.connect(_set_mode.bind(Mode.TRIP))
+	_tabs.add_child(_trip_tab)
 
 	_store = StorePanel.new()
 	_store.setup(_model)
@@ -312,6 +343,17 @@ func _build_overlay() -> void:
 	_workforce_panel.applied.connect(_on_workforce_applied)
 	_workforce_panel.closed.connect(_close_workforce)
 	rows.add_child(_workforce_panel)
+	_travel_panel = TravelPanel.new()
+	_travel_panel.visible = false
+	_travel_panel.closed.connect(_close_travel)
+	_travel_panel.pick_body_requested.connect(_open_map_pick)
+	_travel_panel.drive_requested.connect(_on_drive_requested)
+	_travel_panel.started.connect(_on_travel_started)
+	rows.add_child(_travel_panel)
+	_trip_info = TravelInfoPanel.new()
+	_trip_info.visible = false
+	_trip_info.travel_requested.connect(_open_travel)
+	rows.add_child(_trip_info)
 
 	_palette = BuildPalette.new()
 	_palette.chosen.connect(_choose_tool)
@@ -336,6 +378,11 @@ func _build_overlay() -> void:
 	_staff.visible = false
 	_actions.add_child(_staff)
 	_actions.move_child(_staff, 0)
+	_travel = Ui.secondary_button("TRAVEL_OPEN")
+	_travel.pressed.connect(_open_travel)
+	_travel.visible = false
+	_actions.add_child(_travel)
+	_actions.move_child(_travel, 0)
 
 	_loading = CenterContainer.new()
 	_loading.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -365,8 +412,10 @@ func _on_ready_to_show() -> void:
 		# No ground: the structure shows as panels only, the 3D view stops drawing.
 		_container.visible = false
 		_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		_open_structure(Mode.STORE)
+		_trip_info.setup(_fleet, _model.structure_id)
+		_open_structure(Mode.TRIP)
 		return
+	_view.set_fleet(_fleet.fleet)
 	_view.look_at_cell(_model.centre_cell())
 	_update_sun()
 	# The bottom panel covers the lower part of the view: shift the colony into the part above.
@@ -464,18 +513,26 @@ func _set_mode(mode: Mode) -> void:
 	_store_tab.set_pressed_no_signal(mode == Mode.STORE)
 	_log_tab.set_pressed_no_signal(mode == Mode.LOG)
 	_research_tab.set_pressed_no_signal(mode == Mode.RESEARCH)
+	_trip_tab.set_pressed_no_signal(mode == Mode.TRIP)
+	if _travel_panel.visible:
+		_travel_panel.visible = false
 	# A closed structure shows only its details: no tabs, no store, no log.
 	_tabs.visible = _opened
 	# The research tab shows the labs of the home structure; a guest does not offer it (yet).
-	# A structure without ground (orbit, under way) has nothing to inspect or build in 3D.
+	# A structure without ground (orbit, under way) has nothing to inspect or build in 3D, but
+	# its trip.
 	_research_tab.visible = not _focus.is_guest() and not _model.detached
 	_view_tab.visible = not _model.detached
 	_build_tab.visible = not _model.detached
-	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG or mode == Mode.RESEARCH)
+	_trip_tab.visible = _model.detached
+	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG or mode == Mode.RESEARCH or mode == Mode.TRIP)
 	_palette.visible = _opened and mode == Mode.BUILD
 	_store.visible = _opened and mode == Mode.STORE
 	_log.visible = _opened and mode == Mode.LOG
 	_research.visible = _opened and mode == Mode.RESEARCH
+	_trip_info.visible = _opened and mode == Mode.TRIP
+	if _trip_info.visible:
+		_trip_info.tick()
 	_info.visible = not panel_mode
 	_status.visible = not panel_mode
 	_actions.visible = not panel_mode
@@ -600,12 +657,15 @@ func _refresh() -> void:
 	if _view == null or _model.structure_id == 0:
 		return
 	_staff.visible = false
+	_travel.visible = false
+	if _travel_panel.visible:
+		return
 	if not _opened:
 		_refresh_closed()
 		return
 	if _cell != null:
 		_view.select_cell(_target(), _target_on_guest())
-	if _mode == Mode.STORE or _mode == Mode.LOG or _mode == Mode.RESEARCH:
+	if _mode == Mode.STORE or _mode == Mode.LOG or _mode == Mode.RESEARCH or _mode == Mode.TRIP:
 		return
 	_primary.disabled = _busy
 	_secondary.disabled = _busy
@@ -653,11 +713,15 @@ func _refresh_closed() -> void:
 		_info.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	else:
 		_info.remove_theme_color_override("font_color")
+	_travel.visible = _can_travel(_focus)
 	_secondary.visible = true
 	_secondary.text = tr("COLONY_OPEN_EDIT")
 	_primary.visible = true
 	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
 	_primary.text = tr("COLONY_OPEN_BUILD")
+	if not trip.is_empty():
+		# Nothing is built while it travels (STRUCTURE_MOVING).
+		_primary.visible = false
 
 
 func _refresh_view() -> void:
@@ -1068,9 +1132,152 @@ func _on_fleet_chosen(structure_id: int) -> void:
 
 ## The fleet changed: the button shows with more than one structure, trips update the texts.
 func _on_fleet_changed() -> void:
+	if _model.structure_id != 0 and _switch_if_moved():
+		return
 	_fleet_button.visible = _fleet.fleet.size() > 1 and (not _opened or _model.detached)
+	if _model.structure_id != 0 and not _model.detached:
+		_model.sync_with_fleet(_fleet.fleet, Services.clock.now_ms())
+		_view.set_fleet(_fleet.fleet)
 	_show_names()
+	if _trip_info.visible:
+		_trip_info.tick()
 	_refresh()
+
+
+## The structure on screen took off or landed: the screen is built again for where it is now
+## (panels only in orbit or in flight, the ground once it stands somewhere). A drive keeps the
+## ground: the structure is drawn moving over it. Returns whether a new screen was asked for.
+func _switch_if_moved() -> bool:
+	var entry := _fleet.fleet.find(_model.structure_id)
+	if entry == null or _site != null:
+		return false
+	var away := entry.where() == Fleet.Where.ORBIT or entry.where() == Fleet.Where.TRANSIT
+	var driving := entry.motion != null and entry.motion.mode == TravelPlan.MODE_GROUND
+	if (_model.detached and not away) or (not _model.detached and away and not driving):
+		switch_requested.emit(_model.structure_id)
+		return true
+	return false
+
+
+# --- travel ---------------------------------------------------------------------------------
+
+## Whether a structure on screen can be sent on a trip from here: an own one with a drive (not a
+## neighbour, which is seen only), resting.
+func _can_travel(structure: ColonyModel) -> bool:
+	if structure.is_neighbour() or structure.structure_id == 0:
+		return false
+	var entry := _fleet.fleet.find(structure.structure_id)
+	if entry == null or entry.is_moving(Services.clock.now_ms()):
+		return false
+	var can := TravelPanel.allowed(_fleet.fleet, entry)
+	return can.get("fly") == true or can.get("drive") == true
+
+
+## Opens the choice of a trip for the structure in focus in the bottom panel.
+func _open_travel() -> void:
+	if _busy or not _can_travel(_focus):
+		return
+	for node: Control in [_info, _status, _actions, _tabs, _store, _log, _research, _palette, _trip_info,
+			_recipes, _workforce_panel]:
+		node.visible = false
+	_travel_panel.visible = true
+	_travel_panel.open(_fleet, _focus)
+	_view.show_preview([], false)
+
+
+func _close_travel() -> void:
+	_travel_panel.visible = false
+	_set_mode(_mode)
+
+
+## Opens the system map to pick the body of a trip.
+func _open_map_pick(land: bool) -> void:
+	if _map != null:
+		return
+	_picking_land = land
+	_map = MapScreen.new()
+	var account := Services.session.account
+	_map.setup(_model.system_id, account.home_body_id if account != null else "")
+	_map.pick = MapScreen.PICK_LAND if land else MapScreen.PICK_ORBIT
+	_map.fleet = _fleet
+	_map.closed.connect(_close_map)
+	_map.body_picked.connect(_on_body_picked)
+	add_child(_map)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+
+
+func _on_body_picked(body_id: String) -> void:
+	_close_map()
+	if _picking_land:
+		_open_site(TravelSiteScreen.MODE_LAND, body_id)
+		return
+	var body_name := _fleet.body_name(body_id)
+	if body_name.is_empty():
+		var body := await Services.api.get_json("/v2/bodies/" + body_id.uri_encode())
+		body_name = Wire.as_string(body.data.get("name")) if body.is_ok() else tr("FLEET_UNKNOWN_PLACE")
+	_travel_panel.show_orbit(body_id, body_name)
+
+
+func _on_drive_requested() -> void:
+	_open_site(TravelSiteScreen.MODE_DRIVE, _model.body_id)
+
+
+## The surface of a body over the colony, to choose where the structure in focus lands or stops.
+func _open_site(mode: String, body_id: String) -> void:
+	if _site != null:
+		return
+	_site = TravelSiteScreen.new()
+	_site.setup(_focus, mode, body_id, _fleet)
+	_site.closed.connect(_close_site)
+	_site.started.connect(_on_travel_started)
+	add_child(_site)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+
+
+func _close_site() -> void:
+	if _site == null:
+		return
+	_site.queue_free()
+	_site = null
+	if not _model.detached:
+		_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+
+
+## A trip started: the fleet learns its motion at once (the event follows), the choice closes.
+func _on_travel_started(details: Dictionary) -> void:
+	_close_site()
+	_close_travel()
+	_fleet.fleet.apply_details(details)
+	var entry := _fleet.fleet.find(Wire.as_int(details.get("structureId")))
+	if entry != null and entry.motion != null:
+		_show_notice(tr("TRAVEL_NOTICE_STARTED").format({"name": entry.name,
+			"duration": TimeFormat.duration(entry.motion.remaining_ms(Services.clock.now_ms()))}), AppTheme.COLOR_OK)
+	_fleet.changed.emit()
+
+
+## Arrivals and stopped trips of own structures as a notice.
+func _on_travel_event(event: SseEvent) -> void:
+	if event.type != "travel.arrived" and event.type != "travel.blocked":
+		return
+	var data := Wire.parse_object(event.data)
+	var entry := _fleet.fleet.find(Wire.as_int(data.get("structureId")))
+	var who := entry.name if entry != null else tr("FLEET_UNKNOWN_PLACE")
+	if event.type == "travel.arrived":
+		_show_notice(tr("TRAVEL_NOTICE_ARRIVED").format({"name": who}), AppTheme.COLOR_OK)
+		return
+	var reason := ApiError.new()
+	reason.code = Wire.as_string(data.get("reason"))
+	var anchor := Wire.as_dict(data.get("anchor"))
+	var body := _fleet.body_name(Wire.as_string(anchor.get("bodyId")))
+	_show_notice(tr("TRAVEL_NOTICE_BLOCKED").format({"name": who, "reason": ErrorText.describe(reason, self),
+		"body": body if not body.is_empty() else tr("FLEET_UNKNOWN_PLACE")}), AppTheme.COLOR_DANGER)
+
+
+func _show_notice(text: String, color: Color) -> void:
+	_notice.text = text
+	_notice.add_theme_color_override("font_color", color)
+	_notice.visible = true
+	_notice_left = NOTICE_SECONDS
 
 
 ## Where a structure is, for the top bar of one without ground.
@@ -1096,6 +1303,7 @@ func _open_map() -> void:
 	_map = MapScreen.new()
 	var account := Services.session.account
 	_map.setup(_model.system_id, account.home_body_id if account != null else "")
+	_map.fleet = _fleet
 	_map.closed.connect(_close_map)
 	add_child(_map)
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED

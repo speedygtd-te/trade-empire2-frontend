@@ -57,6 +57,8 @@ var atmosphere: Dictionary = {}
 var sun: SunPosition = null
 ## Width of the body in cells; the surface wraps around in x.
 var size_x := 0
+## Depth of the body's grid in y (0 while unknown).
+var size_y := 0
 var layout := StructureLayout.new()
 var inventory: Inventory = null
 var surface := SurfaceBlocks.new()
@@ -83,6 +85,10 @@ var asked_guest := 0
 var neighbours: Dictionary = {}
 ## For a neighbour: the structure it was loaded next to; null otherwise.
 var neighbour_of: ColonyModel = null
+## Own structures under way that concern this body and are not drawn otherwise: driving on it,
+## or flying to land on it or to dock on a structure here (sync_with_fleet): id → ColonyModel
+## (layout only; ColonyView places them along their trip).
+var travellers: Dictionary = {}
 
 var _layout_loading := false
 var _layout_again := false
@@ -134,7 +140,9 @@ func load_structure(preferred: int) -> void:
 		# Home: a base on the home body before a base elsewhere, before a vehicle parked at home,
 		# before anything else on a surface; the first of a kind (lowest id) wins.
 		asked_guest = 0
-		var best := -1
+		# The home colony: a base before a vehicle parked there, on the home body before elsewhere;
+		# among equals the largest one.
+		var best_rank := -1
 		for entry: Variant in items:
 			var summary := Wire.as_dict(entry)
 			var anchor := Wire.as_dict(summary.get("anchor"))
@@ -142,8 +150,8 @@ func load_structure(preferred: int) -> void:
 				continue
 			var rank := (2 if Wire.as_string(summary.get("kind")) == "base" else 0) \
 				+ (1 if Wire.as_string(anchor.get("bodyId")) == account.home_body_id else 0)
-			if rank > best:
-				best = rank
+			if rank > best_rank or (rank == best_rank and Wire.as_int(summary.get("totalHulls")) > Wire.as_int(chosen.get("totalHulls"))):
+				best_rank = rank
 				chosen = summary
 	if chosen.is_empty():
 		var none := ApiError.new()
@@ -183,6 +191,7 @@ func _load_body() -> ApiError:
 	system_id = Wire.as_string(body.data.get("systemId"))
 	body_type = Wire.as_string(body.data.get("type"))
 	size_x = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeX"))
+	size_y = Wire.as_int(Wire.as_dict(body.data.get("grid")).get("sizeY"))
 	surface = SurfaceBlocks.new(size_x)
 	var environment := Wire.as_dict(body.data.get("environment"))
 	var air: Variant = environment.get("atmosphereDensity")
@@ -259,6 +268,125 @@ func _make_sibling(id: int) -> ColonyModel:
 	return other
 
 
+## Only the body and the own structures standing on its surface (all of them neighbours), for
+## choosing a landing site or a drive there; no structure of its own (`structure_id` 0).
+func load_body_view(body: String) -> void:
+	body_id = body
+	var body_error := await _load_body()
+	if body_error != null:
+		load_failed.emit(body_error)
+		return
+	var list := await FleetModel.list_structures()
+	if not list.is_ok():
+		load_failed.emit(list.error)
+		return
+	var items: Array = list.data.get("items")
+	_add_neighbours(items)
+	ready_to_show.emit()
+
+
+## Follows the player's fleet (the loaded structure only, not a guest or neighbour): neighbours
+## that left this body's surface go, new ones come; structures driving here or flying to land or
+## dock here become travellers until they arrive; a layout whose structure stands somewhere else
+## now loads again. Emits guests_changed when the set of drawn structures changed.
+func sync_with_fleet(fleet: Fleet, now: int) -> void:
+	if body_id.is_empty() or detached or host != null or neighbour_of != null:
+		return
+	var changed := false
+	for entry: Fleet.Entry in fleet.entries():
+		var id := entry.structure_id
+		if id == structure_id or neighbours.has(id) or entry.where() != Fleet.Where.SURFACE or entry.body_id != body_id:
+			continue
+		var neighbour := _make_sibling(id)
+		neighbour.name = "Neighbour%d" % id
+		neighbour.neighbour_of = self
+		neighbour.structure_name = entry.name
+		neighbours[id] = neighbour
+		add_child(neighbour)
+		neighbour.layout_changed.connect(layout_changed.emit)
+		neighbour.guests_changed.connect(guests_changed.emit)
+		neighbour.reload_layout()
+		changed = true
+	for id: int in neighbours.keys():
+		var entry := fleet.find(id)
+		if entry == null or entry.where() != Fleet.Where.SURFACE or entry.body_id != body_id:
+			var gone := neighbours[id] as ColonyModel
+			neighbours.erase(id)
+			gone.queue_free()
+			changed = true
+	var wanted: Dictionary = {}
+	for entry: Fleet.Entry in fleet.entries():
+		if not concerns_body(entry, now):
+			continue
+		var id := entry.structure_id
+		if _drawn_structure(id) != null:
+			continue
+		wanted[id] = true
+		if travellers.has(id):
+			continue
+		var traveller := _make_sibling(id)
+		traveller.name = "Traveller%d" % id
+		traveller.neighbour_of = self
+		traveller.structure_name = entry.name
+		travellers[id] = traveller
+		add_child(traveller)
+		traveller.layout_changed.connect(layout_changed.emit)
+		traveller.reload_layout()
+		changed = true
+	for id: int in travellers.keys():
+		if not wanted.has(id):
+			var gone := travellers[id] as ColonyModel
+			travellers.erase(id)
+			gone.queue_free()
+			changed = true
+	# A structure that arrived on the surface (or drove) stands elsewhere than its layout says.
+	var standing: Array[ColonyModel] = [self]
+	for neighbour: ColonyModel in neighbours.values():
+		standing.append(neighbour)
+	# A guest that docked here or left: the host's layout header lists its guests.
+	for model: ColonyModel in standing:
+		var stale := false
+		for entry: Fleet.Entry in fleet.entries():
+			var docked_here := entry.where() == Fleet.Where.DOCKED and entry.host_id == model.structure_id
+			if docked_here != model.guests.has(entry.structure_id):
+				stale = true
+		if stale and model.layout.rev >= 0:
+			model.reload_layout()
+	for model: ColonyModel in standing:
+		var entry := fleet.find(model.structure_id)
+		if entry != null and entry.where() == Fleet.Where.SURFACE and model.layout.rev >= 0 \
+				and (model.layout.anchor_type != "surface" or model.layout.offset != entry.offset or model.layout.base != Vector3i.ZERO):
+			model.layout.base = Vector3i.ZERO
+			model.reload_layout()
+	if changed:
+		guests_changed.emit()
+
+
+## Whether a structure's trip concerns this body: it drives on it, or flies to land on it or to
+## dock on a structure drawn here, and has not arrived yet.
+func concerns_body(entry: Fleet.Entry, now: int) -> bool:
+	var motion := entry.motion
+	if motion == null or now >= motion.arrival_at:
+		return false
+	if motion.mode == TravelPlan.MODE_GROUND:
+		return motion.body_id == body_id
+	if motion.target_type() == "surface":
+		return motion.target_body_id() == body_id
+	if motion.target_type() == "dock":
+		return _drawn_structure(motion.target_host_id()) != null
+	return false
+
+
+## Traveller models in id order.
+func traveller_list() -> Array[ColonyModel]:
+	var ids: Array = travellers.keys()
+	ids.sort()
+	var result: Array[ColonyModel] = []
+	for id: int in ids:
+		result.append(travellers[id] as ColonyModel)
+	return result
+
+
 ## Every structure the view draws: this one, its guests, the neighbours and their guests.
 func drawn_structures() -> Array[ColonyModel]:
 	var result: Array[ColonyModel] = [self]
@@ -325,6 +453,16 @@ func guest_layouts() -> Array[StructureLayout]:
 ## The home structure, one of its guests, a neighbour or a neighbour's guest by id; null when
 ## unknown.
 func structure(id: int) -> ColonyModel:
+	var found := _drawn_structure(id)
+	if found == null and travellers.has(id):
+		return travellers.get(id) as ColonyModel
+	return found
+
+
+## Like structure(), without the travellers.
+func _drawn_structure(id: int) -> ColonyModel:
+	if id == 0:
+		return null
 	if id == structure_id:
 		return self
 	if guests.has(id):

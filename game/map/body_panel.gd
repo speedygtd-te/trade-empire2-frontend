@@ -5,6 +5,8 @@ extends VBoxContainer
 
 ## The player closed the details.
 signal closed
+## The player chose the shown body (pick mode: a target of a trip).
+signal chosen(body_id: String)
 
 ## Body and star types with their own text (MAP_BODY_TYPE_*, MAP_STAR_TYPE_*); a test checks them.
 const BODY_TYPES: PackedStringArray = ["EARTH_LIKE", "DESERT", "OCEAN", "ICE", "VOLCANIC", "BARREN",
@@ -18,6 +20,10 @@ var _title: Label
 var _kind: Label
 var _scroll: ScrollContainer
 var _lines: VBoxContainer
+var _body_id := ""
+## Pick mode: why the body cannot be chosen, and the button that chooses it.
+var _pick_note: Label
+var _choose: Button
 
 
 func _ready() -> void:
@@ -42,6 +48,23 @@ func _ready() -> void:
 	add_child(_scroll)
 	_lines = Ui.column(8)
 	_scroll.add_child(_lines)
+	_pick_note = Ui.dynamic_label(AppTheme.VARIATION_ERROR)
+	_pick_note.visible = false
+	add_child(_pick_note)
+	_choose = Ui.primary_button("MAP_PICK_ORBIT")
+	_choose.visible = false
+	_choose.pressed.connect(func() -> void: chosen.emit(_body_id))
+	add_child(_choose)
+
+
+## Pick mode: offers to choose the shown body as the target of a trip (`text_key` on the button);
+## `reason` (translated) says why it cannot be chosen, "" when it can. An empty key hides it.
+func show_pick(text_key: String, reason: String) -> void:
+	_choose.visible = not text_key.is_empty()
+	_choose.text = text_key
+	_choose.disabled = not reason.is_empty()
+	_pick_note.visible = _choose.visible and not reason.is_empty()
+	_pick_note.text = reason
 
 
 ## Readable name of a body type ("Earth-like planet"); a generic one for types this build does
@@ -59,6 +82,7 @@ func show_body(map: SystemMap, body_id: String, structures: PackedStringArray, i
 	var body := map.body(body_id)
 	if body == null:
 		return
+	_body_id = body_id
 	_title.text = body.name
 	var kind := type_text(body.type, self)
 	if body.is_moon():
