@@ -258,8 +258,13 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _model.structure_id != 0 and _rendering and not _model.detached:
 		_detail.add_frame(delta * 1000.0)
-		if _detail.evaluate(Time.get_ticks_msec()):
+		var now_ticks := Time.get_ticks_msec()
+		if _detail.evaluate(now_ticks):
 			_view.apply_detail(_detail.tier)
+		# The slowest tier holds 30 fps, lifted now and then for a measuring window.
+		_detail.tick(now_ticks)
+		if Engine.max_fps != _detail.fps_cap():
+			Engine.max_fps = _detail.fps_cap()
 			_save_detail()
 	_sun_left -= delta
 	if _sun_left <= 0.0 and _model.structure_id != 0:

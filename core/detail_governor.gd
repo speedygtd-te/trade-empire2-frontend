@@ -28,6 +28,12 @@ const GOOD_EVALUATIONS_TO_RISE := 3
 ## How often a tier may be left for being too slow before it is not entered again.
 const MAX_FAILS_PER_TIER := 2
 const DEFAULT_TIER := Tier.MEDIUM
+## On the slowest tier the frame rate is held at this (steady frames, less heat and battery). A
+## capped device cannot show that it got faster, so every PROBE_EVERY_MS the cap is lifted for
+## PROBE_MS and only those frames count for going up again.
+const SLOW_FPS_CAP := 30
+const PROBE_EVERY_MS := 60000
+const PROBE_MS := 3000
 
 var tier: Tier = DEFAULT_TIER
 ## Last measured median frame time in ms; -1 before the first evaluation.
@@ -38,10 +44,18 @@ var _warmup_left := WARMUP_FRAMES
 var _last_eval_ms := -1
 var _good_in_row := 0
 var _fails: Dictionary = {}
+## The measuring window on the slowest tier: whether it runs, until when, and the next start
+## (-1: not planned yet).
+var _probing := false
+var _probe_until := -1
+var _next_probe := -1
 
 
-## Feeds the duration of one rendered frame.
+## Feeds the duration of one rendered frame. On the slowest tier only frames of a measuring
+## window count (capped frames say nothing about the device).
 func add_frame(frame_ms: float) -> void:
+	if tier == Tier.SLOW and not _probing:
+		return
 	if _warmup_left > 0:
 		_warmup_left -= 1
 		return
@@ -57,6 +71,40 @@ func reset_samples() -> void:
 	_good_in_row = 0
 
 
+## The frame rate to hold now (Engine.max_fps): SLOW_FPS_CAP on the slowest tier outside a
+## measuring window, otherwise 0 (no cap).
+func fps_cap() -> int:
+	return SLOW_FPS_CAP if tier == Tier.SLOW and not _probing else 0
+
+
+## Starts and ends the measuring windows of the slowest tier; call every frame. Returns true when
+## the cap changed (a window began or ended).
+func tick(now_ms: int) -> bool:
+	if tier != Tier.SLOW:
+		var was := _probing
+		_probing = false
+		_next_probe = -1
+		return was
+	if _next_probe < 0:
+		_next_probe = now_ms + PROBE_EVERY_MS
+	if not _probing and now_ms >= _next_probe:
+		_probing = true
+		_probe_until = now_ms + PROBE_MS
+		_samples.clear()
+		_warmup_left = 0
+		return true
+	if _probing and now_ms >= _probe_until:
+		_probing = false
+		_next_probe = now_ms + PROBE_EVERY_MS
+		return true
+	return false
+
+
+## Whether a measuring window runs now.
+func is_probing() -> bool:
+	return _probing
+
+
 ## Re-evaluates at most every EVAL_INTERVAL_MS. Returns true when the tier changed.
 func evaluate(now_ms: int) -> bool:
 	if _last_eval_ms >= 0 and now_ms - _last_eval_ms < EVAL_INTERVAL_MS:
@@ -65,6 +113,9 @@ func evaluate(now_ms: int) -> bool:
 		return false
 	_last_eval_ms = now_ms
 	metric_ms = median(_samples)
+	# On the slowest tier each measuring window counts once.
+	if tier == Tier.SLOW:
+		_samples.clear()
 
 	if metric_ms > DOWN_ABOVE_MS and tier != Tier.SLOW:
 		_fails[tier] = Wire.as_int(_fails.get(tier, 0)) + 1

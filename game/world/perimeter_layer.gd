@@ -262,8 +262,13 @@ func _apply() -> void:
 	var dark := _darkness > DARK_ENOUGH
 	if _cones != null:
 		_cones.visible = dark and _tier != DetailGovernor.Tier.SLOW
+	# On the slowest tier the see-through light layers go (they cost fill rate on weak GPUs):
+	# cones, pools and the glow around the structures; lamps and windows keep glowing.
+	var slow := _tier == DetailGovernor.Tier.SLOW
 	if _pools != null:
-		_pools.visible = dark
+		_pools.visible = dark and not slow
+	if _glow != null:
+		_glow.visible = not slow
 	if _cone_material != null:
 		_cone_material.set_shader_parameter("strength", CONE_STRENGTH * _darkness)
 		_pool_material.set_shader_parameter("strength", POOL_STRENGTH * _darkness)

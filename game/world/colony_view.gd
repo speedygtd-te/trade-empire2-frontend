@@ -46,6 +46,12 @@ const LAMP_DAY := 0.25
 const LAMP_NIGHT := 1.5
 ## How much darker the ground gets on an airless body, so the lit colony stands out (V1).
 const AIRLESS_GROUND_DARKENING := 0.45
+## Share of the 3D resolution on the slowest detail tier (weak GPUs are limited by fill rate;
+## measured on a PowerVR GE8320: few draw calls, slow per pixel). The UI stays sharp.
+const SLOW_RENDER_SCALE := 0.6
+## Ground blocks built per frame: building one also redraws its neighbours' cell textures, so a
+## loaded patch spread over frames avoids hitches on weak devices.
+const GROUND_BLOCKS_PER_FRAME := 2
 ## Cutaway below the ground: no sun and no sky, a warm lamp light from above instead, a dim warm
 ## fill, and a dark rock-coloured background beyond the loaded floor.
 const UNDERGROUND_LAMP_COLOR := Color(1.0, 0.80, 0.58)
@@ -131,6 +137,8 @@ var _highlight_id := 0
 var _highlight_material: StandardMaterial3D
 ## Rotors, fans, dishes, pump rods and solar panels of the modules on screen (ModuleMotion).
 var _mover := ModuleMover.new()
+## Ground blocks (first cell) waiting to be built, a few per frame.
+var _ground_queue: Array[Vector2i] = []
 ## Whether they move (not on the slowest detail tier), and where the sun stands for the panels.
 var _moving := true
 var _to_sun := Vector3.UP
@@ -713,6 +721,7 @@ func _update_camera() -> void:
 
 func _rebuild_all() -> void:
 	_ground.clear()
+	_ground_queue.clear()
 	_redraw_ground()
 	_props.rebuild()
 	_underground.redraw()
@@ -841,12 +850,19 @@ func _redraw_ground() -> void:
 	for by: int in range(centre.y - reach, centre.y + reach + 1):
 		for bx: int in range(centre.x - reach, centre.x + reach + 1):
 			if model.surface.is_loaded(model.surface.block_of(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)):
-				_add_ground_block(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)
+				_queue_ground(bx * SurfaceBlocks.BLOCK, by * SurfaceBlocks.BLOCK)
 
 
 func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) -> void:
 	for block: Vector2i in request.blocks:
-		_add_ground_block(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
+		_queue_ground(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
+
+
+## Puts a ground block (its first cell) in line to be built; _process builds a few per frame.
+func _queue_ground(x0: int, y0: int) -> void:
+	var block := Vector2i(x0, y0)
+	if not _ground_queue.has(block):
+		_ground_queue.append(block)
 
 
 ## One textured quad of BLOCK × BLOCK cells (GroundLayer).
@@ -878,6 +894,11 @@ func _instance(key: String) -> Node3D:
 
 
 func _process(delta: float) -> void:
+	for _index: int in GROUND_BLOCKS_PER_FRAME:
+		if _ground_queue.is_empty():
+			break
+		var block: Vector2i = _ground_queue.pop_front()
+		_add_ground_block(block.x, block.y)
 	if _moving:
 		_mover.step(delta, _to_sun, _sun_up)
 	if fleet == null:
@@ -1183,7 +1204,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	_ground.set_soft(tier != DetailGovernor.Tier.SLOW)
 	_underground.set_soft(tier != DetailGovernor.Tier.SLOW)
 	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
-	viewport.scaling_3d_scale = 0.75 if tier == DetailGovernor.Tier.SLOW else 1.0
+	viewport.scaling_3d_scale = SLOW_RENDER_SCALE if tier == DetailGovernor.Tier.SLOW else 1.0
 	_props.apply_detail(tier)
 	_perimeter.apply_detail(tier)
 	_moving = tier != DetailGovernor.Tier.SLOW
