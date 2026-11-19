@@ -26,6 +26,13 @@ var _structure: ColonyModel = null
 var _launcher: StructureLayout.Module = null
 
 var _body_name := ""
+## The preview of a launch at the target (draft.32): the answer, or why it failed; whether one is
+## on its way and whether the server has the preview at all.
+var _quote: Probes.Quote = null
+var _quote_error: ApiError = null
+var _quote_cell := Vector2i.ZERO
+var _asking := false
+var _preview_supported := true
 var _size_x := 0
 var _size_y := 0
 var _busy := false
@@ -185,6 +192,34 @@ func _on_cell_tapped(cell: Vector2i) -> void:
 	_status.visible = false
 	_map.queue_redraw()
 	_refresh()
+	_ask_preview(cell)
+
+
+## Asks the server what a launch at the target would do (draft.32 preview): flight time and every
+## violated condition. A server without the preview keeps the general line.
+func _ask_preview(cell: Vector2i) -> void:
+	if not _preview_supported or _fleet == null:
+		return
+	_quote = null
+	_quote_error = null
+	_quote_cell = cell
+	_asking = true
+	_refresh()
+	var answer := await _fleet.probes.preview(_structure.structure_id, _launcher.module_id, _body_id, cell, _size_x, _size_y)
+	if not is_inside_tree() or _map.target == null or (_map.target as Vector2i) != cell:
+		return
+	_asking = false
+	if answer.is_ok():
+		_quote = Probes.Quote.from_wire(answer.data)
+	elif answer.error.http_status == 404 and answer.error.code != "STRUCTURE_NOT_FOUND" \
+			and answer.error.code != "PLANET_NOT_FOUND":
+		# No preview on this server (before draft.32).
+		_preview_supported = false
+	elif answer.error.http_status == 405:
+		_preview_supported = false
+	else:
+		_quote_error = answer.error
+	_refresh()
 
 
 func _show_state(text_key: String, error: ApiError = null) -> void:
@@ -242,8 +277,21 @@ func _launch_lines(lines: PackedStringArray) -> void:
 		if reveal != null and reveal.is_revealed(cell.x, cell.y, _size_x):
 			lines.append(tr("PROBE_TARGET_EXPLORED"))
 	lines.append(tr("PROBE_COST").format({"stock": stock_text(_structure, self)}))
-	lines.append(tr("PROBE_FLIGHT_TIME"))
+	var has_quote := _map.target != null and _quote != null and _quote_cell == (_map.target as Vector2i)
+	if has_quote:
+		lines.append(tr("PROBE_FLIGHT_TIME_KNOWN").format({"duration": TimeFormat.duration(_quote.flight_ms)}))
+	elif _asking and _preview_supported:
+		lines.append(tr("PROBE_FLIGHT_TIME_ASKING"))
+	else:
+		lines.append(tr("PROBE_FLIGHT_TIME"))
 	var reason := launch_reason(_structure, _launcher, _fleet, self)
+	# The server's own verdict on this target, once there (the first violated condition).
+	if reason.is_empty() and has_quote and not _quote.ok:
+		var first := ApiError.new()
+		first.code = _quote.errors[0] if not _quote.errors.is_empty() else ""
+		reason = ErrorText.describe(first, self)
+	elif reason.is_empty() and _quote_error != null and _map.target != null:
+		reason = ErrorText.describe(_quote_error, self)
 	_reason.text = reason
 	_reason.visible = not reason.is_empty()
 	_reason.add_theme_color_override("font_color", AppTheme.COLOR_DANGER if not reason.is_empty() else AppTheme.COLOR_MUTED)

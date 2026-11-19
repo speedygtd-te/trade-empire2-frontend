@@ -51,6 +51,29 @@ class Probe:
 		return clampf(float(now - launched_at) / float(total), 0.0, 1.0)
 
 
+## What a launch would do now (`POST /v2/structures/{id}/probes/preview`, draft.32).
+class Quote:
+	extends RefCounted
+	## Whether the launch would work now.
+	var ok := false
+	## The codes of every condition it violates (empty when ok).
+	var errors: PackedStringArray = []
+	var flight_ms := 0
+	var arrives_at := 0
+
+	static func from_wire(data: Dictionary) -> Quote:
+		var quote := Quote.new()
+		quote.ok = data.get("ok") == true
+		var codes: Array = data.get("errors") if typeof(data.get("errors")) == TYPE_ARRAY else []
+		for code: Variant in codes:
+			var text := Wire.as_string(code)
+			if not text.is_empty():
+				quote.errors.append(text)
+		quote.flight_ms = maxi(Wire.as_int(data.get("flightMs")), 0)
+		quote.arrives_at = Wire.as_int(data.get("arrivesAt"))
+		return quote
+
+
 var probes: Array[Probe] = []
 
 
@@ -139,6 +162,90 @@ func to_body(body_id: String) -> Array[Probe]:
 		if probe.body_id == body_id:
 			result.append(probe)
 	return result
+
+
+## The probes lying on a body at `now`: a probe stays on the cell it was sent to once it landed
+## (arrived by the server, or by the clock before the event).
+func landed_on(body_id: String, now: int) -> Array[Probe]:
+	var result: Array[Probe] = []
+	for probe: Probe in probes:
+		if probe.body_id == body_id and not probe.is_flying(now):
+			result.append(probe)
+	return result
+
+
+## The impact sites on a body by cell (Vector2i, x wrapped onto `size_x`): those the surface stream
+## names (draft.32 `SurfaceCell.p`, every player's; `surface` maps cells to Array of Impact) and the
+## player's own landed probes (`own`, owned by `player_id`; before draft.32 the only source). Each
+## cell lists its probes oldest first, every probe once.
+static func impacts_by_cell(own: Array[Probe], player_id: String, surface: Dictionary, size_x: int) -> Dictionary:
+	var result := {}
+	var seen := {}
+	for key: Variant in surface.keys():
+		var cell: Vector2i = key
+		var wrapped := Vector2i(WorldGrid.wrap_x(cell.x, size_x), cell.y)
+		var list: Array = surface[key]
+		for item: Variant in list:
+			var impact := item as Impact
+			if impact != null and not seen.has(impact.probe_id):
+				seen[impact.probe_id] = true
+				_add_impact(result, wrapped, impact)
+	for probe: Probe in own:
+		if seen.has(probe.probe_id):
+			continue
+		var impact := Impact.new()
+		impact.probe_id = probe.probe_id
+		impact.owner_id = player_id
+		impact.at = probe.arrives_at
+		impact.x = WorldGrid.wrap_x(probe.x, size_x)
+		impact.y = probe.y
+		seen[probe.probe_id] = true
+		_add_impact(result, Vector2i(impact.x, impact.y), impact)
+	for key: Variant in result.keys():
+		var list: Array = result[key]
+		list.sort_custom(func(a: Impact, b: Impact) -> bool:
+			return a.at < b.at if a.at != b.at else a.probe_id < b.probe_id)
+	return result
+
+
+static func _add_impact(into: Dictionary, cell: Vector2i, impact: Impact) -> void:
+	if not into.has(cell):
+		into[cell] = []
+	var list: Array = into[cell]
+	list.append(impact)
+
+
+## The cells with a wreck to show: impact sites (from impacts_by_cell) no hull covers on the
+## ground level. `covered` holds the covered cells as Vector2i with x wrapped like the keys.
+static func visible_wrecks(impacts: Dictionary, covered: Dictionary) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for key: Variant in impacts.keys():
+		var cell: Vector2i = key
+		if not covered.has(cell):
+			result.append(cell)
+	return result
+
+
+## One probe's landing on a cell: an impact site (draft.32), for good.
+class Impact:
+	extends RefCounted
+	var probe_id := 0
+	## The player whose probe it was (a string, like every player id).
+	var owner_id := ""
+	## When it landed (game ms).
+	var at := 0
+	var x := 0
+	var y := 0
+
+	static func from_wire(data: Dictionary, cell_x: int, cell_y: int) -> Impact:
+		var impact := Impact.new()
+		impact.probe_id = Wire.as_int(data.get("probeId"))
+		var owner: Variant = data.get("ownerId")
+		impact.owner_id = Wire.as_string(owner) if typeof(owner) == TYPE_STRING else (str(Wire.as_int(owner)) if owner != null else "")
+		impact.at = Wire.as_int(data.get("at"))
+		impact.x = cell_x
+		impact.y = cell_y
+		return impact
 
 
 ## Why a launcher cannot fire now, in the order the player can fix it: still being built,

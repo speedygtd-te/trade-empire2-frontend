@@ -18,6 +18,8 @@ class Cell:
 	## Deposits of the cell (`d`): resource key → richness 5..100 as the stream sends it (biome
 	## of this level, no depth bonus). Only filled when the patch was asked for with deposits.
 	var deposits: Dictionary = {}
+	## Probes that landed on the cell (`p`, draft.32; any player's), oldest first; empty without.
+	var impacts: Array[Probes.Impact] = []
 
 
 var body_id: String = ""
@@ -38,6 +40,8 @@ var _cells: Dictionary = {}
 ## Cells the player has not explored (draft.31: `null` in `SurfaceRow.cells`) → true. They have
 ## no terrain and no deposits; `cell` returns null for them.
 var _hidden: Dictionary = {}
+## Cells with impact sites (draft.32) → their Array of Probes.Impact.
+var _impact_cells: Dictionary = {}
 
 
 ## Reads a finished surface stream; null when the first line is no surface header.
@@ -96,6 +100,11 @@ func hidden_count() -> int:
 	return _hidden.size()
 
 
+## The cells of the patch with impact sites (draft.32): cell → Array of Probes.Impact.
+func impact_cells() -> Dictionary:
+	return _impact_cells
+
+
 func _read_row(line: Dictionary) -> void:
 	var y := Wire.as_int(line.get("y"))
 	var cells: Array = line.get("cells")
@@ -118,4 +127,10 @@ func _read_row(line: Dictionary) -> void:
 				var resource := Wire.as_string(deposit.get("r"))
 				if not resource.is_empty():
 					entry.deposits[resource] = Wire.as_int(deposit.get("R"))
+		var landed: Variant = data.get("p")
+		if typeof(landed) == TYPE_ARRAY:
+			var list: Array = landed
+			for item: Variant in list:
+				entry.impacts.append(Probes.Impact.from_wire(Wire.as_dict(item), x0 + offset, y))
+			_impact_cells[Vector2i(x0 + offset, y)] = entry.impacts
 		_cells[Vector2i(x0 + offset, y)] = entry

@@ -1205,4 +1205,9 @@ LOG_PROBE_LAUNCHED,"A probe was launched to {body}, field {x}, {y}."
 LOG_PROBE_ARRIVED,A probe arrived at {body} and explored the ground around it.
 LOG_PROBE_ARRIVED_SEEN,"A probe arrived at {body}, explored the ground around it and saw {count} foreign structure(s)."
 PROBE_MAP_GRID,Grid: {km} km
+PROBE_FLIGHT_TIME_KNOWN,Flight time: {duration}
+PROBE_FLIGHT_TIME_ASKING,Flight time: asking the server…
+PROBE_WRECK_OWN,Wreck of your probe (landed {ago} ago).
+PROBE_WRECK_FOREIGN,Wreck of someone else's probe (landed {ago} ago).
+PROBE_WRECKS,{count} probe wrecks; the latest landed {ago} ago.
 PROBE_MAP_LEGEND,Cyan: your structures · Green: explored · Amber: probes and structures seen

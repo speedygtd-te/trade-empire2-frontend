@@ -10,7 +10,7 @@ const ANSWER := {
 		{"x0": 98000, "y0": 10000, "x1": 2000, "y1": 10000, "radius": 1000, "since": 9100000, "source": "vehicle"},
 	],
 	"sightings": [
-		{"structureId": 51, "ownerId": 7, "ownerName": "Mira", "x": 40100, "y": 120, "hulls": 30,
+		{"structureId": 51, "ownerId": "7", "ownerName": "Mira", "x": 40100, "y": 120, "hulls": 30,
 			"seenAt": 9000000, "probeId": 3},
 	],
 }
@@ -28,6 +28,7 @@ func test_reads_areas_and_sightings() -> void:
 	assert_int(map.sightings.size()).is_equal(1)
 	var seen := map.sightings[0]
 	assert_str(seen.owner_name).is_equal("Mira")
+	assert_str(seen.owner_id).is_equal("7")
 	assert_int(seen.hulls).is_equal(30)
 	assert_int(seen.seen_at).is_equal(9000000)
 	assert_int(seen.footprint_side()).is_equal(6)
@@ -93,3 +94,29 @@ func test_explored_share_adds_the_areas_up() -> void:
 
 func test_other_answers_are_no_map() -> void:
 	assert_object(RevealMap.from_wire({"error": "NOT_FOUND"})).is_null()
+
+
+func test_a_footprint_names_the_exact_cells() -> void:
+	# draft.32: runs [dy, dx0, dx1] relative to the origin.
+	var map := RevealMap.from_wire({"fog": true, "areas": [], "sightings": [
+		{"structureId": 1, "ownerId": "9", "ownerName": "A", "x": 100, "y": 50, "hulls": 5, "seenAt": 0, "probeId": 1,
+			"footprint": [[0, 0, 2], [1, 1, 2]]}]})
+	var seen := map.sightings[0]
+
+	assert_bool(seen.has_footprint()).is_true()
+	assert_array(seen.cells()).contains_exactly([Vector2i(100, 50), Vector2i(101, 50), Vector2i(102, 50),
+		Vector2i(101, 51), Vector2i(102, 51)])
+
+
+func test_without_a_footprint_a_square_stands_in() -> void:
+	var map := RevealMap.from_wire(ANSWER)
+
+	assert_bool(map.sightings[0].has_footprint()).is_false()
+	assert_int(map.sightings[0].cells().size()).is_equal(36)
+
+
+func test_an_owner_id_sent_as_a_number_is_read_as_a_string() -> void:
+	var map := RevealMap.from_wire({"fog": true, "areas": [], "sightings": [
+		{"structureId": 1, "ownerId": 4711, "ownerName": "A", "x": 0, "y": 0, "hulls": 1, "seenAt": 0, "probeId": 1}]})
+
+	assert_str(map.sightings[0].owner_id).is_equal("4711")

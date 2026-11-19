@@ -57,8 +57,9 @@ class Area:
 class Sighting:
 	extends RefCounted
 	var structure_id := 0
-	## Player id of the owner (the contract sends it as an integer here).
-	var owner_id := 0
+	## Player id of the owner, a string like every player id (draft.31 first sent a number; both
+	## are read).
+	var owner_id := ""
 	var owner_name := ""
 	## The structure's local origin (absolute cell).
 	var x := 0
@@ -67,11 +68,32 @@ class Sighting:
 	## Game time (ms) when the probe saw it.
 	var seen_at := 0
 	var probe_id := 0
+	## The ground plan seen from above (draft.32): runs Vector3i(dy, dx0, dx1) relative to the
+	## origin, cells x + dx0 … x + dx1 of row y + dy. Empty for older snapshots.
+	var footprint: Array[Vector3i] = []
 
 	## Edge of a square of about as many cells as the structure has hulls (at least 1): the
-	## sighting carries no shape, only its size.
+	## stand-in shape while no footprint is known.
 	func footprint_side() -> int:
 		return maxi(1, ceili(sqrt(float(maxi(hulls, 1)))))
+
+	## The cells it covers (absolute, x not wrapped): the footprint, or without one the square
+	## stand-in from its origin.
+	func cells() -> Array[Vector2i]:
+		var result: Array[Vector2i] = []
+		if not footprint.is_empty():
+			for run: Vector3i in footprint:
+				for dx: int in range(run.y, run.z + 1):
+					result.append(Vector2i(x + dx, y + run.x))
+			return result
+		var side := footprint_side()
+		for dy: int in side:
+			for dx: int in side:
+				result.append(Vector2i(x + dx, y + dy))
+		return result
+
+	func has_footprint() -> bool:
+		return not footprint.is_empty()
 
 
 var body_id := ""
@@ -105,13 +127,23 @@ static func from_wire(data: Dictionary) -> RevealMap:
 		var entry := Wire.as_dict(item)
 		var sighting := Sighting.new()
 		sighting.structure_id = Wire.as_int(entry.get("structureId"))
-		sighting.owner_id = Wire.as_int(entry.get("ownerId"))
+		var owner: Variant = entry.get("ownerId")
+		sighting.owner_id = Wire.as_string(owner) if typeof(owner) == TYPE_STRING else (str(Wire.as_int(owner)) if owner != null else "")
 		sighting.owner_name = Wire.as_string(entry.get("ownerName"))
 		sighting.x = Wire.as_int(entry.get("x"))
 		sighting.y = Wire.as_int(entry.get("y"))
 		sighting.hulls = Wire.as_int(entry.get("hulls"))
 		sighting.seen_at = Wire.as_int(entry.get("seenAt"))
 		sighting.probe_id = Wire.as_int(entry.get("probeId"))
+		var runs: Array = entry.get("footprint") if typeof(entry.get("footprint")) == TYPE_ARRAY else []
+		for part: Variant in runs:
+			if typeof(part) == TYPE_ARRAY:
+				var run: Array = part
+				if run.size() == 3:
+					var dx0 := Wire.as_int(run[1])
+					var dx1 := Wire.as_int(run[2])
+					if dx1 >= dx0:
+						sighting.footprint.append(Vector3i(Wire.as_int(run[0]), dx0, dx1))
 		map.sightings.append(sighting)
 	return map
 
