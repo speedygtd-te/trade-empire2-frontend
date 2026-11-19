@@ -9,7 +9,8 @@ extends Node3D
 ## floodlight throws a light cone away from the base and a pool of light on the ground: no real
 ## lights (too dear on phones in the Compatibility renderer) but additive, unshaded meshes that
 ## fade with distance (perimeter_cone.gdshader, perimeter_pool.gdshader), invisible by day. On a
-## slow device only the pools stay.
+## slow device only the pools stay. Every structure on screen (bases or not) also casts a soft glow
+## on the ground around itself at night (StructureGlowLayer, a child of this layer).
 ##
 ## Built around the view's origin; rebuilt with the structure (ColonyView._rebuild_structure),
 ## which also runs when the origin moves.
@@ -74,6 +75,9 @@ static var _plans: Dictionary = {}
 
 ## Fence, wall and concrete around large bases (BaseGroundsLayer), rebuilt with the items.
 var _grounds: BaseGroundsLayer
+## The glow of every structure's lamps on the ground at night (StructureGlowLayer), rebuilt with
+## the items and dark with the cones; hidden with this layer in the cutaway view.
+var _glow: StructureGlowLayer
 var _darkness := 0.0
 var _tier := DetailGovernor.DEFAULT_TIER
 var _time := 0.0
@@ -91,6 +95,10 @@ func setup(view: ColonyView) -> void:
 	_grounds.name = "Grounds"
 	add_child(_grounds)
 	_grounds.setup(view)
+	_glow = StructureGlowLayer.new()
+	_glow.name = "StructureGlow"
+	add_child(_glow)
+	_glow.setup(view)
 
 
 ## The decorated cells around every base on screen: the loaded structure and its neighbours when
@@ -170,7 +178,7 @@ func rebuild() -> void:
 	if _view == null or _view.model == null:
 		return
 	for child: Node in get_children():
-		if child != _grounds:
+		if child != _grounds and child != _glow:
 			child.queue_free()
 	_items.clear()
 	_dishes.clear()
@@ -206,12 +214,16 @@ func rebuild() -> void:
 			add_child(glow)
 	if _grounds != null:
 		_grounds.rebuild(grounds_for(model))
+	if _glow != null:
+		_glow.rebuild()
 	_apply()
 
 
 ## How dark it is (SkyLight.darkness): the cones and pools follow it.
 func set_darkness(level: float) -> void:
 	_darkness = clampf(level, 0.0, 1.0)
+	if _glow != null:
+		_glow.set_darkness(_darkness)
 	_apply()
 
 

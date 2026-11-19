@@ -4,11 +4,14 @@ stands on top of it. Not a model script itself (tools/build-models.ps1 skips it)
 """
 
 import kit
+import parts
 
 # Must match HULL_FLOOR_HEIGHT in game/world/colony_view.gd.
 FLOOR_HEIGHT = 0.06
 # Height of a shut hull seen from outside; must match HULL_CLOSED_HEIGHT in colony_view.gd.
 CLOSED_HEIGHT = 0.72
+# Lamps per top edge of a shut container.
+EDGE_LAMPS = 3
 _HALF = 0.5
 
 
@@ -30,6 +33,9 @@ def floor_hull(name: str, plate: str, rim: str, accent: str, posts: bool = False
             for sy in (-1, 1):
                 model.box((sx * (_HALF - 0.035), sy * (_HALF - 0.035), FLOOR_HEIGHT + 0.03),
                           (0.07, 0.07, 0.06), accent)
+                # A lamp set into the top of every post.
+                model.plate((sx * (_HALF - 0.035), sy * (_HALF - 0.035), FLOOR_HEIGHT + 0.06 + _HAIR),
+                            (0.036, 0.036), "+z", parts.LAMP)
     return model.finish()
 
 
@@ -106,6 +112,9 @@ def container(name: str, wall: str, frame: str, roof: str, *, wear: float = 0.2,
             for along in (-0.30, 0.30):
                 model.plate(_on_side(side, along, top - beam - 0.03, _WALL + 2.0 * _HAIR), (0.025, 0.012),
                             side, dots)
+    # Small warm lamps along the top edges, the same on every container (Rudi 2026-11-19: hulls
+    # were too dark at night).
+    parts.edge_lamps(model, _EDGE, top, count=EDGE_LAMPS, size=(0.05, 0.016))
     if see_through:
         _props(model, glass)
     return model.finish()

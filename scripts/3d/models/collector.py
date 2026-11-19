@@ -63,7 +63,20 @@ def build():
     parts.drum(model, (0.05, -0.37, BASE + 0.065), (0.19, -0.37, BASE + 0.065), 0.06)
     parts.pipe(model, [(-0.36, 0.04, BASE + 0.065), (-0.36, 0.14, BASE + 0.065),
                        (-0.30, 0.14, BASE + 0.065)], radius=0.015)
+    _lights(model)
     return model.finish()
+
+
+def _lights(model) -> None:
+    """Amber lights on the roof corners, a red one on the intake housing, a floodlight over the
+    gateway and one on the right wall."""
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            parts.lamp(model, (sx * (HALF - 0.03), sy * (HALF - 0.03), BODY_TOP + 0.009), (0.028, 0.028, 0.018),
+                       parts.STATUS)
+    parts.tip_light(model, (0.21, 0.19), BODY_TOP + 0.17, radius=0.016)
+    parts.floodlight(model, (-0.08, -HALF - 0.0175, LEGS_TOP + 0.23), "-y")
+    parts.floodlight(model, (HALF + 0.0175, -0.06, LEGS_TOP + 0.31), "+x", size=(0.06, 0.035))
 
 
 if __name__ == "__main__":

@@ -61,6 +61,10 @@ def _cabinet(model) -> None:
     parts.vent(model, (x + 0.04, y - 0.11, 0.20), (0.10, 0.05), "-y")
     parts.window(model, (x - 0.06, y - 0.11, 0.12), (0.06, 0.06), "-y")
     parts.vent(model, (x + 0.12, y, 0.14), (0.12, 0.08), "+x", slats=5)
+    # Status lights on the lid, a lamp post at the front right of the plate.
+    parts.lamp(model, (x - 0.07, y - 0.07, 0.2815), (0.024, 0.024, 0.014), "glow_green")
+    parts.lamp(model, (x - 0.03, y - 0.07, 0.2815), (0.024, 0.024, 0.014), parts.STATUS)
+    parts.lamp_post(model, (0.36, -0.34), 0.04, height=0.24)
 
 
 if __name__ == "__main__":
