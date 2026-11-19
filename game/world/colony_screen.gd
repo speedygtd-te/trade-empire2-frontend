@@ -714,6 +714,9 @@ func _refresh_closed() -> void:
 	_primary.visible = true
 	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
 	_primary.text = tr("COLONY_OPEN_BUILD")
+	if not trip.is_empty():
+		# Nothing is built while it travels (STRUCTURE_MOVING).
+		_primary.visible = false
 
 
 func _refresh_view() -> void:

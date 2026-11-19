@@ -56,11 +56,66 @@ func _run() -> void:
 			await _flight_screens(ship)
 		get_tree().quit()
 		return
+	if OS.get_cmdline_user_args().has("--drive"):
+		if vehicle != 0:
+			await _drive_screens(vehicle)
+		get_tree().quit()
+		return
 	if vehicle != 0:
 		await _vehicle_screens(vehicle)
 	if ship != 0:
 		await _ship_screens(ship)
 	get_tree().quit()
+
+
+## `--drive`: really drives the vehicle off the base's docks to a free site and back, and shows
+## the base meanwhile: the vehicle moving, standing beside the base, back on its dock.
+func _drive_screens(vehicle: int) -> void:
+	var colony := await _open(0)
+	var model := colony._model
+	var fleet := colony._fleet
+	var layout := model.structure(vehicle).layout if model.structure(vehicle) != null else null
+	if layout == null:
+		print("FAIL  the vehicle is not at the base")
+		return
+	var cells := TravelPlan.mover_cells(layout)
+	var others: Array[StructureLayout] = []
+	for structure: ColonyModel in model.drawn_structures():
+		if structure.structure_id != vehicle:
+			others.append(structure.layout)
+	var centre := model.centre_cell()
+	var found: Variant = TravelPlan.suggest_site(cells, TravelPlan.taken_cells(others, model.size_x),
+		Vector2i(centre.x + 4, centre.y - 6), model.size_x, model.size_y)
+	var target: Vector2i = found
+	var drive := await Services.api.post_json("/v2/structures/%d/travel" % vehicle,
+		TravelPlan.request(TravelPlan.MODE_GROUND, TravelPlan.surface_target(model.body_id, target)))
+	print("DRIVE  started: %s" % ("ok" if drive.is_ok() else drive.error.code))
+	var motion := TravelMotion.from_wire(drive.data.get("motion")) if drive.is_ok() else null
+	if motion == null:
+		return
+	await _until(func() -> bool: return Services.clock.now_ms() >= motion.depart_at + roundi((motion.arrival_at - motion.depart_at) * 0.5), 60000)
+	await _capture("travel_drive_moving")
+	await _until(func() -> bool: return fleet.fleet.find(vehicle).where() == Fleet.Where.SURFACE, 90000)
+	await get_tree().create_timer(3.0).timeout
+	print("DRIVE  guests %s, neighbours %s, travellers %s" % [model.guests.keys(), model.neighbours.keys(), model.travellers.keys()])
+	colony._view.look_at_cell(Vector3i(target.x, target.y, 0))
+	await _capture("travel_drive_arrived")
+	var host := await Services.api.get_ndjson("/v2/structures/%d/layout" % model.structure_id)
+	var host_layout := StructureLayout.new()
+	host_layout.apply(host.stream)
+	var offset: Variant = TravelPlan.dock_offset(host_layout, cells, vehicle)
+	if offset == null:
+		print("FAIL  no room on the docks")
+		return
+	var back := await Services.api.post_json("/v2/structures/%d/travel" % vehicle,
+		TravelPlan.request(TravelPlan.MODE_GROUND, TravelPlan.dock_target(model.structure_id, offset as Vector3i)))
+	print("DRIVE  back: %s" % ("ok" if back.is_ok() else back.error.code))
+	await _until(func() -> bool: return fleet.fleet.find(vehicle).where() == Fleet.Where.DOCKED, 90000)
+	await get_tree().create_timer(3.0).timeout
+	print("DRIVE  guests %s, neighbours %s, travellers %s" % [model.guests.keys(), model.neighbours.keys(), model.travellers.keys()])
+	colony._view.look_at_cell(model.layout.to_absolute(offset as Vector3i))
+	await _capture("travel_drive_docked")
+	colony.queue_free()
 
 
 ## `--fly`: really starts a trip of the ship (into orbit when it rests on the docks, onto the
@@ -99,25 +154,28 @@ func _flight_screens(ship: int) -> void:
 	await _capture("travel_started_notice")
 	colony.queue_free()
 	colony = await _open(ship)
+	if colony._model.detached:
+		colony._set_mode(ColonyScreen.Mode.TRIP)
 	await _capture("travel_trip_under_way")
 	colony.queue_free()
 	colony = await _open(home)
+	var base_fleet := colony._fleet
 	await get_tree().create_timer(2.0).timeout
 	await _capture("travel_base_during_trip")
 	colony._open_map()
 	var map := colony._map
 	await _until(func() -> bool: return map._map != null, 15000)
 	await get_tree().create_timer(1.0).timeout
-	map._view.focus_body(fleet.fleet.body_of(home))
+	map._view.focus_body(base_fleet.fleet.body_of(home))
 	await _capture("travel_map_under_way")
 	colony._close_map()
-	var motion := fleet.fleet.find(ship).motion
+	var motion := base_fleet.fleet.find(ship).motion
 	if motion != null:
 		# Half of the landing: the ship comes down onto its docks.
 		var halfway := motion.cruise_end_at + roundi((motion.arrival_at - motion.cruise_end_at) * 0.5)
 		await _until(func() -> bool: return Services.clock.now_ms() >= halfway, 400000)
 		await _capture("travel_base_landing")
-		await _until(func() -> bool: return fleet.fleet.find(ship).motion == null, 400000)
+		await _until(func() -> bool: return base_fleet.fleet.find(ship).motion == null, 400000)
 		await get_tree().create_timer(3.0).timeout
 		await _capture("travel_base_arrived")
 	colony.queue_free()

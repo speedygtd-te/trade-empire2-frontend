@@ -342,6 +342,15 @@ func sync_with_fleet(fleet: Fleet, now: int) -> void:
 	var standing: Array[ColonyModel] = [self]
 	for neighbour: ColonyModel in neighbours.values():
 		standing.append(neighbour)
+	# A guest that docked here or left: the host's layout header lists its guests.
+	for model: ColonyModel in standing:
+		var stale := false
+		for entry: Fleet.Entry in fleet.entries():
+			var docked_here := entry.where() == Fleet.Where.DOCKED and entry.host_id == model.structure_id
+			if docked_here != model.guests.has(entry.structure_id):
+				stale = true
+		if stale and model.layout.rev >= 0:
+			model.reload_layout()
 	for model: ColonyModel in standing:
 		var entry := fleet.find(model.structure_id)
 		if entry != null and entry.where() == Fleet.Where.SURFACE and model.layout.rev >= 0 \

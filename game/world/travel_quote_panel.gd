@@ -22,9 +22,11 @@ var _asked := 0
 var _due := -1.0
 var _busy := false
 var _armed := false
-var _refresh_left := 0.0
 ## Shown instead of the quote while there is nothing to ask for ("" for nothing).
 var _hint := ""
+## Why the last start or fuel move failed (translated); shown under the quote until the target
+## changes.
+var _failure := ""
 
 var _lines: VBoxContainer
 var _note: Label
@@ -58,15 +60,12 @@ func _process(delta: float) -> void:
 		_due -= delta
 		if _due < 0.0:
 			_ask()
-	_refresh_left -= delta
-	if _refresh_left <= 0.0:
-		_refresh_left = 1.0
-		if _quote != null and not _busy:
-			_show()
 
 
 ## Asks for a quote of this request soon; the panel shows "checking" until it is there.
 func ask(request: Dictionary) -> void:
+	if request != _request:
+		_failure = ""
 	_request = request
 	_hint = ""
 	_quote = null
@@ -123,6 +122,8 @@ func _show() -> void:
 		return
 	if _request.is_empty():
 		return
+	if not _failure.is_empty():
+		_line(_failure, AppTheme.COLOR_DANGER)
 	if _quote == null:
 		_line(tr("TRAVEL_QUOTE_LOADING"), AppTheme.COLOR_MUTED)
 		return
@@ -229,11 +230,11 @@ func _on_start() -> void:
 	if not is_inside_tree():
 		return
 	if answer.is_ok():
+		_failure = ""
 		started.emit(answer.data)
 		return
-	_show()
-	_line(ErrorText.describe(answer.error, self), AppTheme.COLOR_DANGER)
-	# Something changed since the quote: ask again.
+	# Something changed since the quote: say why and ask again.
+	_failure = ErrorText.describe(answer.error, self)
 	ask(_request)
 
 
@@ -250,7 +251,8 @@ func _on_move_fuel() -> void:
 		return
 	_move.text = tr("TRAVEL_MOVE_FUEL")
 	if not answer.is_ok():
+		_failure = ErrorText.describe(answer.error, self)
 		_show()
-		_line(ErrorText.describe(answer.error, self), AppTheme.COLOR_DANGER)
 		return
+	_failure = ""
 	ask(_request)
