@@ -5,6 +5,7 @@ at, together with +X). A change here changes every model that uses the part.
 """
 
 import math
+import random
 
 SLAB_TOP = 0.07
 _OUTWARD = {"+x": (1, 0, 0), "-x": (-1, 0, 0), "+y": (0, 1, 0), "-y": (0, -1, 0), "+z": (0, 0, 1)}
@@ -475,10 +476,12 @@ def dish(model, radius: float, depth: float, inner: str = "white", outer: str = 
                    segments=8)
 
 
-def probe(model, length: float, radius: float, accent: str = "glow_cyan", body: str = "white") -> None:
+def probe(model, length: float, radius: float, accent: str = "glow_cyan", body: str = "white",
+          panels: bool = True, antenna: bool = True) -> None:
     """A small exploration probe along +Z of the current frame, its nozzle at the origin: an
     engine bell, a slim body with a lit band and two folded solar panels (on +x and -x), four
-    tail fins, a nose cone and a whip antenna."""
+    tail fins, a nose cone and a whip antenna. Without *panels* or *antenna* (a wreck adds its
+    own, bent or broken off: probe_panel)."""
     bell = length * 0.10
     body_end = length * 0.70
     nose_end = length * 0.90
@@ -489,14 +492,27 @@ def probe(model, length: float, radius: float, accent: str = "glow_cyan", body: 
                    accent, segments=10)
     model.cylinder((0.0, 0.0, bell + 0.004), (0.0, 0.0, bell + length * 0.05), radius * 1.06, "steel", segments=10)
     middle = (bell + body_end * 0.58) / 2.0 + length * 0.04
-    for side in (-1, 1):
+    for side in ((-1, 1) if panels else ()):
         model.box((side * (radius + 0.004), 0.0, middle), (0.006, radius * 1.5, length * 0.30), "solar")
         model.box((side * (radius + 0.002), 0.0, middle), (0.004, radius * 1.7, length * 0.32), "steel_light")
     for turn in (0.0, math.pi / 2.0):
         model.box((0.0, 0.0, bell + length * 0.06), (radius * 2.0 + length * 0.12, 0.006, length * 0.10),
                   "steel_dark", turn=turn)
     model.cylinder((0.0, 0.0, body_end), (0.0, 0.0, nose_end), radius, body, segments=10, end_radius=radius * 0.25)
-    model.cylinder((0.0, 0.0, nose_end), (0.0, 0.0, length), 0.004, "steel_dark", segments=4)
+    if antenna:
+        model.cylinder((0.0, 0.0, nose_end), (0.0, 0.0, length), 0.004, "steel_dark", segments=4)
+
+
+def probe_middle(length: float) -> float:
+    """Where along a probe (parts.probe) the middle of its solar panels sits."""
+    return (length * 0.10 + length * 0.70 * 0.58) / 2.0 + length * 0.04
+
+
+def probe_panel(model, length: float, radius: float) -> None:
+    """One solar panel of a probe (parts.probe) as a loose plate in the current frame: its long
+    side along Y, its face looking up (+Z), its centre at the origin; a light frame below it."""
+    model.box((0.0, 0.0, 0.004), (radius * 1.5, length * 0.30, 0.004), "solar")
+    model.box((0.0, 0.0, 0.0015), (radius * 1.7, length * 0.32, 0.003), "steel_light")
 
 
 def torus(model, center, major: float, minor: float, color: str, segments: int = 20,
@@ -505,6 +521,64 @@ def torus(model, center, major: float, minor: float, color: str, segments: int =
     profile = [(major + minor * math.cos(2.0 * math.pi * k / sides), minor * math.sin(2.0 * math.pi * k / sides))
                for k in range(sides)]
     model.revolve(center, profile, color, segments=segments, closed=True, sharp=80.0)
+
+
+# --- Wreckage and impacts -----------------------------------------------------------------------
+
+def fallen_box(model, position, size, color: str, turn: float = 0.0, tilt: float = 0.0,
+               z: float = 0.0) -> None:
+    """A box lying on the ground at *z* (a fragment, a plate broken off): turned by *turn*
+    around Z, tilted by *tilt* around its own X and lifted so its lowest edge just touches *z*."""
+    lift = size[1] / 2.0 * abs(math.sin(tilt)) + size[2] / 2.0 * math.cos(tilt)
+    with model.placed((position[0], position[1], z + lift), turn=turn, tilt=tilt):
+        model.box((0.0, 0.0, 0.0), size, color)
+
+
+def fragments(model, center, radius: float, count: int, colors, seed: int = 0, size: float = 0.03) -> None:
+    """*count* small pieces of wreckage scattered on the ground around *center* within
+    *radius*: thin plates and chunks of *size* in the given colours, turned and tilted at
+    random (the same for the same *seed*), all of them resting on the ground."""
+    generator = random.Random(seed)
+    for index in range(count):
+        angle = 2.0 * math.pi * index / count + generator.uniform(-0.5, 0.5)
+        distance = radius * generator.uniform(0.45, 1.0)
+        piece = size * generator.uniform(0.6, 1.3)
+        shape = (piece, piece * generator.uniform(0.4, 0.9), piece * generator.uniform(0.12, 0.45))
+        fallen_box(model, (center[0] + math.cos(angle) * distance, center[1] + math.sin(angle) * distance), shape,
+                   colors[index % len(colors)], turn=generator.uniform(0.0, math.pi),
+                   tilt=generator.uniform(-0.5, 0.5))
+
+
+def scorch(model, center, radius: float, color: str = "ash_stone", seed: int = 0, blotches: int = 5) -> None:
+    """A burnt patch on the ground around *center*: a flat, ragged blotch of *radius* with
+    smaller blotches round its edge, barely raised off the ground (a ring of soot round an
+    impact or a fire)."""
+    generator = random.Random(seed)
+    x, y = center
+    model.lump((x, y, 0.0), (radius * 1.7, radius * 1.6, 0.012), color, seed=seed, rough=0.25, detail=2)
+    for index in range(blotches):
+        angle = 2.0 * math.pi * index / blotches + generator.uniform(-0.4, 0.4)
+        distance = radius * generator.uniform(0.55, 0.85)
+        width = radius * generator.uniform(0.45, 0.75)
+        model.lump((x + math.cos(angle) * distance, y + math.sin(angle) * distance, 0.0),
+                   (width, width * generator.uniform(0.6, 1.0), 0.008), color, seed=seed + 1 + index, rough=0.3)
+
+
+def impact_crater(model, center, radius: float, height: float, dirt: str = "rock", floor: str = "obsidian",
+                  seed: int = 0, clods: int = 9) -> None:
+    """A small fresh impact crater around *center*: a blackened floor and a ragged rim of
+    thrown-up clods of *dirt* about *radius* out and up to *height* tall."""
+    generator = random.Random(seed)
+    x, y = center
+    model.lump((x, y, 0.0), (radius * 1.7, radius * 1.7, 0.016), floor, seed=seed, rough=0.2, detail=2)
+    for index in range(clods):
+        angle = 2.0 * math.pi * index / clods + generator.uniform(-0.25, 0.25)
+        distance = radius * generator.uniform(0.85, 1.05)
+        across = radius * generator.uniform(0.55, 0.85)
+        tall = height * generator.uniform(0.7, 1.3)
+        model.lump((x + math.cos(angle) * distance, y + math.sin(angle) * distance, tall * 0.15),
+                   (across, across * generator.uniform(0.7, 1.0), tall), dirt, seed=seed + 1 + index, rough=0.25,
+                   detail=2, smooth=50.0)
 
 
 # --- Nature and animals -------------------------------------------------------------------------

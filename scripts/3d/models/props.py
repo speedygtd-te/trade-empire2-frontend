@@ -3,7 +3,8 @@ vents and the vent covers over underground hulls (after the V1 prop sprites, src
 V1). Which cell carries which prop is decided by core/prop_rules.gd; trees, plants and flat props
 (palms, burnt trunks, grass, bushes, reeds, puddles, craters, floes) are V1 sprites
 (game/world/props) since 2026-11-18: as low-poly models the trees looked angular next to the
-sprite grass (Rudi). Writes <family>_<n>.glb for every variant.
+sprite grass (Rudi). Writes <family>_<n>.glb for every variant. Also the wreck of a landed
+exploration probe (probe_wreck_0), shown on the cell it came down on.
 
 Sizes are in cells: a boulder is about a fifth of a cell. Props appear by the thousands, so they
 keep few triangles and small textures, and the recipe ages them gently (nature, not industry).
@@ -19,6 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit  # noqa: E402
+import parts  # noqa: E402
 
 # Many props share one screen and each is a few dozen pixels: small textures, few samples. 128
 # pixels blurred the surface textures of the stones close up.
@@ -205,6 +207,68 @@ def vent_stack(name):
     return model.finish()
 
 
+# --- A landed probe -----------------------------------------------------------------------------
+
+# The probe of the launch pad (probe_launcher.py, parts.probe), a little larger so it reads at
+# the game's zoom. It came in from the front left and dug its nose into the ground at the back
+# right: lying along the diagonal, the game camera (front right) sees it from the side.
+WRECK_LENGTH = 0.44
+WRECK_RADIUS = 0.039
+WRECK_DIVE = math.radians(24.0)
+WRECK_HEADING = math.radians(45.0)
+# Where the nose tip ends up, buried in the heap of thrown-up dirt.
+WRECK_NOSE = (0.135, 0.135, 0.03)
+# Rolled around its own axis: the tail fins stand as an X, not a cross.
+WRECK_ROLL = math.radians(25.0)
+
+
+def probe_wreck(name):
+    """A crashed exploration probe: lying tilted with its nose dug into a heap of dirt at the
+    edge of a small blackened crater, a ring of soot round it, one solar panel bent up, the
+    other broken off and lying beside it, the antenna bent, fragments scattered about. Its
+    beacon still glows red, its band cyan (as on the launch pad), so it can be found at night."""
+    model = kit.Builder(name, wear=INDUSTRY)
+    parts.scorch(model, (0.02, 0.02), 0.22, seed=61)
+    parts.impact_crater(model, (0.08, 0.055), 0.12, 0.065, seed=71, clods=9)
+    # The heap the nose ploughed up, over the nose and beyond it.
+    model.lump((0.12, 0.12, 0.0), (0.19, 0.16, 0.14), "rock", seed=81, rough=0.25, detail=2, smooth=SMOOTH)
+    model.lump((0.17, 0.07, 0.0), (0.11, 0.10, 0.10), "rock", seed=82, rough=0.25, detail=2, smooth=SMOOTH)
+    model.lump((0.07, 0.18, 0.0), (0.10, 0.09, 0.09), "rock", seed=83, rough=0.25, detail=2, smooth=SMOOTH)
+    model.lump((0.11, 0.065, 0.0), (0.09, 0.08, 0.11), "rock", seed=84, rough=0.25, detail=2, smooth=SMOOTH)
+    # The probe: nozzle up at the back, nose down into the heap.
+    axis = (math.cos(WRECK_DIVE) * math.cos(WRECK_HEADING), math.cos(WRECK_DIVE) * math.sin(WRECK_HEADING),
+            -math.sin(WRECK_DIVE))
+    nozzle = tuple(WRECK_NOSE[index] - axis[index] * WRECK_LENGTH for index in range(3))
+    # A tilt beyond a right angle points the frame's +Z down; turning it then aims it.
+    turn = WRECK_HEADING + math.pi / 2.0
+    tilt = math.pi / 2.0 + WRECK_DIVE
+    length, radius = WRECK_LENGTH, WRECK_RADIUS
+    with model.placed(nozzle, turn=turn, tilt=tilt), model.placed(turn=WRECK_ROLL):
+        parts.probe(model, length, radius, accent="glow_cyan", panels=False, antenna=False)
+        middle = parts.probe_middle(length)
+        # One panel torn half open and bent, the other side only a stub of its hinge.
+        with model.placed((radius + 0.002, 0.0, middle), turn=math.radians(35.0), tilt=math.radians(12.0)):
+            with model.placed((radius * 0.75 + 0.002, 0.0, 0.0), tilt=-math.pi / 2.0):
+                parts.probe_panel(model, length, radius)
+        model.box((-(radius + 0.003), 0.0, middle), (0.006, 0.014, length * 0.08), "steel_light")
+        # The whip antenna by the tail, kinked halfway; the red beacon in front of it.
+        foot = (0.0, radius * 0.95, length * 0.17)
+        knee = (0.0, radius + 0.05, length * 0.20)
+        model.cylinder(foot, knee, 0.004, "steel_dark", segments=4)
+        model.cylinder(knee, (0.035, radius + 0.07, length * 0.30), 0.0035, "steel_dark", segments=4)
+        model.cylinder((0.0, radius * 0.9, length * 0.25), (0.0, radius + 0.006, length * 0.25), 0.010,
+                       "steel_dark", segments=6)
+        model.cylinder((0.0, radius + 0.006, length * 0.25), (0.0, radius + 0.018, length * 0.25), 0.008,
+                       "glow_red", segments=6)
+    # The panel that broke off, beside the probe in front, and the wreckage.
+    with model.placed((0.12, -0.14, 0.0), turn=math.radians(70.0)):
+        with model.placed((0.0, 0.0, 0.008), tilt=math.radians(-6.0)):
+            parts.probe_panel(model, length, radius)
+    parts.fragments(model, (0.0, 0.0), 0.30, 9, ("white", "steel_dark", "steel_light", "solar"), seed=91,
+                    size=0.032)
+    return model.finish()
+
+
 # --- The list ------------------------------------------------------------------------------------
 
 STONES = {
@@ -235,6 +299,7 @@ def _models() -> dict:
     models["vent_grate_0"] = (lambda: vent_grate("te_prop_vent_grate_0"), one)
     models["vent_pipe_0"] = (lambda: vent_pipe("te_prop_vent_pipe_0"), one)
     models["vent_stack_0"] = (lambda: vent_stack("te_prop_vent_stack_0"), one)
+    models["probe_wreck_0"] = (lambda: probe_wreck("te_prop_probe_wreck_0"), one)
     return models
 
 
