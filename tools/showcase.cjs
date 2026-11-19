@@ -9,7 +9,7 @@
 // Layout: a block of hulls east of the colony, filled row by row so every new hull touches one
 // that is already there. 2x2 modules first, then 1x1. Indoor modules stand on the indoor hulls
 // in turn (so every closed container shows up too), outdoor ones on outdoor platforms; free
-// cells get standard hulls. Left out: under-water modules (no water on the surface) and shafts
+// cells get standard hulls, and every third row is left free as a corridor (path rules). Left out: under-water modules (no water on the surface) and shafts
 // (they need a hull above). Sends one bestEffort batch and prints what was refused, with the
 // server's code (habitats above tier 1 stay locked by the tier gate). Run it once per fresh
 // account: a second run builds a second block next to the first.
@@ -41,6 +41,10 @@ function slotOf(module) {
   return null;
 }
 
+// Every third row (0, 3, 6 …) stays free hulls: a corridor (draft.29 path rules) that runs to the
+// block's outer edge (its entrance) and touches every module in the two rows between.
+const isCorridorRow = (y) => y % 3 === 0;
+
 // Packs the modules into rows of `columns` cells: returns [{module, x, y}] (local to the block)
 // and the number of rows used.
 function pack(modules, columns) {
@@ -51,6 +55,9 @@ function pack(modules, columns) {
     const w = module.size.x;
     const d = module.size.y;
     for (let y = 0; ; y++) {
+      let crosses = false;
+      for (let dy = 0; dy < d; dy++) crosses = crosses || isCorridorRow(y + dy);
+      if (crosses) continue;
       let spot = -1;
       for (let x = 0; x + w <= columns && spot < 0; x++) {
         let free = true;
@@ -64,7 +71,9 @@ function pack(modules, columns) {
       break;
     }
   }
-  return { placed, rows };
+  // Close with a corridor row: modules in the last row touch nothing else that is free.
+  while (rows > 0 && !isCorridorRow(rows)) rows++;
+  return { placed, rows: rows + 1 };
 }
 
 async function main() {
