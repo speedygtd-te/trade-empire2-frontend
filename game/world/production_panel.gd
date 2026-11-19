@@ -16,6 +16,10 @@ const NUMBER_WIDTH := 112
 const SOON_MS := 24 * 3600000
 ## Indent of a resource's makers and users under its row.
 const DETAIL_INDENT := 24
+## The resource icon left of a row (a little smaller than in other lists: the numbers need room)
+## and its gap to the name.
+const ICON_SIZE := 40
+const ICON_GAP := 10
 
 var _structure: ColonyModel
 var _filter: Filter = Filter.ALL
@@ -181,7 +185,7 @@ func _add_resources() -> void:
 	(head.get_child(0) as Label).add_theme_font_size_override("font_size", AppTheme.FONT_SIZE_SMALL)
 	# Indented like the rows' content, so the columns line up.
 	var head_margin := MarginContainer.new()
-	head_margin.add_theme_constant_override("margin_left", 16)
+	head_margin.add_theme_constant_override("margin_left", 16 + ICON_SIZE + ICON_GAP)
 	head_margin.add_theme_constant_override("margin_right", 16)
 	head_margin.add_child(head)
 	box.add_child(head_margin)
@@ -236,14 +240,21 @@ func _add_resource_row(parent: Control, row: ProductionBalance.Row) -> void:
 	var button := ListButton.new()
 	button.tapped.connect(set_open.bind(row.resource, not open))
 	parent.add_child(button)
+	# The icon of the resource left of its name and numbers.
+	var line := HBoxContainer.new()
+	line.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	line.offset_left = 16
+	line.offset_right = -16
+	line.add_theme_constant_override("separation", ICON_GAP)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(line)
+	line.add_child(Ui.resource_icon(row.resource, ICON_SIZE, true))
 	var content := VBoxContainer.new()
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	content.offset_left = 16
-	content.offset_right = -16
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.alignment = BoxContainer.ALIGNMENT_CENTER
 	content.add_theme_constant_override("separation", 0)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(content)
+	line.add_child(content)
 	var net_color := AppTheme.COLOR_MUTED
 	match row.state():
 		ProductionBalance.State.SHORT:

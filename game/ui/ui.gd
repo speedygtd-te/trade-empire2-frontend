@@ -82,6 +82,32 @@ static func spacer(height: float) -> Control:
 	return node
 
 
+## The icon of a resource for the left of its name in a row, *size* × *size*. Without an icon
+## (ResourceIcon) it is hidden and takes no room, or with *keep_room* stays as an empty square, so
+## the names of a list stay in line.
+static func resource_icon(key: String, size: int = ResourceIcon.ROW_SIZE, keep_room: bool = false) -> TextureRect:
+	var node := TextureRect.new()
+	node.texture = ResourceIcon.texture(key)
+	node.visible = keep_room or node.texture != null
+	node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	node.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	node.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	node.custom_minimum_size = Vector2(size, size)
+	node.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return node
+
+
+## Puts the icon of a resource on a list row button, left of its text, ROW_SIZE wide. Without an
+## icon nothing, or with *keep_room* a clear square, so the texts of a list stay in line.
+static func add_resource_icon(button: Button, key: String, keep_room: bool = false) -> void:
+	button.icon = ResourceIcon.texture(key)
+	if button.icon == null and keep_room:
+		button.icon = ResourceIcon.blank()
+	button.add_theme_constant_override("icon_max_width", ResourceIcon.ROW_SIZE)
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+
 static func column(separation: int) -> VBoxContainer:
 	var node := VBoxContainer.new()
 	node.size_flags_horizontal = Control.SIZE_EXPAND_FILL

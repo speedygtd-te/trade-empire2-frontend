@@ -200,6 +200,7 @@ func show_inventory(inventory: Inventory) -> void:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row_button.add_child(row)
 		row.add_theme_constant_override("separation", 16)
+		row.add_child(Ui.resource_icon(key, ResourceIcon.ROW_SIZE, true))
 		var name_label := Ui.dynamic_label()
 		name_label.text = entry[0]
 		name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -254,6 +255,7 @@ func _add_cargo(inventory: Inventory) -> void:
 	for key: String in keys:
 		var row := ListButton.new()
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		Ui.add_resource_icon(row, key, true)
 		row.text = tr("STORE_CARGO_ROW").format({"name": _item_name(key),
 			"count": AmountFormat.units(inventory.cargo_units(key))})
 		row.set_chosen(_area == AREA_CARGO and key == _selected)

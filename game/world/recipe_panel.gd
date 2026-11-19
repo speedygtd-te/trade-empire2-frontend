@@ -36,6 +36,7 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 		child.queue_free()
 	var definitions := Services.definitions
 	var none := _entry(tr("RECIPE_NONE"), "", current.is_empty(), true)
+	Ui.add_resource_icon(none, "", true)
 	none.tapped.connect(func() -> void: chosen.emit(""))
 	_list.add_child(none)
 	for recipe: GameDefinitions.BlueprintDef in definitions.blueprints_for(module_type):
@@ -54,6 +55,7 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 		if not allowed:
 			text += "\n" + tr("RECIPE_LOCKED")
 		var button := _entry(text, recipe.key, recipe.key == current, allowed)
+		Ui.add_resource_icon(button, main_output(recipe), true)
 		button.tapped.connect(func() -> void: chosen.emit(recipe.key))
 		_list.add_child(button)
 
@@ -97,6 +99,13 @@ static func rate_text(micro_per_hour: int) -> String:
 	var scale := definitions.fixed_point_scale if definitions.fixed_point_scale > 0 else 1000000
 	var text := AmountFormat.rate(micro_per_hour, scale).trim_prefix("+")
 	return text if not text.is_empty() else "0/h"
+
+
+## What a recipe makes first (the resource its icon shows); "" when it makes nothing.
+static func main_output(recipe: GameDefinitions.BlueprintDef) -> String:
+	if recipe == null or recipe.outputs.is_empty():
+		return ""
+	return Wire.as_string(recipe.outputs[0][0])
 
 
 ## "2 Iron → 1 Iron Plate per hour" style text of a recipe.
