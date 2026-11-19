@@ -60,6 +60,17 @@ const UNDERGROUND_AMBIENT_COLOR := Color(1.0, 0.86, 0.70)
 const UNDERGROUND_AMBIENT := 0.42
 const UNDERGROUND_BACKGROUND := Color(0.035, 0.03, 0.028)
 const UNDERGROUND_FLOOR_TINT := Color(0.9, 0.84, 0.78)
+## Inside an opened structure: indoor hulls are lightproof, so their rooms are always lit by
+## their own lamps — the same by day and at night. Floors and modules of indoor cells go on
+## their own render layer, which only this light reaches (no sun, no moonlight fill); a little
+## more at night makes up for the darker ambient light.
+const INTERIOR_LAYER := 1 << 9
+const ALL_LAYERS := (1 << 20) - 1
+const INTERIOR_LIGHT_COLOR := Color(1.0, 0.95, 0.88)
+const INTERIOR_LIGHT_ENERGY := 1.0
+const INTERIOR_AMBIENT_MAKEUP := 0.8
+## Marks a hull model key whose cells are room floors under the interior light.
+const INTERIOR_SUFFIX := "#interior"
 
 const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
@@ -129,6 +140,7 @@ var _sun: DirectionalLight3D
 var _night_fill: DirectionalLight3D
 ## Warm light from above in the cutaway view (instead of the sun).
 var _lamp_light: DirectionalLight3D
+var _interior_light: DirectionalLight3D
 var _world: WorldEnvironment
 ## The rock floor and footprint outline of an underground level (cutaway).
 var _underground: UndergroundLayer
@@ -868,15 +880,17 @@ func _build_structure(structure: ColonyModel) -> void:
 			continue
 		var hull_type := layout.hull_at(cell).to_lower()
 		var key := "hull_" + hull_type
-		if shut and StructureLook.cell_closed(layout, definitions, cell):
-			key += "_closed"
+		if StructureLook.cell_closed(layout, definitions, cell):
+			# Shut: the closed container; open: a room floor under the interior light.
+			key += "_closed" if shut else INTERIOR_SUFFIX
 		if not by_model.has(key):
 			by_model[key] = []
 		var cells: Array = by_model[key]
 		cells.append(cell)
 	for key: String in by_model.keys():
 		var cells: Array = by_model[key]
-		var mesh := _hull_mesh(key)
+		var interior := key.ends_with(INTERIOR_SUFFIX)
+		var mesh := _hull_mesh(key.trim_suffix(INTERIOR_SUFFIX))
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
 		multimesh.mesh = mesh
@@ -892,6 +906,8 @@ func _build_structure(structure: ColonyModel) -> void:
 			multimesh.set_instance_transform(index, Transform3D(turn, at))
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multimesh
+		if interior:
+			instance.layers = INTERIOR_LAYER
 		hull_group.add_child(instance)
 
 	# Modules: one scene each.
@@ -914,6 +930,8 @@ func _build_structure(structure: ColonyModel) -> void:
 			_tint(node, COLOR_BUILDING)
 		elif placed.is_disabled():
 			_tint(node, COLOR_DISABLED)
+		if not shut and StructureLook.cell_closed(layout, definitions, placed.origin):
+			_set_layers(node, INTERIOR_LAYER)
 		module_group.add_child(node)
 		_mover.add(node, structure, placed)
 
@@ -930,6 +948,8 @@ func _build_structure(structure: ColonyModel) -> void:
 		landing.rotation.y = -deg_to_rad(placed.rotation)
 		if placed.is_building():
 			_tint(landing, COLOR_BUILDING)
+		if StructureLook.cell_closed(layout, definitions, head):
+			_set_layers(landing, INTERIOR_LAYER)
 		module_group.add_child(landing)
 
 
@@ -961,6 +981,14 @@ func _queue_ground(x0: int, y0: int) -> void:
 ## One textured quad of BLOCK × BLOCK cells (GroundLayer).
 func _add_ground_block(x0: int, y0: int) -> void:
 	_ground.add_block(model.surface, x0, y0, origin, model.size_x)
+
+
+## Puts every visible part of a model on render layers (INTERIOR_LAYER: only the interior light).
+func _set_layers(node: Node, layers: int) -> void:
+	if node is VisualInstance3D:
+		(node as VisualInstance3D).layers = layers
+	for child: Node in node.get_children():
+		_set_layers(child, layers)
 
 
 func _footprint_centre(cells: Array[Vector3i]) -> Vector3:
@@ -1241,6 +1269,17 @@ func _add_environment() -> void:
 	_lamp_light.visible = false
 	add_child(_lamp_light)
 
+	# Rooms of an opened structure: their own lamps instead of sun and moonlight (INTERIOR_LAYER).
+	_interior_light = DirectionalLight3D.new()
+	_interior_light.rotation_degrees = Vector3(-60.0, CAMERA_YAW_DEGREES - 20.0, 0.0)
+	_interior_light.light_color = INTERIOR_LIGHT_COLOR
+	_interior_light.light_energy = INTERIOR_LIGHT_ENERGY
+	_interior_light.shadow_enabled = false
+	_interior_light.light_cull_mask = INTERIOR_LAYER
+	add_child(_interior_light)
+	for light: DirectionalLight3D in [_sun, _night_fill, _lamp_light]:
+		light.light_cull_mask = ALL_LAYERS & ~INTERIOR_LAYER
+
 
 ## Sets the sun from its height and direction (radians, SunPosition), the star's surface
 ## temperature (Kelvin) and the atmosphere's density (SkyLight): low sun through air turns red,
@@ -1271,6 +1310,9 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 		environment.ambient_light_color = NIGHT_COLOR
 	# The floor keeps a dark scene readable; without air only the sun lights the ground.
 	environment.ambient_light_energy = maxf(NIGHT_AMBIENT, SKY_ENERGY * sky_strength)
+	# Rooms stay as bright as by day: the interior light makes up for the weaker ambient light.
+	_interior_light.light_energy = INTERIOR_LIGHT_ENERGY \
+		+ INTERIOR_AMBIENT_MAKEUP * maxf(0.0, SKY_ENERGY - environment.ambient_light_energy)
 	# Lamps and windows light up at dusk, at night and on airless bodies.
 	_lamp_energy = lerpf(LAMP_DAY, LAMP_NIGHT, SkyLight.lamp_level(light, density))
 	for material: StandardMaterial3D in _lamps.values():
