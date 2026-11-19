@@ -11,6 +11,11 @@ extends Control
 ## parsed away from the main thread; it holds only the systems the player has discovered (SSE
 ## `sight.discovered` reloads). Sector downloads (`/v2/galaxy/sectors/{id}`, cacheable)
 ## would take dozens of requests for one view of 200 ly; the sphere takes one.
+##
+## Sight: `GET /v2/sight` gives the spheres of discovered space and the telescopes; the view veils
+## what lies outside and rings the telescope spheres, a line at the bottom names the best range.
+## It loads after the galaxy and again on SSE `sight.discovered` and `telescope.upgraded`; when it
+## fails the galaxy works as before, unveiled, and the line says so.
 
 ## The player left the galaxy.
 signal closed
@@ -48,6 +53,11 @@ var _glow_key := ""
 var _glow_out: Array[Image] = []
 var _parse_task := -1
 var _parse_out: Array[GalaxySystems.Answer] = []
+## The player's sight; null until loaded. A load asked for while one runs follows it.
+var _sight: Sight = null
+var _sight_error: ApiError = null
+var _sight_loading := false
+var _sight_again := false
 
 var _content: Control
 var _view: GalaxyView
@@ -56,6 +66,8 @@ var _bottom: PanelContainer
 var _header: LayerHeader
 var _hint: Label
 var _status: Label
+## The best telescope range (cyan like the rings), or why the sight is unknown.
+var _sight_line: Label
 var _retry: Button
 var _details: GalaxyPanel
 var _home_button: Button
@@ -106,6 +118,9 @@ func _on_event(event: SseEvent) -> void:
 	if event.type == "sight.discovered":
 		_store.clear()
 		_debounce.start()
+		_load_sight()
+	elif event.type == "telescope.upgraded":
+		_load_sight()
 
 
 func _exit_tree() -> void:
@@ -169,6 +184,10 @@ func _build_overlay() -> void:
 	rows.add_child(_hint)
 	_status = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	rows.add_child(_status)
+	_sight_line = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_sight_line.add_theme_font_size_override("font_size", AppTheme.FONT_SIZE_SMALL)
+	_sight_line.visible = false
+	rows.add_child(_sight_line)
 	_retry = Ui.secondary_button("COMMON_RETRY")
 	_retry.visible = false
 	_retry.pressed.connect(_on_retry)
@@ -306,6 +325,57 @@ func _load() -> void:
 	if start != null:
 		_view.look_at_point(Vector2(start.position.x, start.position.y), GalaxyCamera.HOME_RADIUS)
 	_show_status()
+	_load_sight()
+
+
+## The spheres of discovered space and the telescopes (`GET /v2/sight`). A failure keeps the last
+## sight (or none: the galaxy stays unveiled) and only says so in the sight line.
+func _load_sight() -> void:
+	if _shape == null or not is_inside_tree():
+		return
+	if _sight_loading:
+		_sight_again = true
+		return
+	_sight_loading = true
+	var result := await Services.api.get_json("/v2/sight")
+	_sight_loading = false
+	if not is_inside_tree():
+		return
+	if result.is_ok():
+		_sight = Sight.from_wire(result.data)
+		_sight_error = null
+		_view.set_sight(_sight)
+	else:
+		_sight_error = result.error
+	_show_sight()
+	if _sight_again:
+		_sight_again = false
+		_load_sight()
+
+
+## "Your telescopes see 14 ly" (cyan, like their rings), that none sees right now, or that the
+## sight could not be loaded; nothing while it is unknown or the player has no telescope.
+func _show_sight() -> void:
+	if _sight_line == null:
+		return
+	var text := ""
+	var color := AppTheme.COLOR_MUTED
+	if _sight_error != null and _sight == null:
+		text = tr("SIGHT_FAILED").format({"reason": ErrorText.describe(_sight_error, self)})
+	elif _sight != null and not _sight.telescopes.is_empty():
+		var best := _sight.best_range_ly()
+		if best <= 0.0:
+			text = tr("SIGHT_LINE_IDLE")
+			color = AppTheme.COLOR_PENDING
+		else:
+			var key := "SIGHT_LINE_ONE" if _sight.telescopes.size() == 1 else "SIGHT_LINE"
+			text = tr(key).format({"ly": Sight.ly_text(best), "count": _sight.telescopes.size()})
+			color = AppTheme.COLOR_ACCENT
+			if _sight.idle_count() > 0:
+				text += " " + tr("SIGHT_LINE_SOME_IDLE").format({"count": _sight.idle_count()})
+	_sight_line.text = text
+	_sight_line.add_theme_color_override("font_color", color)
+	_sight_line.visible = not text.is_empty() and _view.selected == null
 
 
 ## The fleet's flights between systems, for the view.
@@ -404,6 +474,8 @@ func _on_retry() -> void:
 	_load_error = null
 	_store.clear()
 	_load_systems()
+	if _sight_error != null:
+		_load_sight()
 
 
 # --- selection ------------------------------------------------------------------------------
@@ -422,6 +494,7 @@ func _select(system_id: String) -> void:
 	_details.visible = entry != null
 	_hint.visible = entry == null
 	_status.visible = entry == null
+	_show_sight()
 	if entry != null:
 		_details.show_system(entry, _home, _own.has(entry.id), _shape.ly_per_unit)
 	_view.queue_redraw()
