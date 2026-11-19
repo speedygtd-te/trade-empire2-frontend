@@ -5,11 +5,12 @@ extends Node3D
 ## lies at the active level instead — the underground biome map of that level (rock layers,
 ## mineral veins, caves …; surface query with `z`) as the floor, drawn like the ground
 ## (GroundLayer and its atlas), and a thin cyan outline of the open structure's footprint on the
-## surface, so the player keeps their bearings. Lives under the ColonyView and follows its origin.
+## surface, so the player keeps their bearings. Building upwards, only the outline is drawn, at
+## the active level. Lives under the ColonyView and follows its origin.
 
-## Outline: colour, width of its bars, and its height above the floor.
-const OUTLINE_COLOR := Color(0.133, 0.827, 0.933, 0.9)
-const OUTLINE_WIDTH := 0.05
+## Outline: colour (fine, partly see-through), width of its bars, and its height above the floor.
+const OUTLINE_COLOR := Color(0.133, 0.827, 0.933, 0.6)
+const OUTLINE_WIDTH := 0.03
 const OUTLINE_LIFT := 0.08
 ## The rock floor lies this much below the level, under the floor plates of the hulls on it.
 const FLOOR_DROP := 0.004
@@ -17,7 +18,8 @@ const FLOOR_DROP := 0.004
 var _view: ColonyView
 var _ground: GroundLayer
 var _outline: MultiMeshInstance3D
-## The level shown (absolute z < 0); 0 while hidden.
+## The level shown (absolute z; below the ground with its rock floor, above only the outline);
+## 0 while hidden.
 var _level := 0
 
 
@@ -38,11 +40,14 @@ func _ready() -> void:
 	visible = false
 
 
-## Shows the underground level `z` (< 0) or hides the layer (z ≥ 0).
+## Shows level `z`: below the ground (z < 0) its rock floor and the outline, above it (z > 0) only
+## the outline; 0 hides the layer.
 func show_level(z: int) -> void:
 	var was := _level
-	_level = z if z < 0 else 0
-	visible = _level < 0
+	_level = z
+	visible = _level != 0
+	if _ground != null:
+		_ground.visible = _level < 0
 	if not visible:
 		return
 	if was != _level:
@@ -62,9 +67,12 @@ func redraw() -> void:
 	if _view == null or _view.model == null or _ground == null:
 		return
 	_ground.clear()
-	if _level >= 0:
+	if _level == 0:
 		return
 	position = Vector3(0.0, float(_level - _view.origin.z) - FLOOR_DROP, 0.0)
+	if _level > 0:
+		_draw_outline()
+		return
 	var model := _view.model
 	var blocks := model.level_surface(_level)
 	var cell := _view.focus_cell()
@@ -107,7 +115,7 @@ func _on_level_loaded(z: int, request: SurfaceBlocks.Request) -> void:
 ## The edges of the open structure's footprint on the surface (its columns with a hull at level 0
 ## or above, its guests included), as thin bars on the floor of this level.
 func _draw_outline() -> void:
-	if _outline == null or _view == null or _view.model == null or _level >= 0:
+	if _outline == null or _view == null or _view.model == null or _level == 0:
 		return
 	var footprint: Dictionary = {}
 	var structures: Array[ColonyModel] = [_view.model]

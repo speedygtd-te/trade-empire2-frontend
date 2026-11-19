@@ -320,7 +320,7 @@ func _apply_cutaway(was_cutaway: bool) -> void:
 	_props.visible = not below
 	_perimeter.visible = not below
 	_travel.visible = not below
-	_underground.show_level(level if below else 0)
+	_underground.show_level(_outline_level())
 	if below:
 		_apply_lamp_light()
 	elif was_cutaway:
@@ -328,6 +328,12 @@ func _apply_cutaway(was_cutaway: bool) -> void:
 		_world.environment.background_color = Color(0.039, 0.059, 0.110)
 		if not _sun_args.is_empty():
 			callv("set_sun", _sun_args)
+
+
+## The level whose footprint outline is drawn (UndergroundLayer): the active level of the open
+## structure while its levels are cut, above or below the ground; 0 for none.
+func _outline_level() -> int:
+	return level if level_cut and opened else 0
 
 
 ## Lamp light instead of the sun: below the ground neither sun nor sky reach.
@@ -400,6 +406,8 @@ func open_structure(structure_id: int) -> void:
 	opened = structure_id != 0
 	if was_cutaway != cutaway():
 		_apply_cutaway(was_cutaway)
+	else:
+		_underground.show_level(_outline_level())
 	_rebuild_structure()
 
 
@@ -903,6 +911,9 @@ func _build_structure(structure: ColonyModel) -> void:
 			var turn := Basis.IDENTITY
 			if key.ends_with("_closed"):
 				turn = Basis(Vector3.UP, PI / 2.0 * (hash(absolute) % 4))
+				# With a hull on the level above, the container reaches up to its floor (no gap).
+				if not layout.hull_at(local + Vector3i(0, 0, 1)).is_empty():
+					turn = turn.scaled(Vector3(1.0, 1.0 / HULL_CLOSED_HEIGHT, 1.0))
 			multimesh.set_instance_transform(index, Transform3D(turn, at))
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multimesh
