@@ -737,6 +737,8 @@ LEVEL_CHANGE_UP,+{percent} %
 LEVEL_CHANGE_DOWN,-{percent} %
 LEVEL_Z_BETTER_HIGH,Production on this level: {change}. Higher levels are better for it.
 LEVEL_Z_BETTER_DEEP,Production on this level: {change}. Deeper levels are better for it.
+LEVEL_Z_HINT_HIGH,Produces more on higher levels.
+LEVEL_Z_HINT_DEEP,Produces more on deeper levels.
 LEVEL_SHAFT_PLACE,{name} – also takes the hull above as its landing.
 LEVEL_SHAFT_LINE,"Shaft of {floors} floors, from {low} up to {high}."
 LEVEL_SHAFT_HEAD,The top landing of the shaft.

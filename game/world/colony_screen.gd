@@ -898,8 +898,9 @@ func _z_line(module_def: GameDefinitions.ModuleDef, z: int) -> String:
 	if module_def == null or module_def.z_bonus_percent == 0:
 		return ""
 	var change := _change_text(LevelRules.z_percent(module_def, z))
+	# On the neutral level only the hint, without a "+0 %".
 	if change.is_empty():
-		change = tr("LEVEL_CHANGE_UP").format({"percent": 0})
+		return tr("LEVEL_Z_HINT_HIGH" if module_def.z_prefer_high else "LEVEL_Z_HINT_DEEP")
 	return tr("LEVEL_Z_BETTER_HIGH" if module_def.z_prefer_high else "LEVEL_Z_BETTER_DEEP").format({"change": change})
 
 
