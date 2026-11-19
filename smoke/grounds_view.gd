@@ -145,17 +145,22 @@ func _grow(size: int) -> void:
 	var start := Time.get_ticks_usec()
 	_colony._model.layout_changed.emit()
 	print("GROW  %d hulls: layout change handled in %d ms" % [size, roundi((Time.get_ticks_usec() - start) / 1000.0)])
-	# The relief's share of it: bases and pads of the structures, and their foundations.
+
+
+## The relief's share of a layout change (the ground under the base loaded): bases and pads of
+## the structures, as if the pads had changed, and their foundations.
+func _measure_relief(size: int) -> void:
 	var view := _colony._view
-	# As if the pads had changed (the grown base's pad did).
 	view.relief._pad_signature = 0
-	start = Time.get_ticks_usec()
+	var start := Time.get_ticks_usec()
 	view._update_relief()
 	var pads_ms := (Time.get_ticks_usec() - start) / 1000.0
 	start = Time.get_ticks_usec()
 	view._build_foundations()
-	print("RELIEF  %d hulls: bases and pads %.1f ms, foundations %.1f ms (%d walls)" % [size, pads_ms,
-		(Time.get_ticks_usec() - start) / 1000.0, view.foundation_walls()])
+	var walls_ms := (Time.get_ticks_usec() - start) / 1000.0
+	await get_tree().process_frame
+	print("RELIEF  %d hulls: bases and pads %.1f ms, foundations %.1f ms (%d walls)" % [size, pads_ms, walls_ms,
+		view.foundation_walls()])
 
 
 ## Pictures and cost of the base at its current size.
@@ -184,6 +189,7 @@ func _show(size: int) -> void:
 	_day()
 	await _capture(prefix + "_near_day")
 	await _measure("%d near day" % size)
+	await _measure_relief(size)
 	_night()
 	await _capture(prefix + "_near_night")
 	var corner := _corner_cell(plan)
