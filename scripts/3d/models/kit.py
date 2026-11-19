@@ -88,6 +88,14 @@ PALETTE = {
     "blue_paint": ((0.22, 0.42, 0.68), "metal", _PAINT),
     "black_metal": ((0.10, 0.10, 0.11), "metal", (0.50, 0.25)),
     "soil": ((0.36, 0.24, 0.16), "concrete", _MATTE),
+    # Furniture of the better homes: wood and upholstery (flat, no rust).
+    "wood": ((0.42, 0.28, 0.17), "plain", (0.65, 0.0)),
+    "fabric": ((0.46, 0.16, 0.20), "plain", (0.92, 0.0)),
+    # Military green (ammunition boxes).
+    "olive": ((0.31, 0.35, 0.19), "metal", (0.70, 0.15)),
+    # Farm animals and hay.
+    "hide": ((0.86, 0.84, 0.80), "plain", (0.85, 0.0)),
+    "hay": ((0.80, 0.68, 0.36), "plain", (0.95, 0.0)),
     "plant": ((0.24, 0.62, 0.22), "plain", (0.85, 0.0)),
     # Nature on the surface (props.py), after the V1 prop sprites: grey and sand stones, black
     # lava rock with glassy flakes, pale ice, each with a surface texture of its own (trees are
@@ -315,6 +323,60 @@ class Builder:
                     for edge in face.edges:
                         if edge.is_manifold and edge.calc_face_angle(0.0) > limit:
                             edge.smooth = False
+
+    def revolve(self, center, profile, color: str, segments: int = 12, closed: bool = False,
+                scale=(1.0, 1.0), sharp: float = 40.0) -> None:
+        """A surface of revolution around the Z axis through *center*: domes, bowls, tanks,
+        cooling towers, a torus. *profile* lists (radius, height) points, heights relative to
+        *center*; a third value (radius, height, colour) paints the band from that point to the
+        next in another colour. A point with radius 0 closes the surface there. The faces look
+        to the right of the walk along the profile: walking up the outside, they look outwards;
+        walking down an inside (a bowl from its rim to its bottom), they look into the bowl.
+        *closed* joins the last point back to the first (a torus). *scale* stretches the radii
+        along x and y (an oval). Shaded smooth, except where the profile bends more than
+        *sharp* degrees."""
+        base = Vector(center)
+        rings = []
+        for point in profile:
+            radius, height = point[0], point[1]
+            if radius <= 1e-9:
+                rings.append([self._solid.verts.new(self._frame @ (base + Vector((0.0, 0.0, height))))])
+                continue
+            ring = []
+            for index in range(segments):
+                angle = 2.0 * math.pi * index / segments
+                local = Vector((math.cos(angle) * radius * scale[0], math.sin(angle) * radius * scale[1], height))
+                ring.append(self._solid.verts.new(self._frame @ (base + local)))
+            rings.append(ring)
+        bands = {}
+        for number in range(len(profile) if closed else len(profile) - 1):
+            low, high = rings[number], rings[(number + 1) % len(rings)]
+            if len(low) == 1 and len(high) == 1:
+                continue
+            band = profile[number][2] if len(profile[number]) > 2 else color
+            created = bands.setdefault(band, set())
+            for index in range(segments):
+                following = (index + 1) % segments
+                if len(low) == 1:
+                    corners = [low[0], high[following], high[index]]
+                elif len(high) == 1:
+                    corners = [low[index], low[following], high[0]]
+                else:
+                    corners = [low[index], low[following], high[following], high[index]]
+                created.add(self._solid.faces.new(corners))
+        limit = math.radians(sharp)
+        for band, faces in bands.items():
+            if band == PANE:
+                raise ValueError("revolve cannot make see-through glass")
+            self._paint(faces, band)
+            for face in faces:
+                face.normal_update()
+                face.smooth = True
+        for faces in bands.values():
+            for face in faces:
+                for edge in face.edges:
+                    if edge.is_manifold and edge.calc_face_angle(0.0) > limit:
+                        edge.smooth = False
 
     def plate(self, center, size, facing: str, color: str) -> None:
         """A flat rectangle (markings, signs) with its centre at *center*, looking along

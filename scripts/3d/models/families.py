@@ -124,14 +124,7 @@ def garden(model, top, accent):
         model.cylinder((x, y, top + 0.12), (x, y, top + 0.26), 0.08, "plant", segments=7, end_radius=0.02)
 
 
-def lamp_posts(model, top, accent):
-    """Two lamp posts along the open front of a room (parks)."""
-    parts.lamp_post(model, (0.35, -0.35), top, height=0.30)
-    parts.lamp_post(model, (0.35, 0.30), top, height=0.30, facing="+x")
-
-
-def block(name, accent="yellow", body="blue", height=0.46, cells=(1, 1), roof=None, front=None, base_color="steel_dark",
-          lamps=False):
+def block(name, accent="yellow", body="blue", height=0.46, cells=(1, 1), roof=None, front=None, base_color="steel_dark"):
     """A closed machine block on a base plate, with an accent band, roof equipment and fittings
     in front."""
     model = kit.Builder(name)
@@ -154,13 +147,6 @@ def block(name, accent="yellow", body="blue", height=0.46, cells=(1, 1), roof=No
         fitting(model, top + 0.02, accent, body_half)
     for fitting in front or []:
         fitting(model, base, accent, (front_y, right_x))
-    if lamps:
-        # Works in the open: floodlights over the front and the right side, lamps along the roof.
-        parts.floodlight(model, (body_half[0] * 0.45, front_y - 0.0175, top - 0.12), "-y")
-        parts.floodlight(model, (right_x + 0.0175, 0.04 - body_half[1] * 0.5, top - 0.12), "+x")
-        with model.placed((0.0, 0.04, 0.0)):
-            parts.edge_lamps(model, (body_half[0] + 0.01, body_half[1] + 0.01), top + 0.02, count=2,
-                             size=(0.05, 0.016), margin=0.15)
     return model.finish()
 
 
@@ -188,15 +174,6 @@ def core_module(name):
     return model.finish()
 
 
-def chimneys(model, top, accent, half):
-    for x in (-half[0] * 0.5, half[0] * 0.1):
-        model.cylinder((x, 0.18, top), (x, 0.18, top + 0.22), 0.04, "steel_dark", segments=8)
-        model.cylinder((x, 0.18, top + 0.18), (x, 0.18, top + 0.20), 0.05, accent, segments=8)
-        # A red light on a bracket at the top: chimneys are the tallest thing around.
-        model.beam((x + 0.04, 0.18, top + 0.21), (x + 0.07, 0.18, top + 0.21), 0.01, "steel_dark")
-        parts.tip_light(model, (x + 0.07, 0.18), top + 0.21, radius=0.014)
-
-
 def tanks(model, top, accent, half):
     for x in (-half[0] * 0.5, half[0] * 0.45):
         model.cylinder((x, 0.12, top), (x, 0.12, top + 0.10), 0.09, "steel_light", segments=10)
@@ -204,45 +181,25 @@ def tanks(model, top, accent, half):
     parts.pipe(model, [(-half[0] * 0.5, 0.12, top + 0.06), (half[0] * 0.45, 0.12, top + 0.06)], radius=0.015)
 
 
-def core(model, top, accent, half):
-    """A glowing reactor dome on the roof."""
-    model.cylinder((0.0, 0.06, top), (0.0, 0.06, top + 0.05), 0.16, "steel_dark", segments=12)
-    model.cylinder((0.0, 0.06, top + 0.05), (0.0, 0.06, top + 0.14), 0.13, accent, segments=12, end_radius=0.06)
-    for angle in range(0, 360, 90):
-        x = math.cos(math.radians(angle)) * 0.20
-        y = 0.06 + math.sin(math.radians(angle)) * 0.20
-        model.beam((x, y, top), (x * 0.5, 0.06 + (y - 0.06) * 0.5, top + 0.12), 0.02, "steel")
-
-
 def fans(model, top, accent, half):
     """Two roof fans; their blades turn (moving parts "fan_1", "fan_2")."""
     for number, x in enumerate((-half[0] * 0.45, half[0] * 0.45), start=1):
-        model.cylinder((x, 0.04, top), (x, 0.04, top + 0.04), 0.10, "steel", segments=10)
-        model.plate((x, 0.04, top + 0.0403), (0.17, 0.17), "+z", "dark")
-        with model.moving("fan_%d" % number, (x, 0.04, top + 0.04)):
-            for turn in (0.0, math.pi / 2.0):
-                model.box((x, 0.04, top + 0.046), (0.17, 0.028, 0.008), "steel_light", turn=turn)
-            model.cylinder((x, 0.04, top + 0.04), (x, 0.04, top + 0.056), 0.02, accent, segments=6)
+        parts.roof_fan(model, (x, 0.04), top, "fan_%d" % number, accent)
 
 
 def dish_small(model, top, accent, half):
-    """A small dish on a post that sweeps the sky (moving part "dish")."""
+    """A small dish on a post that sweeps the sky, its hollow side up and to the front (moving
+    part "dish")."""
     model.cylinder((0.12, 0.10, top), (0.12, 0.10, top + 0.10), 0.015, "steel_dark", segments=6)
     with model.moving("dish", (0.12, 0.10, top + 0.10)):
-        with model.placed((0.12, 0.10, top + 0.12), tilt=math.radians(40.0)):
-            model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, 0.03), 0.10, "white", segments=12, end_radius=0.04)
+        with model.placed((0.12, 0.10, top + 0.11), tilt=math.radians(40.0)):
+            parts.dish(model, 0.10, 0.035, accent=accent, segments=12)
 
 
 def crates_front(model, base, accent, edge):
     front_y, right_x = edge
     parts.crate(model, (-0.24, front_y - 0.07), base, (0.10, 0.08, 0.06), accent)
     parts.crate(model, (-0.10, front_y - 0.07), base, (0.08, 0.08, 0.05), "rust_brown", turn=0.3)
-
-
-def barrels_front(model, base, accent, edge):
-    front_y, right_x = edge
-    parts.barrel(model, (0.20, front_y - 0.07), base, radius=0.035, height=0.08)
-    parts.barrel(model, (0.30, front_y - 0.07), base, radius=0.035, height=0.08, color=accent)
 
 
 def mast(name, accent="yellow", head=None, height=0.80, base="concrete"):
@@ -283,14 +240,13 @@ def _mast_lights(model, slab_top, height):
 
 
 def dish_head(model, z, accent):
-    """A dish that sweeps the sky (moving part "dish", turning on the mast's axis)."""
+    """A dish that sweeps the sky (moving part "dish", turning on the mast's axis), its hollow
+    side up and to the front."""
     model.box((0.0, 0.0, z + 0.02), (0.14, 0.14, 0.04), "steel_dark")
     with model.moving("dish", (0.0, 0.0, z + 0.04)):
-        model.cylinder((0.0, 0.0, z + 0.04), (0.0, 0.0, z + 0.08), 0.04, "steel", segments=8)
-        with model.placed((0.0, -0.02, z + 0.14), tilt=math.radians(35.0)):
-            model.cylinder((0.0, 0.0, -0.02), (0.0, 0.0, 0.04), 0.24, "white", segments=16, end_radius=0.10)
-            model.beam((0.0, 0.0, 0.04), (0.0, 0.0, 0.16), 0.012, "steel_dark")
-            model.cylinder((0.0, 0.0, 0.16), (0.0, 0.0, 0.18), 0.025, accent, segments=8)
+        model.cylinder((0.0, 0.0, z + 0.04), (0.0, 0.0, z + 0.10), 0.035, "steel", segments=8)
+        with model.placed((0.0, 0.0, z + 0.12), tilt=math.radians(35.0)):
+            parts.dish(model, 0.22, 0.07, accent=accent)
 
 
 def scope_head(model, z, accent):
@@ -588,19 +544,15 @@ MODELS = {
     "habitat_t2": (lambda: room("te_habitat_t2", "yellow", fittings=[beds]), ONE),
     "habitat_t3": (lambda: room("te_habitat_t3", "glow_cyan", wall="steel", floor="steel", fittings=[beds]), ONE),
     "habitat_t4": (lambda: room("te_habitat_t4", "glow_orange", wall="concrete", floor="floor", fittings=[beds]), ONE),
-    "habitat_t5": (lambda: room("te_habitat_t5", "glow_purple", wall="white", floor="white", fittings=[beds, garden]), ONE),
     "entertainment_center": (lambda: room("te_entertainment_center", "glow_purple", wall="concrete", floor="floor", fittings=[stage]), ONE),
     "experience_arena": (lambda: room("te_experience_arena", "glow_cyan", wall="steel", floor="steel", fittings=[stage]), ONE),
     "gallery": (lambda: room("te_gallery", "glow_orange", wall="white", floor="floor", fittings=[monument]), ONE),
     "luxury_promenade": (lambda: room("te_luxury_promenade", "glow_orange", wall="white", floor="white", fittings=[garden]), ONE),
-    "monument": (lambda: room("te_monument", "yellow", wall="concrete", floor="floor", fittings=[monument]), ONE),
     "biosphere": (lambda: room("te_biosphere", "plant", wall="glass", floor="soil", fittings=[garden]), ONE),
     "botanical_garden": (lambda: room("te_botanical_garden", "plant", wall="white", floor="soil", fittings=[garden]), ONE),
-    "park_module": (lambda: room("te_park_module", "plant", wall="green", floor="green", fittings=[garden, lamp_posts]), ONE),
     # Logistics.
     "elevator": (lambda: shaft("te_elevator", glass=True), ONE),
     "staircase": (lambda: shaft("te_staircase"), ONE),
-    "deep_space_sensor": (lambda: mast("te_deep_space_sensor", "glow_cyan", head=dish_head, height=0.68), TWO),
     "planetary_sensor": (lambda: mast("te_planetary_sensor", "yellow", head=sensor_head), ONE),
     "sensor_post": (lambda: mast("te_sensor_post", "red", head=sensor_head, height=0.60), ONE),
     "space_telescope_module": (lambda: mast("te_space_telescope_module", "glow_purple", head=scope_head, height=0.72), ONE),
@@ -624,24 +576,13 @@ MODELS = {
     "atmospheric_processor": (lambda: towers("te_atmospheric_processor", "glow_cyan", 3), ONE),
     "greenhouse": (lambda: room("te_greenhouse", "plant", wall="glass", floor="soil", fittings=[garden]), ONE),
     "water_synthesizer": (lambda: towers("te_water_synthesizer", "glass", 2, color="white"), ONE),
-    "big_pump": (lambda: block("te_big_pump", "red", body="steel", height=0.40, cells=TWO, roof=[tanks, chimneys], front=[barrels_front], lamps=True), TWO),
     "deep_drill": (lambda: mast("te_deep_drill", "yellow", head=drill_head, height=0.85, base="concrete_dark"), ONE),
     "orbital_collector": (lambda: mast("te_orbital_collector", "glow_cyan", head=dish_head, height=0.64), ONE),
-    "drive_works": (lambda: block("te_drive_works", "glow_orange", height=0.50, roof=[fans], front=[barrels_front]), ONE),
     "miniaturization_factory": (lambda: block("te_miniaturization_factory", "glow_purple", height=0.50, cells=TWO, roof=[fans, dish_small], front=[crates_front]), TWO),
-    "cattle_farm": (lambda: field("te_cattle_farm"), TWO),
     "water_farm": (lambda: field("te_water_farm", water=True, barn=False), TWO),
-    "arms_plant": (lambda: block("te_arms_plant", "red", height=0.48, roof=[chimneys], front=[crates_front]), ONE),
-    "electronics_factory": (lambda: block("te_electronics_factory", "glow_cyan", height=0.46, roof=[fans], front=[crates_front]), ONE),
-    "housing_factory": (lambda: block("te_housing_factory", "yellow", height=0.48, roof=[fans], front=[crates_front]), ONE),
-    "fusion_reactor": (lambda: block("te_fusion_reactor", "glow_purple", body="white", height=0.40, roof=[core]), ONE),
     "geothermal_plant": (lambda: towers("te_geothermal_plant", "glow_orange", 2, color="concrete"), ONE),
-    "rtg": (lambda: block("te_rtg", "glow_orange", body="steel_dark", height=0.30, roof=[fans]), ONE),
     "core_module": (lambda: core_module("te_core_module"), ONE),
-    "tidal_generator": (lambda: block("te_tidal_generator", "glow_cyan", body="white", height=0.30, roof=[fans]), ONE),
     "wind_turbine": (lambda: mast("te_wind_turbine", "red", head=rotor_head, height=0.70), ONE),
-    "chemical_plant": (lambda: block("te_chemical_plant", "plant", body="steel", height=0.42, roof=[tanks, chimneys], front=[barrels_front]), ONE),
-    "refinery": (lambda: block("te_refinery", "glow_orange", body="steel", height=0.44, roof=[chimneys, tanks], front=[barrels_front]), ONE),
     # Transport.
     "wheel": (lambda: wheels("te_wheel"), ONE),
     "heavy_wheel": (lambda: wheels("te_heavy_wheel", kind="heavy"), ONE),
