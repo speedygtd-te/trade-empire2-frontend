@@ -34,6 +34,18 @@ static func secondary_button(text_key: String) -> Button:
 	return _button(text_key)
 
 
+## A square button showing only an icon (TOUCH_MIN × TOUCH_MIN); `tooltip_key` names it for the
+## mouse and for screen readers.
+static func icon_button(icon: Texture2D, tooltip_key: String) -> Button:
+	var node := Button.new()
+	node.icon = icon
+	node.tooltip_text = tooltip_key
+	node.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	node.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	node.custom_minimum_size = Vector2(AppTheme.TOUCH_MIN, AppTheme.TOUCH_MIN)
+	return node
+
+
 static func tab_button(text_key: String, group: ButtonGroup) -> Button:
 	var node := _button(text_key)
 	node.theme_type_variation = AppTheme.VARIATION_TAB_BUTTON

@@ -78,6 +78,10 @@ const NOTICE_SECONDS := 12.0
 const YIELD_LINE_MAX := 3
 ## Below this share of the needed staff the staffing shows red (amber up to full).
 const STAFF_LOW := 0.7
+const LEVEL_UP_ICON := preload("res://game/ui/icons/level_up.svg")
+const LEVEL_DOWN_ICON := preload("res://game/ui/icons/level_down.svg")
+const SHAFT_UP_ICON := preload("res://game/ui/icons/shaft_up.svg")
+const SHAFT_DOWN_ICON := preload("res://game/ui/icons/shaft_down.svg")
 ## Deposits below this richness (percent) count as traces: the inspect card only counts them.
 const DEPOSIT_TRACE := 10
 
@@ -481,28 +485,35 @@ func _build_overlay() -> void:
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	middle.add_child(right)
 	right.add_child(Ui.spacer(12))
+	# The level selector: an arrow up, the level number, an arrow down (narrow, at the right edge).
 	_levels = PanelContainer.new()
 	_levels.visible = false
+	var level_style := StyleBoxFlat.new()
+	level_style.bg_color = AppTheme.COLOR_PANEL
+	level_style.border_color = AppTheme.COLOR_BORDER
+	level_style.set_border_width_all(2)
+	level_style.set_corner_radius_all(12)
+	level_style.set_content_margin_all(4)
+	_levels.add_theme_stylebox_override("panel", level_style)
 	right.add_child(_levels)
-	var level_box := Ui.column(8)
-	level_box.custom_minimum_size = Vector2(132, 0)
+	var level_box := Ui.column(4)
 	_levels.add_child(level_box)
-	_level_up = Ui.secondary_button("LEVEL_UP")
+	_level_up = Ui.icon_button(LEVEL_UP_ICON, "LEVEL_UP")
 	_level_up.pressed.connect(_step_level.bind(1))
 	level_box.add_child(_level_up)
 	_level_name = Ui.dynamic_label(AppTheme.VARIATION_HEADING)
 	_level_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_level_name.autowrap_mode = TextServer.AUTOWRAP_OFF
 	level_box.add_child(_level_name)
+	# The environment stays known to the code (palette hints) but is not shown here any more.
 	_level_env = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	_level_env.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_level_env.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_level_env.visible = false
 	level_box.add_child(_level_env)
-	_level_down = Ui.secondary_button("LEVEL_DOWN")
+	_level_down = Ui.icon_button(LEVEL_DOWN_ICON, "LEVEL_DOWN")
 	_level_down.pressed.connect(_step_level.bind(-1))
 	level_box.add_child(_level_down)
 	# With a shaft selected: straight to its other end.
-	_jump = Ui.secondary_button("LEVEL_GO_UP")
+	_jump = Ui.icon_button(SHAFT_UP_ICON, "LEVEL_GO_UP")
 	_jump.pressed.connect(_on_jump)
 	_jump.visible = false
 	level_box.add_child(_jump)
@@ -929,7 +940,7 @@ func _update_levels() -> void:
 	if not _levels.visible:
 		return
 	var bounds := _level_range()
-	_level_name.text = _level_text(_level)
+	_level_name.text = str(_level)
 	_level_env.text = tr("LEVEL_ENV_" + LevelRules.environment_at(_level, "", _model.deep_threshold, _model.body_type))
 	_level_up.disabled = _level >= bounds.y
 	_level_down.disabled = _level <= bounds.x
@@ -1259,7 +1270,8 @@ func _refresh_shaft(placed: StructureLayout.Module, local: Vector3i) -> void:
 		lines.append(_verdict_text(verdict))
 	if _uses_levels():
 		_jump.visible = true
-		_jump.text = tr("LEVEL_GO_UP") if _level < ends.y else tr("LEVEL_GO_DOWN")
+		_jump.icon = SHAFT_UP_ICON if _level < ends.y else SHAFT_DOWN_ICON
+		_jump.tooltip_text = "LEVEL_GO_UP" if _level < ends.y else "LEVEL_GO_DOWN"
 	_info.text = "\n".join(lines)
 
 

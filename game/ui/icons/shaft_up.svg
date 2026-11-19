@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- To the top of the shaft: a double chevron up -->
+  <path d="M10 24 L24 10 L38 24" fill="none" stroke="#e3b341" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 38 L24 24 L38 38" fill="none" stroke="#e3b341" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="20" y="40" width="8" height="5" rx="1" fill="#24345e" stroke="#e3b341" stroke-width="2"/>
+</svg>
