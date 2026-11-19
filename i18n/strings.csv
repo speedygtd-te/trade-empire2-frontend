@@ -996,6 +996,27 @@ DETAILS_IDLE_LOCATION,{count} idle: cannot work at this spot
 DETAILS_IDLE_OTHER,{count} idle
 DETAILS_NO_STAFF,No module here needs staff.
 DETAILS_STAFF_LINE,Staff {assigned} of {needed} · {modules} module(s)
+DETAILS_PRODUCTION_FAILED,Could not load the production.
+DETAILS_POPULATION,Inhabitants: {tiers} · {percent} % with life support
+DETAILS_POPULATION_TIER,T{tier} {count}
+DETAILS_POPULATION_NONE,No inhabitants yet.
+DETAILS_STAFF,Staff: {assigned} of {needed}
+DETAILS_RESOURCES,Resources per hour
+DETAILS_RESOURCES_EMPTY,Nothing is made or used here yet.
+DETAILS_RESOURCES_NONE_SHORT,Nothing runs short here.
+DETAILS_FILTER_ALL,All ({count})
+DETAILS_FILTER_SHORT,Short ({count})
+DETAILS_COLUMN_RESOURCE,Resource
+DETAILS_COLUMN_MADE,Made
+DETAILS_COLUMN_USED,Used
+DETAILS_COLUMN_NET,Net
+DETAILS_EMPTY_IN,Empty in {time}
+DETAILS_EMPTY_NOW,Empty – its users are slowed down
+DETAILS_TAXED,Tax {rate}/h
+DETAILS_USES_NONE,No module makes or uses it right now.
+DETAILS_MADE_BY,Made by {name} × {count}: {rate}/h
+DETAILS_USED_BY,Used by {name} × {count}: {rate}/h
+DETAILS_USED_BY_PEOPLE,Eaten by the inhabitants: {rate}/h
 DETAILS_TAB_BLUEPRINTS,Blueprints
 DETAILS_BLUEPRINTS_INTRO,Modules that run on blueprints. Tap a type to see its blueprints and change them for many modules at once.
 DETAILS_BLUEPRINTS_EMPTY,No modules here run on blueprints.

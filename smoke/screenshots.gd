@@ -553,6 +553,7 @@ func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
 	print("DETAILS  open: %s, shell nav %s" % [details != null, shell.nav_visible()])
 	if details == null:
 		return
+	await _capture_production(colony, details)
 	details.show_tab(StructureDetails.Tab.WORKERS)
 	await _capture("details_workers")
 	await _capture_blueprints(colony, details)
@@ -565,6 +566,55 @@ func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
 		shell.handle_back()
 		await get_tree().process_frame
 	print("BACK  details closed: %s, structure still open: %s" % [colony.details() == null, colony._opened])
+
+
+## The Production tab: the real balance with a resource opened (who makes and uses it), the
+## "Short" filter; then, because a fresh starter runs short of nothing, a made-up balance with
+## short resources — clearly a sample, never sent — and the real one loaded again.
+func _capture_production(colony: ColonyScreen, details: StructureDetails) -> void:
+	var model := colony._model
+	var panel := details.production_panel()
+	var lines := PackedStringArray()
+	var opened := ""
+	for row: ProductionBalance.Row in model.totals:
+		lines.append("%s %+d" % [row.resource, row.net])
+		if opened.is_empty() and row.consumed > 0:
+			opened = row.resource
+	print("PRODUCTION  totals: %s | population %s | coverage %d" % [", ".join(lines), model.population,
+		model.life_support_coverage])
+	if not opened.is_empty():
+		panel.set_open(opened, true)
+		await _capture("details_production_open")
+		panel.set_open(opened, false)
+	panel.set_filter(ProductionPanel.Filter.SHORT)
+	await _capture("details_production_short")
+	panel.set_filter(ProductionPanel.Filter.ALL)
+	var real_totals := model.totals
+	var real_flows := model.production_flows
+	var real_population := model.population
+	var scale := Services.definitions.fixed_point_scale
+	model.totals = ProductionBalance.totals_from_wire([
+		{"resource": "COPPER", "producedPerHour": 0, "consumedPerHour": 6 * scale, "taxedPerHour": 0, "netPerHour": -6 * scale},
+		{"resource": "IRON", "producedPerHour": 78 * scale, "consumedPerHour": 40 * scale, "taxedPerHour": 4 * scale, "netPerHour": 38 * scale},
+		{"resource": "OXYGEN", "producedPerHour": 25 * scale, "consumedPerHour": 85 * scale, "taxedPerHour": 0, "netPerHour": -60 * scale},
+		{"resource": "WATER", "producedPerHour": 20 * scale, "consumedPerHour": 20 * scale, "taxedPerHour": 0, "netPerHour": 0},
+		{"resource": "IRON_PLATE", "producedPerHour": 20 * scale, "consumedPerHour": 0, "taxedPerHour": 0, "netPerHour": 20 * scale},
+	])
+	model.production_flows = ProductionBalance.flows_from_wire([
+		{"moduleType": "SMELTER", "modules": 2, "inputs": [{"resource": "COPPER", "effective": 6 * scale},
+			{"resource": "IRON", "effective": 40 * scale}], "outputs": [{"resource": "IRON_PLATE", "effective": 20 * scale}]},
+		{"moduleType": "COLLECTOR", "modules": 1, "inputs": [], "outputs": [{"resource": "OXYGEN", "effective": 25 * scale}]},
+		{"moduleType": "LIFE_SUPPORT", "modules": 1, "inputs": [{"resource": "OXYGEN", "effective": 85 * scale}], "outputs": []},
+	])
+	model.population = [12, 3, 0, 0, 0]
+	panel.set_open("OXYGEN", true)
+	print("SAMPLE  production tab with a made-up balance (not from the server)")
+	await _capture("details_production_sample")
+	panel.set_open("OXYGEN", false)
+	model.totals = real_totals
+	model.production_flows = real_flows
+	model.population = real_population
+	panel.reload()
 
 
 ## The Blueprints tab against the server: closed rows, the mines opened, the recipe list of the

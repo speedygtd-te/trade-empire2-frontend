@@ -1,7 +1,7 @@
 class_name StructureDetails
 extends Control
 ## The details of one structure over the whole screen, the navigation included: what it
-## produces (energy, life support, what runs, what stands still, what goes to tax), its staff
+## produces and uses (ProductionPanel: supply, the balance per resource, what runs), its staff
 ## per module type, the blueprints its modules run (BlueprintsPanel; a badge when some have
 ## none), its log and its research — each a tab of its own bar at the bottom. The "×" in the
 ## head or Back closes it (Back first closes what is open inside a tab).
@@ -32,7 +32,7 @@ var _left := 0.0
 var _header: LayerHeader
 var _nav: BottomNav
 var _pages: Array[Control] = []
-var _production: VBoxContainer
+var _production: ProductionPanel
 var _workers_page: VBoxContainer
 var _workers_scroll: ScrollContainer
 var _workers_list: VBoxContainer
@@ -87,11 +87,11 @@ func _ready() -> void:
 	var pages := Control.new()
 	pages.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inner.add_child(pages)
-	var production_scroll := _page_scroll()
-	pages.add_child(production_scroll)
-	_production = Ui.column(20)
-	production_scroll.add_child(_production)
-	_pages.append(production_scroll)
+	_production = ProductionPanel.new()
+	_production.setup(_structure)
+	_production.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pages.add_child(_production)
+	_pages.append(_production)
 
 	_workers_page = Ui.column(16)
 	_workers_page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -154,7 +154,7 @@ func _process(delta: float) -> void:
 	if _tab == Tab.RESEARCH:
 		_research.tick()
 	elif _tab == Tab.PRODUCTION:
-		_show_production()
+		_production.tick()
 
 
 ## Back closes what is open inside a tab; false when nothing was (the stack closes the screen).
@@ -182,7 +182,7 @@ func show_tab(tab: Tab) -> void:
 		_pages[index].visible = index == tab
 	match tab:
 		Tab.PRODUCTION:
-			_show_production()
+			_production.reload()
 		Tab.WORKERS:
 			_close_workforce()
 		Tab.BLUEPRINTS:
@@ -202,6 +202,10 @@ func workforce_panel() -> WorkforcePanel:
 	return _workforce_panel
 
 
+func production_panel() -> ProductionPanel:
+	return _production
+
+
 func blueprints_panel() -> BlueprintsPanel:
 	return _blueprints
 
@@ -210,17 +214,10 @@ func nav() -> BottomNav:
 	return _nav
 
 
-func _page_scroll() -> ScrollContainer:
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	return scroll
-
-
 func _on_production_changed() -> void:
 	_update_badge()
 	if _tab == Tab.PRODUCTION:
-		_show_production()
+		_production.reload()
 	elif _tab == Tab.WORKERS and not _workforce_panel.visible:
 		_show_workers()
 	elif _tab == Tab.BLUEPRINTS:
@@ -233,101 +230,6 @@ func _update_badge() -> void:
 		return
 	_nav.set_badge(Tab.BLUEPRINTS, BlueprintGroups.any_without(BlueprintGroups.rows(_structure.layout.modules(),
 		Services.definitions, _structure.idle_reasons)))
-
-
-# --- production -----------------------------------------------------------------------------
-
-func _show_production() -> void:
-	for child: Node in _production.get_children():
-		child.queue_free()
-	var structure := _structure
-	var balance := _section("DETAILS_BALANCE")
-	var power := Ui.dynamic_label()
-	power.text = StorePanel.balance_text(structure)
-	if StorePanel.is_short(structure):
-		power.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
-	balance.add_child(power)
-	var workforce := structure.workforce
-	var staff := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	staff.text = tr("WORKFORCE_SUMMARY").format({"people": workforce.total_population(),
-		"assigned": workforce.assigned_total(), "needed": workforce.needed_total()})
-	balance.add_child(staff)
-
-	var modules := _section("DETAILS_MODULES")
-	var rows := _type_rows()
-	if rows.is_empty():
-		modules.add_child(Ui.label("DETAILS_NO_MODULES", AppTheme.VARIATION_MUTED))
-	for row: Dictionary in rows:
-		var name_label := Ui.dynamic_label()
-		name_label.text = tr("DETAILS_TYPE_COUNT").format({"name": row.get("name"), "count": row.get("count")})
-		modules.add_child(name_label)
-		var line := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-		var parts := PackedStringArray()
-		var running: int = row.get("running")
-		var activity: float = row.get("activity")
-		if running > 0:
-			parts.append(tr("DETAILS_RUNNING").format({"percent": roundi(activity / running * 100.0)}))
-		var building: int = row.get("building")
-		if building > 0:
-			parts.append(tr("DETAILS_BUILDING").format({"count": building}))
-		var idle: Dictionary = row.get("idle")
-		for reason: String in idle.keys():
-			parts.append(_idle_text(reason, Wire.as_int(idle.get(reason))))
-		line.text = " · ".join(parts)
-		if not idle.is_empty():
-			line.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
-		modules.add_child(line)
-
-
-## A titled panel in the production page; returns the container for its rows.
-func _section(title_key: String) -> VBoxContainer:
-	var panel := PanelContainer.new()
-	_production.add_child(panel)
-	var rows := Ui.column(10)
-	panel.add_child(rows)
-	rows.add_child(Ui.label(title_key, AppTheme.VARIATION_MUTED))
-	return rows
-
-
-## One entry per module type: name, count, running ones with their summed activity, modules
-## under construction and idle ones by reason; sorted by name.
-func _type_rows() -> Array[Dictionary]:
-	var by_type: Dictionary = {}
-	var now := Services.clock.now_ms()
-	for placed: StructureLayout.Module in _structure.layout.modules():
-		var row: Dictionary = by_type.get(placed.module_type, {})
-		if row.is_empty():
-			var module_def := Services.definitions.module(placed.module_type) if Services.definitions != null else null
-			row = {"name": module_def.display_name if module_def != null else tr("STORE_UNKNOWN_ITEM"),
-				"count": 0, "running": 0, "activity": 0.0, "building": 0, "idle": {}}
-			by_type[placed.module_type] = row
-		row["count"] = Wire.as_int(row.get("count")) + 1
-		if placed.is_building() and placed.completes_at > now:
-			row["building"] = Wire.as_int(row.get("building")) + 1
-			continue
-		var reason := Wire.as_string(_structure.idle_reasons.get(placed.module_id))
-		if not reason.is_empty():
-			var idle: Dictionary = row.get("idle")
-			idle[reason] = Wire.as_int(idle.get(reason)) + 1
-			continue
-		row["running"] = Wire.as_int(row.get("running")) + 1
-		var sum: float = row.get("activity")
-		row["activity"] = sum + _structure.module_activity(placed)
-	var result: Array[Dictionary] = []
-	for row: Dictionary in by_type.values():
-		result.append(row)
-	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return Wire.as_string(a.get("name")).naturalnocasecmp_to(Wire.as_string(b.get("name"))) < 0)
-	return result
-
-
-func _idle_text(reason: String, count: int) -> String:
-	match reason:
-		"NO_BLUEPRINT":
-			return tr("DETAILS_IDLE_NO_RECIPE").format({"count": count})
-		"LOCATION":
-			return tr("DETAILS_IDLE_LOCATION").format({"count": count})
-	return tr("DETAILS_IDLE_OTHER").format({"count": count})
 
 
 # --- workers --------------------------------------------------------------------------------

@@ -77,9 +77,21 @@ func _run() -> void:
 	var layout := _model.layout
 	var hull_item := Services.definitions.hull(HULL).item
 	var module_item := Services.definitions.module(MODULE).item
+	var hulls_at_start := _units(hull_item)
+	# Modules with staff need a corridor (draft.29): a free hull next to the colony first, the
+	# test hull further out next to it.
+	var spot := _corridor_spot(layout)
+	_check(spot.size() == 4, "a free spot for a corridor and a hull next to the colony")
+	if spot.size() < 4:
+		get_tree().quit(1)
+		return
+	var corridor := layout.to_absolute(spot[0])
+	var laid := await _model.send_ops([{"op": "placeHull", "hullType": HULL, "x": corridor.x, "y": corridor.y, "z": corridor.z}])
+	_check(laid.is_ok(), "corridor hull -> ok (error: %s)" % _code(laid))
+	await _wait_until(func() -> bool: return not layout.hull_at(spot[0]).is_empty() and _units(hull_item) == hulls_at_start - 1, 8000)
 	var hulls_before := _units(hull_item)
 	var modules_before := _units(module_item)
-	var local := _free_neighbour(layout)
+	var local := spot[1]
 	var cell := layout.to_absolute(local)
 	_check(BuildRules.check_place_hull(layout, local) == BuildRules.Verdict.OK, "preview: hull fits at %s" % cell)
 
@@ -118,12 +130,17 @@ func _run() -> void:
 	_check(layout.hull_at(local).is_empty(), "layout: hull gone")
 	await _wait_until(func() -> bool: return _units(hull_item) == hulls_before, 8000)
 	_check(_units(hull_item) == hulls_before, "store: hull back (%d)" % _units(hull_item))
+	var unlaid := await _model.send_ops([{"op": "removeHull", "x": corridor.x, "y": corridor.y, "z": corridor.z}])
+	_check(unlaid.is_ok(), "remove the corridor hull -> ok (error: %s)" % _code(unlaid))
+	await _wait_until(func() -> bool: return _units(hull_item) == hulls_at_start, 8000)
+	_check(_units(hull_item) == hulls_at_start, "store: corridor hull back (%d)" % _units(hull_item))
 
 	await _check_shape(layout)
 	await _check_recipes(layout)
 	await _check_blueprint_batch(layout)
 	await _check_discard_and_log()
 	await _check_workforce()
+	_check_balance()
 
 	print("COLONY SMOKE %s  (%d failed)" % ["GREEN" if _failures == 0 else "RED", _failures])
 	get_tree().quit(0 if _failures == 0 else 1)
@@ -161,6 +178,26 @@ func _check_workforce() -> void:
 	_check(back.is_ok(), "old assignment back -> ok (error: %s)" % _code(back))
 
 
+## The production balance (draft.28): totals per resource that add up, the mine's iron among
+## them, and the inhabitants per tier.
+func _check_balance() -> void:
+	var totals := _model.totals
+	_check(not totals.is_empty(), "balance: totals loaded (%d resources)" % totals.size())
+	var adds_up := true
+	var iron := 0
+	for row: ProductionBalance.Row in totals:
+		if row.produced - row.consumed != row.net:
+			adds_up = false
+		if row.resource == "IRON":
+			iron = row.net
+	_check(adds_up, "balance: made - used = net for every resource")
+	_check(iron > 0, "balance: the mine adds iron (%d micro/h)" % iron)
+	_check(_model.population.size() == 5 and _model.life_support_coverage > 0,
+		"balance: inhabitants per tier %s, life support coverage %d" % [_model.population, _model.life_support_coverage])
+	var flows := ProductionBalance.uses(_model.production_flows, "IRON", false)
+	_check(not flows.is_empty() and flows[0].module_type == "MINE", "balance: the mine makes the iron")
+
+
 ## Switches the recipe of the colony's mine to another usable one and back.
 func _check_recipes(layout: StructureLayout) -> void:
 	await _wait_until(func() -> bool: return not _model.usable_blueprints.is_empty(), 8000)
@@ -196,15 +233,20 @@ func _check_recipes(layout: StructureLayout) -> void:
 ## must show the blueprint on both; then everything goes back (mines and hulls removed, any older
 ## mine of the group without a blueprint again), so the account is as before.
 func _check_blueprint_batch(layout: StructureLayout) -> void:
-	var spots := _free_neighbours(layout, 2)
-	if spots.size() < 2:
-		print("SKIP  blueprint batch (no two free cells next to the colony)")
+	# A corridor next to the colony and the two mines on its sides (staff needs a corridor).
+	var spot := _corridor_spot(layout)
+	if spot.size() < 4:
+		print("SKIP  blueprint batch (no free spot next to the colony)")
 		return
+	var corridor: Vector3i = spot[0]
+	var spots: Array[Vector3i] = [spot[2], spot[3]]
 	var hull_item := Services.definitions.hull(HULL).item
 	var mine_item := Services.definitions.module("MINE").item
 	var hulls_before := _units(hull_item)
 	var mines_before := _units(mine_item)
-	var build: Array[Dictionary] = []
+	var corridor_cell := layout.to_absolute(corridor)
+	var build: Array[Dictionary] = [{"op": "placeHull", "hullType": HULL, "x": corridor_cell.x, "y": corridor_cell.y,
+		"z": corridor_cell.z}]
 	for local: Vector3i in spots:
 		var cell := layout.to_absolute(local)
 		build.append({"op": "placeHull", "hullType": HULL, "x": cell.x, "y": cell.y, "z": cell.z})
@@ -212,7 +254,7 @@ func _check_blueprint_batch(layout: StructureLayout) -> void:
 		var cell := layout.to_absolute(local)
 		build.append({"op": "placeModule", "moduleType": "MINE", "x": cell.x, "y": cell.y, "z": cell.z, "rotation": 0})
 	var built := await _model.send_ops(build)
-	_check(built.is_ok(), "blueprints: two hulls with a mine each -> ok (error: %s)" % _code(built))
+	_check(built.is_ok(), "blueprints: a corridor and two hulls with a mine each -> ok (error: %s)" % _code(built))
 	if not built.is_ok():
 		return
 	var both_there := func() -> bool:
@@ -277,6 +319,7 @@ func _check_blueprint_batch(layout: StructureLayout) -> void:
 	for local: Vector3i in spots:
 		var cell := layout.to_absolute(local)
 		removal.append({"op": "removeHull", "x": cell.x, "y": cell.y, "z": cell.z})
+	removal.append({"op": "removeHull", "x": corridor_cell.x, "y": corridor_cell.y, "z": corridor_cell.z})
 	var removed := await _model.send_ops(removal)
 	_check(removed.is_ok(), "blueprints: mines and hulls removed -> ok (error: %s)" % _code(removed))
 	await _wait_until(func() -> bool: return layout.hull_at(spots[0]).is_empty() and layout.hull_at(spots[1]).is_empty(), 8000)
@@ -285,19 +328,24 @@ func _check_blueprint_batch(layout: StructureLayout) -> void:
 		"blueprints: store as before (hulls %d, mines %d)" % [_units(hull_item), _units(mine_item)])
 
 
-## Up to `count` distinct free cells next to the colony's ground-level hulls (local).
-func _free_neighbours(layout: StructureLayout, count: int) -> Array[Vector3i]:
-	var result: Array[Vector3i] = []
+## Free cells next to the colony at ground level (local): [corridor next to the colony, the cell
+## further out, the two cells on the corridor's sides]; empty when there is no such spot.
+func _corridor_spot(layout: StructureLayout) -> Array[Vector3i]:
+	var none: Array[Vector3i] = []
 	for cell: Vector3i in layout.hull_cells():
 		if cell.z != 0:
 			continue
 		for step: Vector3i in [Vector3i(1, 0, 0), Vector3i(0, -1, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0)]:
-			var next: Vector3i = cell + step
-			if layout.hull_at(next).is_empty() and not result.has(next):
-				result.append(next)
-				if result.size() == count:
-					return result
-	return result
+			var corridor: Vector3i = cell + step
+			var side := Vector3i(step.y, step.x, 0)
+			var result: Array[Vector3i] = [corridor, corridor + step, corridor + side, corridor - side]
+			var free := true
+			for spot: Vector3i in result:
+				if not layout.hull_at(spot).is_empty():
+					free = false
+			if free:
+				return result
+	return none
 
 
 ## Discards one unit of iron (the starter colony mines it) and reads the log afterwards.
@@ -419,11 +467,3 @@ func _shape_corner(layout: StructureLayout) -> Vector3i:
 		if free:
 			return cell
 	return Vector3i(-9999, 0, 0)
-
-
-func _free_neighbour(layout: StructureLayout) -> Vector3i:
-	for cell: Vector3i in layout.hull_cells():
-		for step: Vector3i in [Vector3i(1, 0, 0), Vector3i(0, -1, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0)]:
-			if layout.hull_at(cell + step).is_empty():
-				return cell + step
-	return Vector3i(-1, 0, 0)
