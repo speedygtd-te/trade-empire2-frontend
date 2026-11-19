@@ -84,6 +84,9 @@ var idle_reasons: Dictionary = {}
 var power: Array[int] = [0, 0]
 var life_support: Array[int] = [0, 0]
 var food_shortage := false
+## The share of production that goes to the player's enterprise as tax: [resource, micro-units
+## per hour]; empty without taxes.
+var taxed: Array[Array] = []
 var storage_full := false
 ## Inhabitants per tier and who works where (from production, structure and PUT workforce).
 var workforce := Workforce.new()
@@ -568,6 +571,13 @@ func reload_production() -> void:
 	life_support = [Wire.as_int(life_data.get("production")), Wire.as_int(life_data.get("consumption"))]
 	food_shortage = answer.data.get("foodShortage") == true
 	storage_full = answer.data.get("storageFull") == true
+	taxed.clear()
+	var taxed_rows: Array = answer.data.get("taxed") if typeof(answer.data.get("taxed")) == TYPE_ARRAY else []
+	for entry: Variant in taxed_rows:
+		var row := Wire.as_dict(entry)
+		var rate := Wire.as_int(row.get("ratePerHour"))
+		if rate > 0:
+			taxed.append([Wire.as_string(row.get("resource")), rate])
 	idle_reasons.clear()
 	var idle: Array = answer.data.get("idle") if typeof(answer.data.get("idle")) == TYPE_ARRAY else []
 	for entry: Variant in idle:

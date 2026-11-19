@@ -94,6 +94,10 @@ var _fleet: FleetModel
 var _fleet_button: Button
 ## The fleet list over the colony while it is open; null otherwise.
 var _fleet_panel: FleetPanel = null
+## The player's enterprise (kept while the screen lives, so invitations are not missed).
+var _enterprise: EnterpriseModel
+## The enterprise over everything (opened from the menu); null otherwise.
+var _enterprise_panel: EnterprisePanel = null
 ## Travel: the action in the closed structure's details, the choice of the target in the bottom
 ## panel, the trip tab of a structure without ground, and the surface picker over the colony.
 var _travel: Button
@@ -154,6 +158,9 @@ func _ready() -> void:
 	_fleet.name = "Fleet"
 	add_child(_fleet)
 	_fleet.changed.connect(_on_fleet_changed)
+	_enterprise = EnterpriseModel.new()
+	_enterprise.name = "Enterprise"
+	add_child(_enterprise)
 	_build_world()
 	# Stop sites the routes hold on this body (RouteStopLayer).
 	_stops = RouteStopLayer.new()
@@ -209,7 +216,10 @@ func _process(delta: float) -> void:
 ## Android back: close the menu or the recipes, clear the selected field, shut the open
 ## structure, clear the selected structure — never quit.
 func handle_back() -> void:
-	if _site != null:
+	if _enterprise_panel != null:
+		if not _enterprise_panel.handle_back():
+			_close_enterprise()
+	elif _site != null:
 		_site.handle_back()
 	elif _fleet_panel != null:
 		if not _fleet_panel.handle_back():
@@ -1363,6 +1373,26 @@ func _on_menu() -> void:
 	_menu.visible = true
 
 
+## Opens the enterprise over everything (the menu stays below it).
+func _open_enterprise() -> void:
+	if _enterprise_panel != null:
+		return
+	_enterprise_panel = EnterprisePanel.new()
+	_enterprise_panel.setup(_enterprise)
+	_enterprise_panel.closed.connect(_close_enterprise)
+	add_child(_enterprise_panel)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+
+
+func _close_enterprise() -> void:
+	if _enterprise_panel == null:
+		return
+	_enterprise_panel.queue_free()
+	_enterprise_panel = null
+	if not _model.detached:
+		_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+
+
 ## Opens the list of own structures over the colony.
 func _open_fleet() -> void:
 	if _fleet_panel != null:
@@ -1596,6 +1626,7 @@ func _build_menu() -> Control:
 	overlay.add_child(background)
 	var account_page := HomeScreen.new()
 	account_page.home_name = _model.body_name
+	account_page.enterprise_requested.connect(_open_enterprise)
 	overlay.add_child(account_page)
 	var margin := SafeAreaMargin.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)

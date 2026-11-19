@@ -108,6 +108,8 @@ var housing_tiers: Dictionary = {}
 var _modules: Dictionary = {}
 var _hulls: Dictionary = {}
 var _resource_names: Dictionary = {}
+## Resource key → [kind (NATURAL, PRODUCED, MODULE_ITEM, HULL_ITEM), utility].
+var _resource_kinds: Dictionary = {}
 var _blueprints: Dictionary = {}
 
 
@@ -133,6 +135,7 @@ static func from_bundle(data: Dictionary) -> GameDefinitions:
 		var key := Wire.as_string(resource.get("key"))
 		if not key.is_empty():
 			definitions._resource_names[key] = Wire.as_string(resource.get("displayName"))
+			definitions._resource_kinds[key] = [Wire.as_string(resource.get("kind")), resource.get("utility") == true]
 	for entry: Variant in _list(data.get("blueprints")):
 		var blueprint := _read_blueprint(Wire.as_dict(entry))
 		if not blueprint.key.is_empty():
@@ -169,6 +172,26 @@ func hull(key: String) -> HullDef:
 ## The display name of resource `key`; "" when the game data does not know it.
 func resource_name(key: String) -> String:
 	return Wire.as_string(_resource_names.get(key))
+
+
+## Whether an enterprise may tax resource `key`: raw materials and intermediates, no utilities
+## (module and hull items are not taxable).
+func is_taxable(key: String) -> bool:
+	if not _resource_kinds.has(key):
+		return false
+	var entry: Array = _resource_kinds[key]
+	var kind: String = entry[0]
+	return (kind == "NATURAL" or kind == "PRODUCED") and entry[1] != true
+
+
+## Every taxable resource, sorted by display name.
+func taxable_resources() -> PackedStringArray:
+	var keys: Array[String] = []
+	for key: String in _resource_kinds.keys():
+		if is_taxable(key):
+			keys.append(key)
+	keys.sort_custom(func(a: String, b: String) -> bool: return resource_name(a).naturalnocasecmp_to(resource_name(b)) < 0)
+	return PackedStringArray(keys)
 
 
 ## The blueprint `key`, or null when the game data does not know it.

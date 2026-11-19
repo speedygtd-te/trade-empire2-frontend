@@ -143,7 +143,22 @@ static func balance_text(model: ColonyModel) -> String:
 		lines.append(TranslationServer.translate("STORE_FOOD_SHORTAGE"))
 	if model.storage_full:
 		lines.append(TranslationServer.translate("STORE_FULL"))
+	if not model.taxed.is_empty():
+		lines.append(TranslationServer.translate("STORE_TAXED").format({"items": taxed_text(model.taxed, scale)}))
 	return "\n".join(lines)
+
+
+## "Iron 2/h, Water 0.5/h": what goes to the enterprise as tax.
+static func taxed_text(taxed: Array[Array], scale: int) -> String:
+	var parts := PackedStringArray()
+	for entry: Array in taxed:
+		var key: String = entry[0]
+		var rate: int = entry[1]
+		var shown := Services.definitions.resource_name(key) if Services.definitions != null else ""
+		if shown.is_empty():
+			shown = TranslationServer.translate("STORE_UNKNOWN_ITEM")
+		parts.append("%s %s" % [shown, AmountFormat.rate(rate, scale).trim_prefix("+")])
+	return ", ".join(parts)
 
 
 ## Whether something runs short: more used than made, no food, or the store is full.

@@ -45,3 +45,19 @@ func test_account_without_colony_has_empty_home_body() -> void:
 	var account := Account.from_me(data)
 
 	assert_str(account.home_body_id).is_equal("")
+	assert_str(account.enterprise_id).is_equal("")
+
+
+func test_account_reads_the_enterprise_of_me() -> void:
+	var data := Wire.parse_object(
+		'{"playerId":"9","playerName":"Ada","email":"a@example.test","enterpriseId":"7",'
+		+ '"enterpriseFlags":["MANAGE_MEMBERS","SET_TAX"]}'
+	)
+
+	var account := Account.from_me(data)
+
+	assert_str(account.enterprise_id).is_equal("7")
+	assert_array(Array(account.enterprise_flags)).is_equal(["MANAGE_MEMBERS", "SET_TAX"])
+	account.apply_enterprise({"playerId": "9"})
+	assert_str(account.enterprise_id).is_empty()
+	assert_array(Array(account.enterprise_flags)).is_empty()

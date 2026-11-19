@@ -3,7 +3,7 @@ extends GdUnitTestSuite
 
 const TRANSLATION_PATH := "res://i18n/strings.en.translation"
 const SOURCE_DIRS: PackedStringArray = ["res://game", "res://core", "res://net"]
-const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH|WORKFORCE|MAP|GALAXY|FLEET|TRAVEL|ROUTE|LEVEL)_[A-Z0-9_]*[A-Z0-9])"'
+const KEY_PATTERN := '"((?:APP|COMMON|LOGIN|UNREACHABLE|HOME|ERROR|COLONY|STORE|RECIPE|LOG|RESEARCH|WORKFORCE|MAP|GALAXY|FLEET|TRAVEL|ROUTE|LEVEL|ENTERPRISE|DIPLOMACY|TAX)_[A-Z0-9_]*[A-Z0-9])"'
 ## Game-data keys that look like text keys (a lab type); error codes are skipped as well.
 const NOT_TEXT_KEYS: PackedStringArray = ["RESEARCH_LAB"]
 
@@ -111,6 +111,18 @@ func test_every_structure_kind_has_a_text() -> void:
 	for kind: String in ["BASE", "SHIP", "VEHICLE", "STATION"]:
 		assert_bool(_has_text("FLEET_KIND_" + kind)).override_failure_message(
 			"no translation for FLEET_KIND_" + kind
+		).is_true()
+
+
+func test_every_enterprise_right_and_stance_has_a_text() -> void:
+	# The enterprise screens build these keys from the server's values.
+	for flag: String in Enterprise.FLAGS:
+		assert_bool(_has_text("ENTERPRISE_FLAG_" + flag)).override_failure_message(
+			"no translation for ENTERPRISE_FLAG_" + flag
+		).is_true()
+	for stance: String in EnterpriseDiplomacyTab.STANCES:
+		assert_bool(_has_text("DIPLOMACY_STANCE_" + stance.to_upper())).override_failure_message(
+			"no translation for DIPLOMACY_STANCE_" + stance.to_upper()
 		).is_true()
 
 

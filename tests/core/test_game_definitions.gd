@@ -237,3 +237,21 @@ func test_reads_housing_tier_conditions() -> void:
 	assert_int(tier.min_population).is_equal(500)
 	assert_array(tier.emissions).is_equal([["ENTERTAINMENT", 70000000]])
 	assert_bool(definitions.housing_tiers.has(3)).is_false()
+
+
+func test_taxable_resources_are_raw_and_produced_goods_without_utilities() -> void:
+	var bundle := BUNDLE.duplicate(true)
+	bundle["resources"] = (BUNDLE["resources"] as Array) + [
+		{"key": "IRON", "displayName": "Iron", "kind": "NATURAL", "utility": false},
+		{"key": "PUMP_ITEM", "displayName": "Pump", "kind": "MODULE_ITEM", "utility": false},
+		{"key": "STARTER_HULL", "displayName": "Starter", "kind": "HULL_ITEM", "utility": false},
+	]
+	var definitions := GameDefinitions.from_bundle(bundle)
+
+	assert_bool(definitions.is_taxable("IRON")).is_true()
+	assert_bool(definitions.is_taxable("IRON_PLATE")).is_true()
+	assert_bool(definitions.is_taxable("ENERGY")).is_false()
+	assert_bool(definitions.is_taxable("PUMP_ITEM")).is_false()
+	assert_bool(definitions.is_taxable("STARTER_HULL")).is_false()
+	assert_bool(definitions.is_taxable("UNKNOWN")).is_false()
+	assert_array(Array(definitions.taxable_resources())).is_equal(["IRON", "IRON_PLATE"])

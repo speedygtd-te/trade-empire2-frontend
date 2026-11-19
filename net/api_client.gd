@@ -65,6 +65,25 @@ func delete_json(path: String, authorised: bool = true) -> ApiResult:
 	return await _send(HTTPClient.METHOD_DELETE, path, "", authorised)
 
 
+## GET of a file the server hands out as bytes (enterprise logos under `/assets/…`, public and
+## cached forever). Empty when the call failed.
+func get_bytes(path: String) -> PackedByteArray:
+	var request := HTTPRequest.new()
+	request.timeout = TIMEOUT_SECONDS
+	add_child(request)
+	if request.request(base_url + path) != OK:
+		request.queue_free()
+		return PackedByteArray()
+	var response: Array = await request.request_completed
+	request.queue_free()
+	var outcome: int = response[0]
+	var status: int = response[1]
+	var payload: PackedByteArray = response[3]
+	if outcome != HTTPRequest.RESULT_SUCCESS or status != 200:
+		return PackedByteArray()
+	return payload
+
+
 func _send(method: HTTPClient.Method, path: String, body: String, authorised: bool,
 		extra_headers: PackedStringArray = [], keep_body: bool = false, ndjson: bool = false,
 		raw: bool = false) -> ApiResult:
