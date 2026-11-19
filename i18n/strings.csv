@@ -460,3 +460,74 @@ FLEET_UNKNOWN_PLACE,somewhere
 FLEET_ON_ROUTE,on a route
 COLONY_NEIGHBOUR,Another of your structures on this body.
 COLONY_GO_THERE,Go there
+TRAVEL_OPEN,Travel
+TRAVEL_TAB_TRIP,Trip
+TRAVEL_TITLE,Where should {name} go?
+TRAVEL_CHOOSE,Choose the kind of journey.
+TRAVEL_BACK,Back
+TRAVEL_KIND_ORBIT,Orbit
+TRAVEL_KIND_LAND,Land
+TRAVEL_KIND_DOCK,Dock
+TRAVEL_KIND_DRIVE,Drive
+TRAVEL_TARGET_ORBIT,Into the orbit of {body}
+TRAVEL_TARGET_DOCK,To the docks of {host}
+TRAVEL_DOCK_CHOOSE,Dock at one of your structures.
+TRAVEL_DOCK_LOADING,Looking for free docks…
+TRAVEL_DOCK_NONE,None of your resting structures has docks.
+TRAVEL_DOCK_HINT,Tap a structure to dock there.
+TRAVEL_DOCK_NO_ROOM,no room on its docks
+TRAVEL_QUOTE_LOADING,Checking the journey…
+TRAVEL_QUOTE_FAILED,The journey could not be checked.
+TRAVEL_PHASE_LAUNCH,Launch {duration}
+TRAVEL_PHASE_CRUISE,Flight {duration}
+TRAVEL_PHASE_LANDING,Landing {duration}
+TRAVEL_PHASE_NONE,No time under way.
+TRAVEL_PHASE_DRIVE,Drive {duration} at {speed} fields per minute
+TRAVEL_ARRIVAL,Arrives in {duration}
+TRAVEL_DISTANCE,Distance {ly} light years
+TRAVEL_INTERSTELLAR,Leaves the star system.
+TRAVEL_MASS,Mass {mass} of {limit} the drives can lift
+TRAVEL_FUEL,"{resource}: {amount} needed, {on_board} on board"
+TRAVEL_FUEL_IN_CARGO,{amount} in the cargo
+TRAVEL_MOVE_FUEL,Move fuel from the cargo
+TRAVEL_MOVING_FUEL,Moving fuel…
+TRAVEL_NO_CANCEL,"Once started, a journey cannot be cancelled or redirected."
+TRAVEL_START,Start journey
+TRAVEL_CONFIRM_START,Confirm: start now
+TRAVEL_STARTING,Starting…
+TRAVEL_SITE_LAND_TITLE,Choose a landing site
+TRAVEL_SITE_DRIVE_TITLE,Choose the way
+TRAVEL_SITE_LAND_HINT,Tap the ground to move the landing site.
+TRAVEL_SITE_DRIVE_HINT,Tap where the vehicle should stop. Tap more points before that to drive through them.
+TRAVEL_SITE_DRIVE_POINTS,{count} of {max} waypoints. The last point is where it stops.
+TRAVEL_SITE_SUGGEST,Suggest a site
+TRAVEL_SITE_UNDO,Undo point
+TRAVEL_SITE_CLEAR,Clear
+TRAVEL_SITE_OCCUPIED,One of your structures stands there.
+TRAVEL_SITE_TOUCHES,Would touch one of your structures: keep one field apart.
+TRAVEL_SITE_OUT_OF_BOUNDS,This site lies outside the surface that can be reached.
+TRAVEL_INFO_ARRIVAL,Arrives in {duration} · {percent} % of the way
+TRAVEL_INFO_FUEL,Fuel burned: {rows}
+TRAVEL_INFO_FUEL_ROW,{burned} of {total} {resource}
+TRAVEL_PHASE_NOW_LAUNCHING,Launching
+TRAVEL_PHASE_NOW_CRUISE,In flight
+TRAVEL_PHASE_NOW_LANDING,Landing
+TRAVEL_PHASE_NOW_DOCKING,Docking
+TRAVEL_PHASE_NOW_DRIVING,Driving
+TRAVEL_PHASE_NOW_ARRIVING,Arriving
+TRAVEL_NOTICE_STARTED,{name} is on its way · arrives in {duration}
+TRAVEL_NOTICE_ARRIVED,{name} has arrived.
+TRAVEL_NOTICE_BLOCKED,{name} could not finish its journey: {reason} It waits in the orbit of {body}.
+MAP_PICK_ORBIT,Fly into its orbit
+MAP_PICK_LAND,Land here
+MAP_PICK_NO_SURFACE,No surface to land on: only its orbit can be reached.
+MAP_PICK_HINT_ORBIT,Tap the body whose orbit to fly to. Other star systems are on the galaxy map.
+MAP_PICK_HINT_LAND,Tap the body to land on. Other star systems are on the galaxy map.
+LOG_TRAVEL_STARTED_ORBIT,Set off for the orbit of {body}.
+LOG_TRAVEL_STARTED_SURFACE,"Set off for {body}, field {x}, {y}."
+LOG_TRAVEL_STARTED_DOCK,Set off to dock at {host}.
+LOG_TRAVEL_FUEL,Fuel: {items}.
+LOG_TRAVEL_ARRIVED_ORBIT,Arrived in the orbit of {body}.
+LOG_TRAVEL_ARRIVED_SURFACE,Arrived on {body}.
+LOG_TRAVEL_ARRIVED_DOCKED,Docked at {host}.
+LOG_TRAVEL_BLOCKED_REASON,The journey was stopped: {reason} It waits in the orbit of {body}.

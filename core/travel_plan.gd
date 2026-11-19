@@ -226,11 +226,14 @@ static func origin_for_centre(cells: Array[Vector3i], cell: Vector2i) -> Vector2
 
 
 ## Checks a site against the cells of the own structures (`taken`: absolute cell with x wrapped
-## into the grid → true). `size_x` wraps x, `size_y` bounds y (0: not known).
+## into the grid → true). `size_x` wraps x; `size_y` bounds y, which runs from −size_y/2 (incl.)
+## to size_y/2 (excl.) around the equator (0: not known).
 static func check_site(cells: Array[Vector3i], taken: Dictionary, size_x: int, size_y: int = 0) -> Site:
 	var own: Dictionary = {}
+	@warning_ignore("integer_division")
+	var half := size_y / 2
 	for cell: Vector3i in cells:
-		if size_y > 0 and (cell.y < 0 or cell.y >= size_y):
+		if size_y > 0 and (cell.y < -half or cell.y >= half):
 			return Site.OUT_OF_BOUNDS
 		own[_wrapped(cell, size_x)] = true
 	for cell: Vector3i in cells:
@@ -291,9 +294,14 @@ static func taken_cells(layouts: Array[StructureLayout], size_x: int) -> Diction
 
 ## A place for the travelling structure (`cells`, its local cells with guests) on the docks of
 ## `host` (local cells of the host): the offset for a dock target, or null when no dock area of
-## one level holds its X-Y rectangle without overlapping a guest (`guests`, the host's other
-## guests) or a hull of the host. Lowest level first, then by y and x.
-static func dock_offset(host: StructureLayout, guests: Array[StructureLayout], cells: Array[Vector3i]) -> Variant:
+## one level holds its X-Y rectangle without overlapping the rectangle of a guest docked there
+## (the host's layout header lists them; `except` is left out, e.g. the structure itself) or a
+## hull of the host. Lowest level first, then by y and x.
+static func dock_offset(host: StructureLayout, cells: Array[Vector3i], except: int = 0) -> Variant:
+	var guests: Array[StructureLayout.Guest] = []
+	for guest: StructureLayout.Guest in host.guests:
+		if guest.structure_id != except:
+			guests.append(guest)
 	if cells.is_empty():
 		return null
 	var low := Vector2i(cells[0].x, cells[0].y)
@@ -316,7 +324,7 @@ static func dock_offset(host: StructureLayout, guests: Array[StructureLayout], c
 	return null
 
 
-static func _fits_on_docks(host: StructureLayout, guests: Array[StructureLayout], cells: Array[Vector3i],
+static func _fits_on_docks(host: StructureLayout, guests: Array[StructureLayout.Guest], cells: Array[Vector3i],
 		offset: Vector3i, low: Vector2i, high: Vector2i) -> bool:
 	var level := offset.z - 1
 	var rect := Rect2i(Vector2i(low.x + offset.x, low.y + offset.y), high - low + Vector2i.ONE)
@@ -324,8 +332,8 @@ static func _fits_on_docks(host: StructureLayout, guests: Array[StructureLayout]
 		for x: int in range(rect.position.x, rect.end.x):
 			if host.hull_at(Vector3i(x, y, level)) != DOCK:
 				return false
-	for other: StructureLayout in guests:
-		if DockRules.dock_level(other) == level and DockRules.dock_rect(other).intersects(rect):
+	for other: StructureLayout.Guest in guests:
+		if other.dock_z == level and other.rect.intersects(rect):
 			return false
 	for cell: Vector3i in cells:
 		if not host.hull_at(cell + offset).is_empty():

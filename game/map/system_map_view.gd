@@ -55,6 +55,14 @@ var selected := ""
 ## The player's home body and the bodies with own structures (id → true).
 var home_body := ""
 var marked: Dictionary = {}
+## Own structures resting in orbit: body id → how many.
+var orbiting: Dictionary = {}
+## Own flights under way (galaxy frame); drawn where they start and end in this system.
+var trips: Array[TravelMotion] = []
+## Light years per coordinate unit and the system's position (coordinate units), for placing
+## the trips' points (TravelTrack).
+var ly_per_unit := 1.0
+var system_position := Vector3.ZERO
 
 var _centre := Vector2.ZERO
 var _zoom := 1.0
@@ -227,6 +235,56 @@ func _draw() -> void:
 				_draw_body(moon, moon_at, star_at)
 				labels.append([moon, moon_at])
 	_draw_labels(labels, star_at)
+	_draw_fleet(show_moons)
+
+
+## Own structures in orbit (small emerald diamonds beside their body, with a count when several)
+## and flights under way (a cyan marker between the visible places of its start and end, on a
+## dashed line).
+func _draw_fleet(show_moons: bool) -> void:
+	for body_id: String in orbiting.keys():
+		var body := map.body(body_id)
+		if body == null or (body.is_moon() and not show_moons):
+			continue
+		var at := to_view(map.position(body_id, time_s))
+		var spot := at + Vector2(1.0, -1.0).normalized() * (_drawn_radius(body) + 14.0)
+		_draw_diamond(spot, 8.0, AppTheme.COLOR_OK)
+		var count := Wire.as_int(orbiting[body_id])
+		if count > 1:
+			var text := str(count)
+			var place := spot + Vector2(10.0, 8.0)
+			draw_string_outline(_font, place, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, 6, AppTheme.COLOR_BACKGROUND)
+			draw_string(_font, place, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, AppTheme.COLOR_OK)
+	if trips.is_empty():
+		return
+	var anchors := _trip_anchors()
+	var t := roundi(time_s * 1000.0)
+	for motion: TravelMotion in trips:
+		for part: PackedVector2Array in TravelTrack.map_path(motion, anchors):
+			draw_dashed_line(to_view(part[0]), to_view(part[1]), Color(AppTheme.COLOR_ACCENT, 0.55), 2.0, 10.0)
+		var point: Variant = TravelTrack.map_point(motion, t, anchors)
+		if point != null:
+			_draw_diamond(to_view(point as Vector2), 10.0, AppTheme.COLOR_ACCENT)
+
+
+## The points trips can start or end at: every body where it stands on the map now, and the star.
+func _trip_anchors() -> Array[TravelTrack.Anchor]:
+	var result: Array[TravelTrack.Anchor] = []
+	result.append(TravelTrack.Anchor.make(system_position * ly_per_unit, Vector2.ZERO))
+	for body: SystemMap.Body in map.bodies:
+		var at := GalaxySystems.vector(body.data.get("position")) * ly_per_unit
+		result.append(TravelTrack.Anchor.make(at, map.position(body.id, time_s)))
+	return result
+
+
+func _draw_diamond(at: Vector2, radius: float, color: Color) -> void:
+	var points := PackedVector2Array([at + Vector2(0, -radius), at + Vector2(radius, 0), at + Vector2(0, radius),
+		at + Vector2(-radius, 0)])
+	var outline := PackedVector2Array()
+	for point: Vector2 in points:
+		outline.append(at + (point - at) * 1.35)
+	draw_colored_polygon(outline, AppTheme.COLOR_BACKGROUND)
+	draw_colored_polygon(points, color)
 
 
 func _draw_backdrop() -> void:

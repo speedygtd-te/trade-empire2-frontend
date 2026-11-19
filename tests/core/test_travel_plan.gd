@@ -127,7 +127,10 @@ func test_check_site_against_own_structures() -> void:
 	assert_int(TravelPlan.check_site(TravelPlan.site_cells(one, Vector2i(43, 44)), taken, 1000)).is_equal(TravelPlan.Site.OK)
 	# Diagonal is no face contact.
 	assert_int(TravelPlan.check_site(TravelPlan.site_cells(one, Vector2i(42, 45)), taken, 1000)).is_equal(TravelPlan.Site.OK)
-	assert_int(TravelPlan.check_site(TravelPlan.site_cells(one, Vector2i(43, -1)), taken, 1000, 500)).is_equal(TravelPlan.Site.OUT_OF_BOUNDS)
+	# y runs from −250 to 249 around the equator.
+	assert_int(TravelPlan.check_site(TravelPlan.site_cells(one, Vector2i(43, -250)), taken, 1000, 500)).is_equal(TravelPlan.Site.OK)
+	assert_int(TravelPlan.check_site(TravelPlan.site_cells(one, Vector2i(43, 250)), taken, 1000, 500)).is_equal(TravelPlan.Site.OUT_OF_BOUNDS)
+	assert_int(TravelPlan.check_site(TravelPlan.site_cells(one, Vector2i(43, -251)), taken, 1000, 500)).is_equal(TravelPlan.Site.OUT_OF_BOUNDS)
 
 
 func test_check_site_wraps_around_the_body() -> void:
@@ -170,17 +173,18 @@ func test_dock_offset_finds_room_on_the_docks() -> void:
 	for y: int in range(0, 2):
 		for x: int in range(2, 5):
 			hulls.append("[%d,%d,0,1]" % [x, y])
-	var host := _surface(1, Vector3i.ZERO, "[%s]" % ",".join(hulls))
-	var other := _guest(7, Vector3i(2, 0, 1), "[[0,0,0,0],[0,1,0,0]]")
+	var host := _layout('{"line":"header","structureId":1,"anchor":{"type":"surface","bodyId":"p",'
+		+ '"offset":{"x":0,"y":0,"z":0}},"rev":1,"chunks":1,"guests":[{"structureId":7,'
+		+ '"offset":{"x":2,"y":0,"z":1},"rect":{"minX":2,"minY":0,"maxX":2,"maxY":1,"z":0}}]}',
+		'["STARTER","DOCK"]', "[%s]" % ",".join(hulls))
 	var ship: Array[Vector3i] = [Vector3i(0, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 1, 0), Vector3i(1, 1, 0)]
-	var found: Variant = TravelPlan.dock_offset(host, [other], ship)
-	assert_that(found).is_equal(Vector3i(3, 0, 1))
-	var none: Array[StructureLayout] = []
-	assert_that(TravelPlan.dock_offset(host, none, ship)).is_equal(Vector3i(2, 0, 1))
+	assert_that(TravelPlan.dock_offset(host, ship)).is_equal(Vector3i(3, 0, 1))
+	# The guest itself moving to another place on its host does not block itself.
+	assert_that(TravelPlan.dock_offset(host, ship, 7)).is_equal(Vector3i(2, 0, 1))
 	var wide: Array[Vector3i] = [Vector3i(0, 0, 0), Vector3i(3, 0, 0)]
-	assert_object(TravelPlan.dock_offset(host, none, wide)).is_null()
+	assert_object(TravelPlan.dock_offset(host, wide, 7)).is_null()
 	var nothing: Array[Vector3i] = []
-	assert_object(TravelPlan.dock_offset(host, none, nothing)).is_null()
+	assert_object(TravelPlan.dock_offset(host, nothing)).is_null()
 
 
 func test_drive_points_take_the_shorter_way_round() -> void:

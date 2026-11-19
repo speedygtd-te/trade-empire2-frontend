@@ -43,6 +43,8 @@ var marks: Dictionary = {}
 var home_id := ""
 ## The selected system; null when none.
 var selected: GalaxySystems.Entry = null
+## Own flights between systems: a line from start to end and a marker where they are now.
+var trips: Array[TravelMotion] = []
 
 var _centre := Vector2.ZERO
 var _units := 100.0
@@ -86,6 +88,12 @@ func _ready() -> void:
 	_overlay.draw.connect(_draw_overlay)
 	add_child(_overlay)
 	resized.connect(_refresh)
+
+
+## Draws the marks again (flights move every frame).
+func redraw_marks() -> void:
+	if _overlay != null:
+		_overlay.queue_redraw()
 
 
 ## The galaxy to show; the view starts on the whole galaxy.
@@ -396,7 +404,22 @@ func _draw_overlay() -> void:
 		_overlay.draw_arc(at, 20.0, 0.0, TAU, 48, AppTheme.COLOR_ACCENT, 3.0, true)
 		# Above the ring: home and own systems carry their names below.
 		_label(at + Vector2(0.0, -28.0 - LABEL_FONT_SIZE - 4.0), selected.name, AppTheme.COLOR_ACCENT)
+	_draw_trips()
 	_draw_scale_bar()
+
+
+## Flights between systems: a dashed line from start to end, a cyan diamond where they are now.
+func _draw_trips() -> void:
+	if trips.is_empty() or shape == null:
+		return
+	var now := Services.clock.now_ms()
+	for motion: TravelMotion in trips:
+		var ends := TravelTrack.galaxy_ends(motion, shape.ly_per_unit)
+		if ends.size() == 2:
+			_overlay.draw_dashed_line(to_view(ends[0]), to_view(ends[1]), Color(AppTheme.COLOR_ACCENT, 0.6), 2.0, 10.0)
+		var at := to_view(TravelTrack.galaxy_point(motion, now, shape.ly_per_unit))
+		var points := PackedVector2Array([at + Vector2(0, -10), at + Vector2(10, 0), at + Vector2(0, 10), at + Vector2(-10, 0)])
+		_overlay.draw_colored_polygon(points, AppTheme.COLOR_ACCENT)
 
 
 func _view_of(entry: GalaxySystems.Entry) -> Vector2:

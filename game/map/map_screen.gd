@@ -11,9 +11,22 @@ extends Control
 
 ## The player left the map.
 signal closed
+## Pick mode: the player chose a body (here or in another system's map).
+signal body_picked(body_id: String)
 
 ## Game seconds per real second while time-lapse is on.
 const TIME_LAPSE := 86400.0
+## What the body details offer to pick: nothing, the orbit of a body, or a body to land on.
+const PICK_NONE := ""
+const PICK_ORBIT := "orbit"
+const PICK_LAND := "land"
+
+## Pick mode (set before adding): the details offer to choose the body as the target of a trip.
+var pick := PICK_NONE
+## The player's fleet (set before adding): structures in orbit and under way are drawn.
+var fleet: FleetModel = null
+## Light years per coordinate unit of the galaxy (for placing trips), kept for the session.
+static var _ly_per_unit := 0.0
 
 var _system_id := ""
 var _home_body := ""
@@ -69,6 +82,8 @@ func _ready() -> void:
 	_view.body_tapped.connect(_on_body_tapped)
 	_content.add_child(_view)
 	_build_overlay()
+	if fleet != null:
+		fleet.changed.connect(_update_fleet_marks)
 	_load()
 
 
@@ -82,6 +97,23 @@ func _process(delta: float) -> void:
 	_view.time_s = _shown_s
 	if not _view.selected.is_empty():
 		_view.follow(_view.selected, before)
+	_view.queue_redraw()
+
+
+## Structures of the fleet in orbit of this system's bodies and trips through it, for the view.
+func _update_fleet_marks() -> void:
+	if fleet == null or _map == null:
+		return
+	var orbiting: Dictionary = {}
+	var trips: Array[TravelMotion] = []
+	var now := Services.clock.now_ms()
+	for entry: Fleet.Entry in fleet.fleet.entries():
+		if entry.motion != null and entry.is_moving(now) and entry.motion.frame == TravelMotion.FRAME_GALAXY:
+			trips.append(entry.motion)
+		elif entry.where() == Fleet.Where.ORBIT and _map.body(entry.body_id) != null:
+			orbiting[entry.body_id] = Wire.as_int(orbiting.get(entry.body_id)) + 1
+	_view.orbiting = orbiting
+	_view.trips = trips
 	_view.queue_redraw()
 
 
@@ -141,6 +173,7 @@ func _build_overlay() -> void:
 	_details = BodyPanel.new()
 	_details.visible = false
 	_details.closed.connect(_select.bind(""))
+	_details.chosen.connect(func(body_id: String) -> void: body_picked.emit(body_id))
 	rows.add_child(_details)
 	_hint = Ui.label("MAP_HINT")
 	_hint.add_theme_font_size_override("font_size", AppTheme.FONT_SIZE_SMALL)
@@ -226,6 +259,12 @@ func _load() -> void:
 	var items: Array = structures.data.get("items")
 	_structures = SystemMap.structures_by_body(items)
 	_map = SystemMap.from_system(system.data)
+	if _ly_per_unit <= 0.0:
+		var galaxy := await Services.api.get_json("/v2/galaxy")
+		var shape := GalaxyShape.from_galaxy(galaxy.data) if galaxy.is_ok() else null
+		_ly_per_unit = shape.ly_per_unit if shape != null else 1.0
+	_view.ly_per_unit = _ly_per_unit
+	_view.system_position = GalaxySystems.vector(system.data.get("position"))
 	_title.text = _map.star_name
 	_subtitle.text = tr("MAP_STAR_LINE").format({"type": BodyPanel.star_text(_map.star_type, self),
 		"kelvin": AmountFormat.units(roundi(_map.star_kelvin)), "count": _map.bodies.size()})
@@ -243,6 +282,9 @@ func _load() -> void:
 	await get_tree().process_frame
 	_update_free_area()
 	_view.show_map(_map)
+	_update_fleet_marks()
+	if pick != PICK_NONE:
+		_hint.text = tr("MAP_PICK_HINT_LAND") if pick == PICK_LAND else tr("MAP_PICK_HINT_ORBIT")
 
 
 # --- selection and time ---------------------------------------------------------------------
@@ -259,9 +301,30 @@ func _select(body_id: String) -> void:
 	if not body_id.is_empty():
 		var names: PackedStringArray = _structures.get(body_id, PackedStringArray())
 		_details.show_body(_map, body_id, names, body_id == _home_body)
+		_details.show_pick(_pick_key(), _pick_reason(body_id))
 		# The panel grows over the lower map: keep the body in the middle of what stays free.
 		_view.focus_body(body_id, false)
 	_view.queue_redraw()
+
+
+## The button text of pick mode; "" outside it.
+func _pick_key() -> String:
+	match pick:
+		PICK_ORBIT:
+			return "MAP_PICK_ORBIT"
+		PICK_LAND:
+			return "MAP_PICK_LAND"
+	return ""
+
+
+## Why a body cannot be picked (translated); "" when it can: landing needs a surface.
+func _pick_reason(body_id: String) -> String:
+	var body := _map.body(body_id)
+	if pick != PICK_LAND or body == null:
+		return ""
+	if Wire.as_dict(body.data.get("grid")).is_empty() or body.data.get("surfaceBuildable") == false:
+		return tr("MAP_PICK_NO_SURFACE")
+	return ""
 
 
 func _on_lapse_toggled(on: bool) -> void:
@@ -295,6 +358,9 @@ func _on_galaxy() -> void:
 		return
 	_galaxy = GalaxyScreen.new()
 	_galaxy.setup(_system_id, _home_body)
+	_galaxy.pick = pick
+	_galaxy.fleet = fleet
+	_galaxy.body_picked.connect(func(body_id: String) -> void: body_picked.emit(body_id))
 	_galaxy.closed.connect(_close_galaxy)
 	add_child(_galaxy)
 	_content.visible = false

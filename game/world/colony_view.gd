@@ -49,6 +49,24 @@ const COLOR_BUILDING := Color(0.984, 0.749, 0.141, 0.40)
 const COLOR_DISABLED := Color(0.55, 0.08, 0.08, 0.45)
 const COLOR_SELECTED := Color(0.133, 0.827, 0.933, 0.9)
 const COLOR_STRUCTURE := Color(0.133, 0.827, 0.933, 0.18)
+## How high (cells) a landing structure starts its descent above its site.
+const LANDING_HEIGHT := 12.0
+## How often (seconds) the view checks whether a trip changed what is drawn (a phase began).
+const TRAVEL_CHECK_SECONDS := 0.5
+
+## How a drawn structure takes part in a trip right now.
+enum Trip {
+	## Stands where its layout says.
+	RESTING,
+	## Away: under way elsewhere, or not yet in its landing phase here.
+	HIDDEN,
+	## Launch phase: still on its cells, shaking.
+	LAUNCHING,
+	## Drives over this body's surface.
+	DRIVING,
+	## Descends onto its site here.
+	LANDING,
+}
 
 ## The colony to draw.
 var model: ColonyModel
@@ -89,6 +107,14 @@ var _mover := ModuleMover.new()
 var _moving := true
 var _to_sun := Vector3.UP
 var _sun_up := true
+## The player's fleet (set by the screen); without it every structure rests.
+var fleet: Fleet = null
+## Ghost, drive line and reserved cells (TravelLayer).
+var _travel: TravelLayer
+## Drawn structures that move now (launch, drive, landing): id → ColonyModel.
+var _travelling: Dictionary = {}
+var _trip_signature := ""
+var _trip_left := 0.0
 
 
 func setup(colony: ColonyModel) -> void:
@@ -116,6 +142,10 @@ func _ready() -> void:
 	_selection = _frame(COLOR_SELECTED)
 	_selection.visible = false
 	add_child(_selection)
+	_travel = TravelLayer.new()
+	_travel.name = "Travel"
+	_travel.setup(self)
+	add_child(_travel)
 
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -261,12 +291,161 @@ func _apply_highlight() -> void:
 					geometry.material_overlay = overlay
 
 
-## Every structure drawn: the loaded one, its guests, the neighbours and their guests.
+## Every structure drawn: the loaded one, its guests, the neighbours and their guests, and the
+## structures driving or landing here; those away are left out.
 func _structures() -> Array[ColonyModel]:
 	var result: Array[ColonyModel] = []
 	if model == null:
 		return result
-	result.append_array(model.drawn_structures())
+	var now := Services.clock.now_ms()
+	var candidates := model.drawn_structures()
+	candidates.append_array(model.traveller_list())
+	for structure: ColonyModel in candidates:
+		if trip_of(structure, now) != Trip.HIDDEN:
+			result.append(structure)
+	return result
+
+
+# --- trips ----------------------------------------------------------------------------------
+
+## Sets the fleet whose trips the view follows, and draws again.
+func set_fleet(value: Fleet) -> void:
+	fleet = value
+	_trip_signature = _signature(Services.clock.now_ms())
+	_rebuild_structure()
+
+
+## The ghost, drive line and reserved cells of trips (TravelLayer).
+func travel_layer() -> TravelLayer:
+	return _travel
+
+
+## The fleet entry whose trip moves a structure: its own, or its host's for a guest travelling
+## along; null when unknown.
+func _trip_entry(structure: ColonyModel) -> Fleet.Entry:
+	if fleet == null:
+		return null
+	var owner := structure.host if structure.host != null else structure
+	return fleet.find(owner.structure_id)
+
+
+## How a structure takes part in a trip at `now`.
+func trip_of(structure: ColonyModel, now: int) -> Trip:
+	var entry := _trip_entry(structure)
+	if entry == null:
+		return Trip.RESTING
+	var motion := entry.motion
+	if motion == null:
+		var away := entry.where() == Fleet.Where.TRANSIT or entry.where() == Fleet.Where.ORBIT
+		return Trip.HIDDEN if away else Trip.RESTING
+	if motion.mode == TravelPlan.MODE_GROUND:
+		return Trip.DRIVING if motion.body_id == model.body_id and _site_of(entry) != null else Trip.HIDDEN
+	var phase := motion.phase_at(now)
+	if phase == TravelMotion.Phase.LAUNCHING:
+		var standing := entry.where() == Fleet.Where.SURFACE or entry.where() == Fleet.Where.DOCKED
+		return Trip.LAUNCHING if standing else Trip.HIDDEN
+	if phase == TravelMotion.Phase.CRUISE:
+		return Trip.HIDDEN
+	return Trip.LANDING if _site_of(entry) != null else Trip.HIDDEN
+
+
+## Where the structure of a trip ends up here: the absolute cell of its local origin (its lowest
+## level on the ground, or on the host's dock); null when its target is not on this body.
+func _site_of(entry: Fleet.Entry) -> Variant:
+	var motion := entry.motion
+	var mover := model.structure(entry.structure_id)
+	if motion == null or mover == null:
+		return null
+	if motion.target_type() == "surface" and motion.target_body_id() == model.body_id:
+		var lowest := 0
+		var levels := mover.layout.levels()
+		if not levels.is_empty():
+			lowest = levels[0]
+		return Vector3i(Wire.as_int(motion.target.get("x")), Wire.as_int(motion.target.get("y")), -lowest)
+	if motion.target_type() == "dock":
+		var host := model.structure(motion.target_host_id())
+		if host == null or host == mover:
+			return null
+		var offset := Wire.as_dict(motion.target.get("offset"))
+		return host.layout.to_absolute(Vector3i(Wire.as_int(offset.get("x")), Wire.as_int(offset.get("y")),
+			Wire.as_int(offset.get("z"))))
+	return null
+
+
+## Puts a driving or landing structure (and its guests) on its site: it is drawn there and moved
+## from there by its shift each frame.
+func _place_on_site(structure: ColonyModel, entry: Fleet.Entry) -> void:
+	var site: Variant = _site_of(entry)
+	if site == null:
+		return
+	structure.layout.offset = site
+	structure.layout.base = Vector3i.ZERO
+	for guest: ColonyModel in structure.guest_list():
+		guest.layout.base = structure.layout.offset
+
+
+## How far from its drawn place a travelling structure is at `now` (scene units).
+func _trip_shift(structure: ColonyModel, now: int) -> Vector3:
+	var entry := _trip_entry(structure)
+	if entry == null or entry.motion == null:
+		return Vector3.ZERO
+	var motion := entry.motion
+	match trip_of(structure, now):
+		Trip.LAUNCHING:
+			# A slight shake that grows towards the lift-off.
+			var share := clampf(float(now - motion.depart_at) / maxf(motion.liftoff_at - motion.depart_at, 1.0), 0.0, 1.0)
+			var wobble := 0.015 + 0.03 * share
+			var seconds := now / 1000.0
+			return Vector3(sin(seconds * 37.0) * wobble, absf(sin(seconds * 23.0)) * wobble, cos(seconds * 41.0) * wobble)
+		Trip.DRIVING:
+			var site: Variant = _site_of(entry)
+			if site == null:
+				return Vector3.ZERO
+			var end: Vector3i = site
+			var here := TravelTrack.ground_point(motion, now)
+			var whole := floori(here.x)
+			var dx := WorldGrid.wrapped_delta(end.x, whole, model.size_x) + (here.x - whole)
+			return Vector3(dx, 0.0, -(here.y - end.y))
+		Trip.LANDING:
+			var span := maxf(motion.arrival_at - motion.cruise_end_at, 1.0)
+			var left := clampf(float(motion.arrival_at - now) / span, 0.0, 1.0)
+			return Vector3(0.0, LANDING_HEIGHT * left * left, 0.0)
+	return Vector3.ZERO
+
+
+## What the trips look like now, to notice a phase change that changes what is drawn.
+func _signature(now: int) -> String:
+	if model == null or fleet == null:
+		return ""
+	var parts := PackedStringArray()
+	var candidates := model.drawn_structures()
+	candidates.append_array(model.traveller_list())
+	for structure: ColonyModel in candidates:
+		parts.append("%d:%d" % [structure.structure_id, trip_of(structure, now)])
+	return ",".join(parts)
+
+
+## Cells reserved here for structures still on their way to land (launch or cruise), absolute.
+func _reserved_cells(now: int) -> Array[Vector3i]:
+	var result: Array[Vector3i] = []
+	if fleet == null or model == null:
+		return result
+	for entry: Fleet.Entry in fleet.entries():
+		var motion := entry.motion
+		if motion == null or motion.mode != TravelPlan.MODE_FLIGHT or now >= motion.cruise_end_at:
+			continue
+		var mover := model.structure(entry.structure_id)
+		var site: Variant = _site_of(entry)
+		if mover == null or site == null:
+			continue
+		var at: Vector3i = site
+		var cells := TravelPlan.mover_cells(mover.layout, mover.guest_layouts())
+		var lowest := 0
+		for index: int in cells.size():
+			lowest = cells[index].z if index == 0 else mini(lowest, cells[index].z)
+		for cell: Vector3i in cells:
+			if cell.z == lowest:
+				result.append(at + cell - Vector3i(0, 0, lowest))
 	return result
 
 
@@ -348,6 +527,7 @@ func _rebuild_all() -> void:
 	_redraw_ground()
 	_props.rebuild()
 	_rebuild_structure()
+	_travel.redraw()
 
 
 func _rebuild_structure() -> void:
@@ -358,10 +538,19 @@ func _rebuild_structure() -> void:
 	for child: Node in _modules.get_children():
 		child.queue_free()
 	_mover.clear()
+	_travelling.clear()
+	var now := Services.clock.now_ms()
 	for structure: ColonyModel in _structures():
+		var trip := trip_of(structure, now)
+		if (trip == Trip.DRIVING or trip == Trip.LANDING) and structure.host == null:
+			_place_on_site(structure, _trip_entry(structure))
+		if trip != Trip.RESTING:
+			_travelling[structure.structure_id] = structure
 		_build_structure(structure)
 	_perimeter.rebuild()
 	_apply_highlight()
+	_travel.show_reserved(_reserved_cells(now))
+	_apply_trips(now)
 
 
 ## Hulls and modules of one structure, each in a group tagged with the structure's id (for the
@@ -480,6 +669,30 @@ func _instance(key: String) -> Node3D:
 func _process(delta: float) -> void:
 	if _moving:
 		_mover.step(delta, _to_sun, _sun_up)
+	if fleet == null:
+		return
+	var now := Services.clock.now_ms()
+	_trip_left -= delta
+	if _trip_left <= 0.0:
+		_trip_left = TRAVEL_CHECK_SECONDS
+		var signature := _signature(now)
+		if signature != _trip_signature:
+			_trip_signature = signature
+			_rebuild_structure()
+			return
+	_apply_trips(now)
+
+
+## Moves the hulls and modules of every travelling structure to where its trip has it now.
+func _apply_trips(now: int) -> void:
+	if _travelling.is_empty():
+		return
+	for holder: Node3D in [_hulls, _modules]:
+		for group: Node in holder.get_children():
+			var id: int = group.get_meta("structure", 0)
+			var structure := _travelling.get(id) as ColonyModel
+			if structure != null:
+				(group as Node3D).position = _trip_shift(structure, now)
 
 
 ## Moving parts of the modules on screen (for measuring).
