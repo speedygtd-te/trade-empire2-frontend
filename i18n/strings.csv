@@ -1061,3 +1061,19 @@ COLONY_SHAPE_DONE,{count} hulls placed.
 COLONY_SHAPE_DONE_ONE,1 hull placed.
 LEVEL_SHAFT_SPOTS,Red fields: no free hull of this structure directly above.
 LEVEL_SHAFT_SPOTS_NONE,"No field fits yet: build a hull directly above first, then place it below."
+BUILD_VERDICT_NO_CORRIDOR,"Needs a corridor beside it: a free hull connected to the entrance (a side or a corner is enough)."
+BUILD_VERDICT_LEVEL_NOT_CONNECTED,This level is not connected to the ground yet – build a staircase or elevator.
+BUILD_VERDICT_NO_ENTRANCE,Keep at least one entrance on the ground level: a free hull at the outer edge.
+BUILD_VERDICT_CUTS_OFF,This would cut modules off from the corridors.
+COLONY_PATH_CUTS_MODULE_ONE,Would cut off 1 module from the corridors.
+COLONY_PATH_CUTS_MODULES,Would cut off {count} modules from the corridors.
+COLONY_PATH_CUTS_LEVEL_ONE,Would cut off {level} from the ground.
+COLONY_PATH_CUTS_LEVELS,Would cut off {count} levels from the ground.
+COLONY_PATH_NOT_CONNECTED,Not connected to the corridors: staff and inhabitants cannot reach it.
+COLONY_PATH_SPOTS,"Cyan: it can stand here. Red: no corridor beside it, or it would cut others off."
+COLONY_PATH_SPOTS_WAITING,Amber: this level is not connected to the ground yet – build a staircase or elevator first.
+COLONY_PATH_NO_ENTRANCE,The ground level has no entrance: keep a free hull at the outer edge.
+COLONY_PATH_LEGEND,"Cyan floor: corridors staff can reach. Amber: cut off. Arrows: entrances."
+ERROR_NOT_CONNECTED,This would leave modules without a corridor to the entrance.
+ERROR_LEVEL_NOT_CONNECTED,This level is not connected to the ground yet – build a staircase or elevator.
+ERROR_NO_ENTRANCE,Keep at least one entrance on the ground level: a free hull at the outer edge.
