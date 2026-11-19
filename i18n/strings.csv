@@ -687,3 +687,212 @@ LEVEL_REMOVE_SHAFT,Remove shaft
 LEVEL_GO_UP,Shaft top
 LEVEL_GO_DOWN,Shaft foot
 LEVEL_EMPTY,Nothing built here on this level.
+HOME_ENTERPRISE,Enterprise
+STORE_TAXED,Tax to your enterprise: {items}
+ENTERPRISE_TITLE,Enterprise
+ENTERPRISE_TAB_BROWSE,Browse
+ENTERPRISE_TAB_FOUND,Found
+ENTERPRISE_TAB_OVERVIEW,Overview
+ENTERPRISE_TAB_MEMBERS,Members
+ENTERPRISE_TAB_ROLES,Roles
+ENTERPRISE_TAB_DIPLOMACY,Diplomacy
+ENTERPRISE_TAB_TAXES,Taxes
+ENTERPRISE_TAB_LOG,Log
+ENTERPRISE_LOAD_FAILED,Your enterprise could not be loaded.
+ENTERPRISE_LIST_FAILED,The enterprises could not be loaded.
+ENTERPRISE_LIST_EMPTY,No enterprise exists yet. Found the first one!
+ENTERPRISE_MORE,Show more
+ENTERPRISE_MEMBERS_COUNT,{count} members
+ENTERPRISE_ONE_MEMBER,1 member
+ENTERPRISE_OPEN,anyone can join
+ENTERPRISE_CLOSED,by application
+ENTERPRISE_APPLIED,you applied
+ENTERPRISE_INVITED,you are invited
+ENTERPRISE_INVITED_NOTE,This enterprise has invited you.
+ENTERPRISE_APPLIED_NOTE,You have applied. A member with the right to manage members decides.
+ENTERPRISE_APPLY_NOTE,Joining is by application: a member decides.
+ENTERPRISE_JOIN,Join
+ENTERPRISE_APPLY,Apply
+ENTERPRISE_APPLIED_DONE,Application sent.
+ENTERPRISE_WITHDRAW,Withdraw application
+ENTERPRISE_WITHDRAW_CONFIRM,Tap again to withdraw
+ENTERPRISE_WITHDRAWN_DONE,Application withdrawn.
+ENTERPRISE_BACK_TO_LIST,Back to the list
+ENTERPRISE_NO_DESCRIPTION,No description.
+ENTERPRISE_JOIN_MODE_OPEN,Anyone can join
+ENTERPRISE_JOIN_MODE_CLOSED,By application
+ENTERPRISE_MEMBER_LIST,Members: {names}
+ENTERPRISE_FOUND_INTRO,Founding is free. Pick one of the generated names; name and ticker cannot be changed later. A logo is made for it.
+ENTERPRISE_NAMES_LOADING,Generating names…
+ENTERPRISE_NAMES_EMPTY,No names available right now. Ask for new ones.
+ENTERPRISE_NEW_NAMES,New names
+ENTERPRISE_DESCRIPTION,Description
+ENTERPRISE_DESCRIPTION_HINT,What is your enterprise about? (optional)
+ENTERPRISE_WHO_JOINS,Who may join
+ENTERPRISE_FOUND,Found enterprise
+ENTERPRISE_SAVE,Save
+ENTERPRISE_CANCEL,Cancel
+ENTERPRISE_SAVED,Saved.
+ENTERPRISE_EDIT,Edit description
+ENTERPRISE_FOUNDED_AGO,Founded {duration} ago
+ENTERPRISE_YOUR_PLACE,You
+ENTERPRISE_YOUR_ROLES,Your roles: {roles}
+ENTERPRISE_YOUR_RIGHTS,Your rights: {rights}
+ENTERPRISE_NO_ROLES,none
+ENTERPRISE_NO_RIGHTS,none
+ENTERPRISE_LEAVE,Leave enterprise
+ENTERPRISE_LEAVE_CONFIRM,Tap again to leave
+ENTERPRISE_LEAVE_WARNING,You stop paying its taxes at once. In combat you stay a friend of its members for one more hour.
+ENTERPRISE_LEAVE_LAST_WARNING,You are the last member: leaving dissolves the enterprise and its inventory is lost ({lost}).
+ENTERPRISE_LEAVE_BLOCKED,You are the only founder. Give the founder role to another member before you leave.
+ENTERPRISE_DISSOLVE,Dissolve enterprise
+ENTERPRISE_DISSOLVE_CONFIRM,Tap again to dissolve
+ENTERPRISE_DISSOLVE_WARNING,"Everyone becomes independent, alliances and relations end, name and ticker become free. The enterprise inventory is lost: {lost}."
+ENTERPRISE_LOSS_NOTHING,it is empty
+ENTERPRISE_LOSS_UNKNOWN,its contents could not be loaded
+ENTERPRISE_LOGO_PENDING,logo in the making
+ENTERPRISE_MEMBERS,Members
+ENTERPRISE_YOU,{name} (you)
+ENTERPRISE_MEMBER_LINE,Roles: {roles} · joined {duration} ago
+ENTERPRISE_APPLICATIONS,Applications
+ENTERPRISE_NO_APPLICATIONS,No open applications.
+ENTERPRISE_ADMIT,Admit
+ENTERPRISE_ADMITTED,Admitted.
+ENTERPRISE_REJECT,Reject
+ENTERPRISE_REJECT_CONFIRM,Tap again
+ENTERPRISE_REJECTED,Application rejected.
+ENTERPRISE_INVITES,Open invitations
+ENTERPRISE_REVOKE,Take back
+ENTERPRISE_REVOKE_CONFIRM,Tap again
+ENTERPRISE_REVOKED,Invitation taken back.
+ENTERPRISE_ROLES_OF_MEMBER,Roles (tap to give or take)
+ENTERPRISE_ROLE_HELD,{role} (held)
+ENTERPRISE_KICK,Remove from enterprise
+ENTERPRISE_KICK_CONFIRM,Tap again to remove
+ENTERPRISE_KICK_WARNING,They stop paying taxes at once and stay a friend in combat for one more hour.
+ENTERPRISE_KICKED,Member removed.
+ENTERPRISE_MEMBER_NOTHING,You have no rights to change anything for this member.
+ENTERPRISE_MEMBER_SELF,Leaving is on the Overview tab.
+ENTERPRISE_NEW_ROLE,New role
+ENTERPRISE_EDIT_ROLE,Edit role
+ENTERPRISE_FOUNDER_ROLE,{name} (founder role)
+ENTERPRISE_HOLDERS,holders: {count}
+ENTERPRISE_ROLE_NAME,Name
+ENTERPRISE_ROLE_NAME_HINT,Role name
+ENTERPRISE_ROLE_RIGHTS,Rights (tap to switch)
+ENTERPRISE_ROLE_RIGHTS_NOTE,You can only give rights you hold yourself.
+ENTERPRISE_FOUNDER_LOCKED,The founder role always has every right; only its name can change.
+ENTERPRISE_ROLE_SAVED,Role saved.
+ENTERPRISE_DELETE_ROLE,Delete role
+ENTERPRISE_DELETE_ROLE_CONFIRM,Tap again to delete
+ENTERPRISE_DELETE_ROLE_WARNING,Every holder loses this role (holders: {count}).
+ENTERPRISE_ROLE_DELETED,Role deleted.
+ENTERPRISE_FLAG_MANAGE_MEMBERS,Manage members
+ENTERPRISE_FLAG_MANAGE_ROLES,Manage roles
+ENTERPRISE_FLAG_SET_DIPLOMACY,Diplomacy
+ENTERPRISE_FLAG_EDIT_IDENTITY,Edit description
+ENTERPRISE_FLAG_DISSOLVE,Dissolve
+ENTERPRISE_FLAG_SET_TAX,Set taxes
+ENTERPRISE_FLAG_OTHER,Other right
+ENTERPRISE_SOMEONE,a former member
+ENTERPRISE_SOME_ROLE,a role
+ENTERPRISE_LOG_OLDER,Older entries
+ENTERPRISE_LOG_EMPTY,Nothing has happened yet.
+ENTERPRISE_LOG_FAILED,The log could not be loaded.
+ENTERPRISE_LOG_FOUNDED,{actor} founded the enterprise.
+ENTERPRISE_LOG_JOINED,{player} joined.
+ENTERPRISE_LOG_LEFT,{player} left.
+ENTERPRISE_LOG_KICKED,{actor} removed {player}.
+ENTERPRISE_LOG_INVITED,{actor} invited {player}.
+ENTERPRISE_LOG_INVITE_REVOKED,{actor} took back the invitation of {player}.
+ENTERPRISE_LOG_APPLIED,{player} applied.
+ENTERPRISE_LOG_APPLICATION_WITHDRAWN,{player} withdrew the application.
+ENTERPRISE_LOG_ADMITTED,{actor} admitted {player}.
+ENTERPRISE_LOG_REJECTED,{actor} turned down {player}.
+ENTERPRISE_LOG_ROLE_CREATED,{actor} created the role {role}.
+ENTERPRISE_LOG_ROLE_UPDATED,{actor} changed the role {role}.
+ENTERPRISE_LOG_ROLE_DELETED,{actor} deleted a role.
+ENTERPRISE_LOG_ROLE_ASSIGNED,{actor} gave {player} the role {role}.
+ENTERPRISE_LOG_ROLE_UNASSIGNED,{actor} took the role {role} from {player}.
+ENTERPRISE_LOG_IDENTITY_UPDATED,{actor} changed the description or who may join.
+ENTERPRISE_LOG_WAR,{actor} declared war: {faction}.
+ENTERPRISE_LOG_PEACE,Peace with {faction}.
+ENTERPRISE_LOG_PEACE_PROPOSED,Peace with {faction} was proposed.
+ENTERPRISE_LOG_ALLIANCE,Allied with {faction}.
+ENTERPRISE_LOG_ALLIANCE_PROPOSED,An alliance with {faction} was proposed.
+ENTERPRISE_LOG_PROPOSAL_WITHDRAWN,The proposal to {faction} was withdrawn.
+ENTERPRISE_LOG_ALLIANCE_BROKEN,The alliance with {faction} ended.
+ENTERPRISE_LOG_DIPLOMACY,Relations with {faction} changed.
+ENTERPRISE_LOG_LOGO_READY,The logo is ready.
+ENTERPRISE_LOG_LOGO_FAILED,The logo could not be made; the default logo stays.
+ENTERPRISE_LOG_TAX_ANNOUNCED,"{actor} announced a tax of {percent}% on {resource}, counting {duration} later."
+ENTERPRISE_LOG_TAX_SET,{actor} set the tax on {resource} to {percent}%.
+ENTERPRISE_LOG_TAX_EFFECTIVE,The tax on {resource} is now {percent}%.
+DIPLOMACY_LOAD_FAILED,Relations could not be loaded.
+DIPLOMACY_NO_RIGHT,Only members with the diplomacy right can change relations.
+DIPLOMACY_NEW,New relation
+DIPLOMACY_EMPTY,"Neutral with everyone. War, peace and alliances show here."
+DIPLOMACY_STANCE_HOSTILE,At war
+DIPLOMACY_STANCE_NEUTRAL,Neutral
+DIPLOMACY_STANCE_ALLIED,Allied
+DIPLOMACY_WE_PROPOSED_PEACE,You proposed peace. Waiting for their answer.
+DIPLOMACY_WE_PROPOSED_ALLIANCE,You proposed an alliance. Waiting for their answer.
+DIPLOMACY_THEY_PROPOSE_PEACE,They propose peace.
+DIPLOMACY_THEY_PROPOSE_ALLIANCE,They propose an alliance.
+DIPLOMACY_PACT_ENDING,Still friends in combat for {duration}
+DIPLOMACY_SOLO_PLAYER,A player without an enterprise.
+DIPLOMACY_INVITE,Invite to your enterprise
+DIPLOMACY_INVITED,Invited to your enterprise.
+DIPLOMACY_INVITE_SENT,Invitation sent.
+DIPLOMACY_STEP_WAR,Declare war
+DIPLOMACY_STEP_PEACE,Propose peace
+DIPLOMACY_STEP_ALLIANCE,Propose alliance
+DIPLOMACY_STEP_ACCEPT_PEACE,Accept peace
+DIPLOMACY_STEP_ACCEPT_ALLIANCE,Accept alliance
+DIPLOMACY_STEP_WITHDRAW,Withdraw proposal
+DIPLOMACY_STEP_BREAK,End alliance
+DIPLOMACY_STEP_OTHER,Change
+DIPLOMACY_CONFIRM,Tap again
+DIPLOMACY_WAR_WARNING,"War is declared at once and needs no answer. It changes no combat rule, but everyone sees it; an alliance ends with one hour of friendship left."
+DIPLOMACY_BREAK_WARNING,The alliance ends now; in combat you stay friends for one more hour.
+DIPLOMACY_DONE,Done.
+DIPLOMACY_PICK,Choose an enterprise:
+DIPLOMACY_PICK_EMPTY,There is no other enterprise yet.
+DIPLOMACY_UNKNOWN_ENTERPRISE,Another enterprise
+DIPLOMACY_UNKNOWN_PLAYER,Another player
+TAX_TAB_RATES,Rates
+TAX_TAB_INVENTORY,Inventory
+TAX_INTRO,"Members keep the rest of what they produce or mine; the tax share goes to the enterprise. Lower rates count at once, higher ones after a day."
+TAX_LOAD_FAILED,Taxes could not be loaded.
+TAX_NOTHING_TAXABLE,Game data is still loading.
+TAX_ROW,{resource}: {percent}%
+TAX_PENDING,rises to {percent}% in {duration}
+TAX_PLANNED,new: {percent}% (not saved)
+TAX_EDITING,{resource}: {percent}% (0–{max})
+TAX_SAVE,Save rates
+TAX_UNDO,Undo
+TAX_SAVED,Rates saved.
+TAX_NO_CHANGES,Tap a resource to change its rate. Increases count after {duration}.
+TAX_CHANGES,"{lower} lower at once, {higher} higher after {duration}."
+TAX_READ_ONLY,Only members with the right to set taxes can change the rates.
+TAX_INVENTORY_NOTE,What the taxes collected. Nothing can be paid out yet; dissolving the enterprise loses it.
+TAX_INVENTORY_FAILED,The inventory could not be loaded.
+TAX_INVENTORY_EMPTY,Nothing collected yet.
+ERROR_ENTERPRISE_NOT_FOUND,This enterprise no longer exists.
+ERROR_ALREADY_IN_ENTERPRISE,Already in an enterprise. Leave it first.
+ERROR_NOT_IN_ENTERPRISE,Only members of an enterprise can do this.
+ERROR_ENTERPRISE_NAME_TAKEN,This name was just taken. Here are new ones.
+ERROR_MISSING_FLAG,You lack the right for this (or would give a right you do not hold).
+ERROR_LAST_FOUNDER,The founder role needs at least one holder. Give it to another member first.
+ERROR_JOIN_CLOSED,This enterprise only takes members by application.
+ERROR_NOT_INVITED,This player is not invited.
+ERROR_APPLICATION_NOT_FOUND,This application no longer exists.
+ERROR_MEMBER_NOT_FOUND,This player is not a member.
+ERROR_PLAYER_NOT_FOUND,This player does not exist.
+ERROR_ROLE_LIMIT,"Too many roles (50 per enterprise, 20 per member)."
+ERROR_ROLE_NOT_FOUND,This role no longer exists.
+ERROR_SYSTEM_ROLE_LOCKED,The founder role keeps every right and cannot be deleted.
+ERROR_INVALID_DIPLOMACY,This step is not possible now (an alliance only between enterprises and not straight out of war).
+ERROR_PROPOSAL_NOT_FOUND,There is no proposal to answer or withdraw.
+ERROR_NOT_FOUND,Not found.
+ERROR_NOT_TAXABLE,"Modules, hull parts, energy and housing cannot be taxed."

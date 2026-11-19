@@ -3,6 +3,9 @@ extends Control
 ## Account page, opened from the colony's menu: the account, the live connection, the running
 ## game time and signing out.
 
+## The player wants to see the enterprise (founding, joining, managing it).
+signal enterprise_requested
+
 ## Name of the home colony's body; set by the screen that opens this page.
 var home_name := ""
 
@@ -77,6 +80,10 @@ func _build() -> void:
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	filler.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(filler)
+
+	var enterprise := Ui.primary_button("HOME_ENTERPRISE")
+	enterprise.pressed.connect(func() -> void: enterprise_requested.emit())
+	column.add_child(enterprise)
 
 	var sign_out := Ui.secondary_button("HOME_SIGN_OUT")
 	sign_out.pressed.connect(_on_sign_out)
