@@ -208,6 +208,59 @@ func by_body() -> Dictionary:
 	return result
 
 
+## The bodies the player stands on: structures on the surface or docked to one there (orbit and
+## trips left out), in `entries` order. Each place names its main structure, the one Base opens
+## there: a base before anything else, standing before docked, then the most modules.
+func places() -> Array[Place]:
+	var result: Array[Place] = []
+	var by_id: Dictionary = {}
+	for value: Entry in entries():
+		var where := value.where()
+		if where != Where.SURFACE and where != Where.DOCKED:
+			continue
+		var body := body_of(value.structure_id)
+		if body.is_empty():
+			continue
+		var place := by_id.get(body) as Place
+		if place == null:
+			place = Place.new()
+			place.body_id = body
+			by_id[body] = place
+			result.append(place)
+		place.structure_ids.append(value.structure_id)
+		var best := find(place.main_id)
+		if best == null or _better_main(value, best):
+			place.main_id = value.structure_id
+	return result
+
+
+## The structures that can travel (a space or ground drive), in `entries` order.
+func movables() -> Array[Entry]:
+	var result: Array[Entry] = []
+	for value: Entry in entries():
+		if value.can_fly() or value.can_drive():
+			result.append(value)
+	return result
+
+
+static func _better_main(a: Entry, b: Entry) -> bool:
+	if (a.kind == "base") != (b.kind == "base"):
+		return a.kind == "base"
+	if (a.where() == Where.SURFACE) != (b.where() == Where.SURFACE):
+		return a.where() == Where.SURFACE
+	return a.total_modules > b.total_modules
+
+
+## A body with own structures (Fleet.places).
+class Place:
+	extends RefCounted
+	var body_id := ""
+	## The structures there, standing and docked.
+	var structure_ids := PackedInt64Array()
+	## The one to open there.
+	var main_id := 0
+
+
 ## The structures standing on one body's surface (not docked, not in orbit).
 func on_surface(body_id: String) -> Array[Entry]:
 	var result: Array[Entry] = []

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Inspect: a magnifying glass -->
+  <path d="M29 29 L42 42" stroke="#e3b341" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="20" cy="20" r="13" fill="#24345e" stroke="#e3b341" stroke-width="3"/>
+  <path d="M13 17 A8 8 0 0 1 19 12" fill="none" stroke="#e3b341" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

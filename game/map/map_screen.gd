@@ -1,9 +1,10 @@
 class_name MapScreen
 extends Control
 ## The star system of the player's colony: the star, the orbits, and planets, moons and belts
-## where they stand now, moving with the game clock. A tap on a body shows its details. Opened
-## from the colony screen over it; Close or Back returns there. "Galaxy" opens the galaxy map over it;
-## a system tapped there opens its own system map (`from_galaxy`), whose "Galaxy" button and Back
+## where they stand now, moving with the game clock. A tap on a body shows its details. The root
+## of the Map tab (`root`: no "‹ Back"), or a layer (a trip's target to pick, a system opened from
+## the galaxy) that "‹ Back" or Back closes. "Galaxy" puts the galaxy map over it as a layer; a
+## system tapped there opens its own system map (`from_galaxy`), whose "Galaxy" button and Back
 ## return to the galaxy.
 ##
 ## Time-lapse runs the map a game day per second for looking; it is never sent anywhere and
@@ -25,6 +26,8 @@ const PICK_LAND := "land"
 var pick := PICK_NONE
 ## The player's fleet (set before adding): structures in orbit and under way are drawn.
 var fleet: FleetModel = null
+## The root of a tab (set before adding): no "‹ Back".
+var root := false
 ## Light years per coordinate unit of the galaxy (for placing trips), kept for the session.
 static var _ly_per_unit := 0.0
 
@@ -43,8 +46,7 @@ var _shown_s := 0.0
 var _view: SystemMapView
 var _top: PanelContainer
 var _bottom: PanelContainer
-var _title: Label
-var _subtitle: Label
+var _header: LayerHeader
 var _hint: Label
 var _status: Label
 var _details: BodyPanel
@@ -52,8 +54,8 @@ var _lapse_button: Button
 var _fit_button: Button
 var _state: CenterContainer
 var _galaxy_button: Button
-## Everything of the system map; hidden while the galaxy covers it.
 var _content: Control
+## The galaxy opened from here while it is open; null otherwise.
 var _galaxy: GalaxyScreen = null
 
 
@@ -89,7 +91,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _map == null or _galaxy != null:
+	if _map == null or not is_visible_in_tree():
 		return
 	if _lapse:
 		_lapse_s += delta * TIME_LAPSE
@@ -118,15 +120,13 @@ func _update_fleet_marks() -> void:
 	_view.queue_redraw()
 
 
-## Back: the galaxy opened from here handles it first; then close the details, otherwise leave
-## the map.
-func handle_back() -> void:
-	if _galaxy != null:
-		_galaxy.handle_back()
-	elif not _view.selected.is_empty():
+## Back closes the details; false when none were open (the stack takes the layer off, or the
+## shell goes back to Base from the root).
+func handle_back() -> bool:
+	if not _view.selected.is_empty():
 		_select("")
-	else:
-		closed.emit()
+		return true
+	return false
 
 
 # --- building the screen --------------------------------------------------------------------
@@ -142,24 +142,11 @@ func _build_overlay() -> void:
 
 	_top = PanelContainer.new()
 	column.add_child(_top)
-	var top_row := HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 16)
-	_top.add_child(top_row)
-	var names := Ui.column(4)
-	top_row.add_child(names)
-	_title = Ui.dynamic_label(AppTheme.VARIATION_HEADING)
-	_title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_title.text = tr("MAP_TITLE")
-	names.add_child(_title)
-	_subtitle = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_subtitle)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.size_flags_horizontal = Control.SIZE_SHRINK_END
-	close.pressed.connect(func() -> void: closed.emit())
-	top_row.add_child(close)
+	_header = LayerHeader.new()
+	_header.show_back(not root)
+	_header.set_title(tr("MAP_TITLE"))
+	_header.back_pressed.connect(func() -> void: closed.emit())
+	_top.add_child(_header)
 
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -266,9 +253,9 @@ func _load() -> void:
 		_ly_per_unit = shape.ly_per_unit if shape != null else 1.0
 	_view.ly_per_unit = _ly_per_unit
 	_view.system_position = GalaxySystems.vector(system.data.get("position"))
-	_title.text = _map.star_name
-	_subtitle.text = tr("MAP_STAR_LINE").format({"type": BodyPanel.star_text(_map.star_type, self),
-		"kelvin": AmountFormat.units(roundi(_map.star_kelvin)), "count": _map.bodies.size()})
+	_header.set_title(_map.star_name)
+	_header.set_subtitle(tr("MAP_STAR_LINE").format({"type": BodyPanel.star_text(_map.star_type, self),
+		"kelvin": AmountFormat.units(roundi(_map.star_kelvin)), "count": _map.bodies.size()}))
 	if _map.bodies.is_empty():
 		_show_state("MAP_EMPTY")
 		return
@@ -350,26 +337,28 @@ func _show_status() -> void:
 
 # --- galaxy ---------------------------------------------------------------------------------
 
-## The galaxy over this map; from a map that the galaxy opened, back to that galaxy.
+## The galaxy as a layer over this map; from a map that the galaxy opened, back to that galaxy.
 func _on_galaxy() -> void:
 	if _from_galaxy:
 		closed.emit()
 		return
-	if _galaxy != null:
+	if galaxy() != null:
 		return
 	_galaxy = GalaxyScreen.new()
 	_galaxy.setup(_system_id, _home_body)
 	_galaxy.pick = pick
 	_galaxy.fleet = fleet
 	_galaxy.body_picked.connect(func(body_id: String) -> void: body_picked.emit(body_id))
-	_galaxy.closed.connect(_close_galaxy)
-	add_child(_galaxy)
-	_content.visible = false
+	ScreenStack.push_onto(self, _galaxy)
+
+
+## The galaxy opened from here while it is open; null otherwise.
+func galaxy() -> GalaxyScreen:
+	if _galaxy == null or not is_instance_valid(_galaxy) or _galaxy.is_queued_for_deletion():
+		return null
+	return _galaxy
 
 
 func _close_galaxy() -> void:
-	if _galaxy == null:
-		return
-	_galaxy.queue_free()
+	ScreenStack.close_layer(_galaxy)
 	_galaxy = null
-	_content.visible = true

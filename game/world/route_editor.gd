@@ -1,6 +1,6 @@
 class_name RouteEditor
 extends Control
-## One form for a route, over the whole screen. New route: transporter, stations A and B (from
+## One form for a route, a layer over the Fleet tab ("‹ Back" or Back leaves it). New route: transporter, stations A and B (from
 ## the own structures), the first stop, and per direction the goods loaded at the departing
 ## station; a live quote (debounced) says whether it can start, where it stops and what the first
 ## trip takes. Existing route: name and rules only (stations, transporter and stops are fixed;
@@ -39,7 +39,7 @@ var _busy := false
 ## What the picker chooses: "transporter", "A", "B", "goods_A", "goods_B"; "" when closed.
 var _picking := ""
 
-var _title: Label
+var _header: LayerHeader
 var _form_scroll: ScrollContainer
 var _name_edit: LineEdit
 var _ends: VBoxContainer
@@ -87,16 +87,10 @@ func _ready() -> void:
 	add_child(margin)
 	var column := Ui.column(16)
 	margin.add_child(column)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 16)
-	column.add_child(top)
-	_title = Ui.label("ROUTE_NEW_TITLE" if is_new() else "ROUTE_EDIT_TITLE", AppTheme.VARIATION_HEADING)
-	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	top.add_child(_title)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.size_flags_horizontal = Control.SIZE_SHRINK_END
-	close.pressed.connect(func() -> void: closed.emit())
-	top.add_child(close)
+	_header = LayerHeader.new()
+	_header.set_title(tr("ROUTE_NEW_TITLE") if is_new() else tr("ROUTE_EDIT_TITLE"))
+	_header.back_pressed.connect(func() -> void: closed.emit())
+	column.add_child(_header)
 
 	_form_scroll = ScrollContainer.new()
 	_form_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -153,11 +147,12 @@ func _ready() -> void:
 
 
 ## Back closes the picker first, then the editor.
-func handle_back() -> void:
+## Back closes the picker; false when it was not open (the stack takes the editor off).
+func handle_back() -> bool:
 	if _picker.visible:
 		_close_picker()
-	else:
-		closed.emit()
+		return true
+	return false
 
 
 func _process(delta: float) -> void:

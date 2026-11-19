@@ -29,6 +29,12 @@ verschärft, wenn es nötig wird.
 - **Bedienung.** Wenige Formulare. Tippziele mindestens 88 px im Canvas (= 44 dp). Destruktive
   Aktionen zweistufig. Jede datengetriebene Ansicht hat Lade-, Leer- und Fehlerzustand. Zurück
   schließt die oberste Ebene, nie die App.
+- **Navigation.** Nach dem Login `MainShell`: Bottom-Nav Base · Map · Fleet · Profile, jeder Tab
+  ein `ScreenStack` (Wurzel + Ebenen). Ebenen haben `closed` und `handle_back() -> bool` und
+  einen `LayerHeader` („‹ Back“); neue Ebenen über `ScreenStack.push_onto`, nie als eigene
+  Overlays. In einer Struktur ersetzt die Struktur-Nav (Inspect · Build · Inventory) die
+  Bottom-Nav; Vollbilder wie `StructureDetails` liegen über allem (`covers_nav`). Reisen und
+  Routen leben im Fleet-Tab. Karten über Objekten der 3D-Welt: `WorldCard`.
 - **Ein Aussehen.** Controls kommen aus der Fabrik `Ui`, Farben und Größen aus `AppTheme`.
   Farbe trägt Bedeutung: cyan Aktion/aktiv, rot Gefahr/Fehler, amber vorläufig, emerald in Ordnung.
 - **Schichten.** `core/` reine Logik ohne Szenenbaum, jede öffentliche Funktion mit Test.

@@ -7,6 +7,9 @@ extends VBoxContainer
 ## The player wants to travel on from here.
 signal travel_requested
 
+## Whether the panel offers "Travel" itself (off where the screen has its own button).
+var offer_travel := true
+
 var _fleet: FleetModel
 var _structure_id := 0
 var _place: Label
@@ -58,7 +61,7 @@ func tick() -> void:
 	_bar.visible = moving
 	_times.visible = moving
 	_fuel.visible = moving and not motion.fuel.is_empty()
-	_travel.visible = not moving and entry.can_fly() and entry.where() == Fleet.Where.ORBIT
+	_travel.visible = offer_travel and not moving and entry.can_fly() and entry.where() == Fleet.Where.ORBIT
 	if not moving:
 		return
 	_phase.text = phase_text(motion, now, self)

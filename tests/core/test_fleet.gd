@@ -52,6 +52,48 @@ func test_structures_per_body_follow_hosts_and_skip_the_ones_under_way() -> void
 	assert_int(fleet.on_surface("p1").size()).is_equal(2)
 
 
+func test_places_are_bodies_stood_on_with_the_base_as_main_structure() -> void:
+	var fleet := Fleet.new()
+	fleet.apply_list(_list())
+
+	var places := fleet.places()
+
+	# The station in orbit and the courier under way stand nowhere.
+	assert_int(places.size()).is_equal(1)
+	assert_str(places[0].body_id).is_equal("p1")
+	assert_array(Array(places[0].structure_ids)).is_equal([1, 2, 3])
+	assert_int(places[0].main_id).is_equal(1)
+
+
+func test_without_a_base_the_largest_standing_structure_is_the_main_one() -> void:
+	var fleet := Fleet.new()
+	fleet.apply_list([
+		{"structureId": 7, "name": "Small", "kind": "vehicle", "totalModules": 2,
+			"anchor": {"type": "surface", "bodyId": "m2"}},
+		{"structureId": 8, "name": "Big", "kind": "vehicle", "totalModules": 9,
+			"anchor": {"type": "surface", "bodyId": "m2"}},
+		{"structureId": 9, "name": "Bigger docked", "kind": "ship", "totalModules": 20,
+			"anchor": {"type": "docked", "hostId": 7}},
+	])
+
+	var places := fleet.places()
+
+	assert_int(places.size()).is_equal(1)
+	assert_int(places[0].main_id).is_equal(8)
+	assert_int(places[0].structure_ids.size()).is_equal(3)
+
+
+func test_movables_are_the_structures_with_a_drive() -> void:
+	var fleet := Fleet.new()
+	fleet.apply_list(_list())
+
+	var ids: Array[int] = []
+	for entry: Fleet.Entry in fleet.movables():
+		ids.append(entry.structure_id)
+
+	assert_array(ids).contains_exactly_in_any_order([2, 3, 5])
+
+
 func test_favourites_come_first_then_by_name() -> void:
 	var fleet := Fleet.new()
 	fleet.apply_list(_list())

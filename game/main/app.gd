@@ -23,8 +23,8 @@ func _notification(what: int) -> void:
 		return
 	if _screen is LoginScreen:
 		(_screen as LoginScreen).handle_back()
-	elif _screen is ColonyScreen:
-		(_screen as ColonyScreen).handle_back()
+	elif _screen is MainShell:
+		(_screen as MainShell).handle_back()
 
 
 func _on_session_changed() -> void:
@@ -36,8 +36,8 @@ func _on_session_changed() -> void:
 			if not _screen is LoginScreen:
 				_show(LoginScreen.new())
 		SessionController.Status.SIGNED_IN:
-			if not _screen is ColonyScreen:
-				_show_colony(0)
+			if not _screen is MainShell:
+				_show(MainShell.new())
 		SessionController.Status.UNREACHABLE:
 			_show(_build_unreachable())
 
@@ -47,15 +47,6 @@ func _show(screen: Control) -> void:
 		_screen.queue_free()
 	_screen = screen
 	add_child(screen)
-
-
-## The colony screen on one own structure (0: the home colony); choosing another one from it
-## builds a fresh screen.
-func _show_colony(structure_id: int) -> void:
-	var colony := ColonyScreen.new()
-	colony.start_structure = structure_id
-	colony.switch_requested.connect(_show_colony)
-	_show(colony)
 
 
 func _build_loading() -> Control:

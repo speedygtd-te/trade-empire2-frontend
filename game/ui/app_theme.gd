@@ -10,6 +10,12 @@ extends RefCounted
 const TOUCH_MIN := 88
 ## Height of a progress bar.
 const BAR_HEIGHT := 16
+## Bottom navigation: height of an entry (active bar, icon, label) without the system bar's
+## inset, the icon size, the active bar's thickness and the badge dot.
+const NAV_HEIGHT := 112
+const NAV_ICON := 48
+const NAV_BAR := 6
+const BADGE_SIZE := 16
 
 const FONT_SIZE := 30
 const FONT_SIZE_SMALL := 24
@@ -31,10 +37,15 @@ const COLOR_DANGER := Color(0.973, 0.443, 0.443)
 const COLOR_OK := Color(0.204, 0.827, 0.600)
 const COLOR_PENDING := Color(0.984, 0.749, 0.141)
 const COLOR_TRANSPARENT := Color(0, 0, 0, 0)
+## The two colours of the drawn icons (game/ui/icons/*.svg): navy fills, medium-yellow strokes
+## and accents. New icons use the same two.
+const ICON_NAVY := Color(0.141, 0.204, 0.369)
+const ICON_YELLOW := Color(0.890, 0.702, 0.255)
 
 const VARIATION_PRIMARY_BUTTON := "PrimaryButton"
 const VARIATION_DANGER_BUTTON := "DangerButton"
 const VARIATION_TAB_BUTTON := "TabButton"
+const VARIATION_NAV_BUTTON := "NavButton"
 const VARIATION_TITLE := "TitleLabel"
 const VARIATION_HEADING := "HeadingLabel"
 const VARIATION_MUTED := "MutedLabel"
@@ -86,6 +97,11 @@ static func build() -> Theme:
 	theme.set_stylebox("disabled", VARIATION_TAB_BUTTON, _underline(COLOR_TRANSPARENT))
 	theme.set_stylebox("focus", VARIATION_TAB_BUTTON, StyleBoxEmpty.new())
 	_button_font_colors(theme, VARIATION_TAB_BUTTON, COLOR_MUTED, COLOR_ACCENT)
+
+	# Entries of the bottom navigation: no frame; the entry draws its own active bar and label.
+	theme.set_type_variation(VARIATION_NAV_BUTTON, "Button")
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		theme.set_stylebox(state, VARIATION_NAV_BUTTON, StyleBoxEmpty.new())
 
 	theme.set_stylebox("normal", "LineEdit", _box(COLOR_INPUT, COLOR_BORDER))
 	theme.set_stylebox("focus", "LineEdit", _box(COLOR_INPUT, COLOR_ACCENT))

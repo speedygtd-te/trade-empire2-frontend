@@ -381,6 +381,29 @@ func highlight(structure_id: int) -> void:
 	_apply_highlight()
 
 
+## Where the middle of a structure's roof appears in the view (viewport pixels): cards that
+## belong to a structure stand there.
+func roof_point(structure: ColonyModel) -> Vector2:
+	if _camera == null or structure == null:
+		return Vector2.ZERO
+	var cell := structure.centre_cell()
+	var top := cell.z
+	for hull: Vector3i in structure.layout.hull_cells():
+		top = maxi(top, structure.layout.to_absolute(hull).z)
+	var point := WorldGrid.to_scene(Vector3i(cell.x, cell.y, top), origin, model.size_x)
+	point.y += lift_of(structure) + HULL_CLOSED_HEIGHT
+	return _camera.unproject_position(point)
+
+
+## Where the top of a cell (absolute; a module standing on it) appears in the view (viewport
+## pixels). `guest`: the cell belongs to a guest, drawn standing on its docks.
+func cell_point(cell: Vector3i, guest: bool = false) -> Vector2:
+	if _camera == null:
+		return Vector2.ZERO
+	var drop := GUEST_DROP if guest else 0.0
+	return _camera.unproject_position(WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, 0.9 - drop, 0.0))
+
+
 ## How much lower than its grid level a structure is drawn: guests stand on their docks.
 func lift_of(structure: ColonyModel) -> float:
 	return -GUEST_DROP if structure.is_guest() else 0.0

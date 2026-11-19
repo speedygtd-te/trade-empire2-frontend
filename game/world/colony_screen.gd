@@ -1,19 +1,28 @@
 class_name ColonyScreen
 extends Control
-## The signed-in main screen: the colony in 3D with a bottom panel to inspect fields and to
-## build hulls and modules from the structure's store.
+## The Base tab of the MainShell: the colony in 3D, seen from outside, and its structures opened
+## for inspecting and building.
 ##
-## The surface shows the structure closed (StructureLook): a tap on it selects it and the panel
-## shows its details. Edit or Build opens it in place — the shut hulls give way to the modules
-## on their floors — and the tabs Inspect, Build, Store, Log and Research appear. Close or Back shuts it.
+## Outside, the head names the body the player is on; a tap on it lists the player's places
+## (PlacePicker) and switches to another one. The surface shows the structures closed
+## (StructureLook). A tap on one puts a card over it (WorldCard) with its name and "Enter
+## structure" ("Go there" for a neighbour, which this screen only shows); a double tap enters it
+## at once; a tap beside it clears the card.
+##
+## Inside ("structure mode") the shut hulls give way to the modules on their floors, the head
+## names the structure (a tap opens StructureDetails: production, workers, log, research — over
+## everything) and its "×" leaves it. The structure's own navigation replaces the shell's at the
+## bottom: Inspect, Build, Inventory. Inspect: a tap on a field puts a card over it with what is
+## there and what can be done (recipe, staff, extend a shaft, two-step removal); a tap beside it
+## or on the same field again clears it. Build: the palette at the bottom; building is two taps —
+## choose the field, then confirm. Inventory: the store.
 ##
 ## Guests (vessels docked on the home structure's dock hulls) are structures of their own: a tap
-## on one selects it with its own details, Edit or Build opens only it. On the home structure a
-## new hull on a dock founds a guest; on an open guest a hull goes next to or on top of it.
-## A guest is built from the home structure's store (contract), which the palette shows.
+## on one gives its own card, entering opens only it. On the home structure a new hull on a dock
+## founds a guest; on an open guest a hull goes next to or on top of it. A guest is built from the
+## home structure's store (contract), which the palette shows.
 ##
-## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects a field. Building is two
-## taps — choose the field, then confirm — and removing is two-step as well.
+## Gestures: drag pans, pinch or mouse wheel zooms, a tap selects.
 ##
 ## Levels: while the home structure is open, a level selector at the right edge (Up / "Level 2" /
 ## Down, with the environment of the level) chooses the active level: taps, building and the
@@ -23,18 +32,31 @@ extends Control
 ## jump to their other end. A guest keeps its own stacking (DockRules.target_cell).
 ##
 ## The screen shows one own structure (`start_structure`, else the home colony) with the other own
-## structures on the same body drawn next to it (neighbours: a tap offers to go there). The fleet
-## (button "Fleet" while there is more than one structure) lists them all; choosing one asks the
-## app for a new screen (`switch_requested`). A structure in orbit or under way has no ground: it
-## shows as panels only (store and log), its place in the top bar.
+## structures on the same body drawn next to it. A structure chosen elsewhere (`show_structure`)
+## is selected here when it is on screen; otherwise the shell is asked for a new screen
+## (`switch_requested`). A structure in orbit or under way has no ground: it shows as panels only
+## (its trip and its inventory) with the shell's navigation; its details open from the head.
+## Trips are planned in the Fleet tab (`travel_requested`). Standing alone (review scenes) the
+## screen keeps its own fleet model and puts its layers over itself.
 
 ## The player wants to see another own structure.
 signal switch_requested(structure_id: int)
+## The screen entered (true) or left (false) a structure: its own navigation replaces the shell's.
+signal structure_mode_changed(on: bool)
+## The player wants to plan a trip for a structure (the Fleet tab does that).
+signal travel_requested(structure_id: int)
 
-enum Mode { VIEW, BUILD, STORE, LOG, RESEARCH, TRIP }
+enum Mode { VIEW, BUILD, STORE, TRIP }
 
+## Text keys and icons of the structure's navigation (Inspect, Build, Inventory).
+const STRUCTURE_NAV_KEYS: Array[String] = ["STRUCTURE_NAV_INSPECT", "STRUCTURE_NAV_BUILD", "STRUCTURE_NAV_INVENTORY"]
+const STRUCTURE_NAV_ICONS: Array[String] = [
+	"res://game/ui/icons/inspect.svg", "res://game/ui/icons/build.svg", "res://game/ui/icons/inventory.svg",
+]
 ## Pointer travel (canvas px) below which a press counts as a tap, not a drag.
 const TAP_SLOP := 18.0
+## Two taps on the same structure within this time (ms) enter it.
+const DOUBLE_TAP_MS := 400
 ## How often the panel text is refreshed (construction countdowns).
 const REFRESH_SECONDS := 1.0
 ## Fixed sun (radians) while the body has no orbit data: high in the south-west, so the shadows
@@ -47,66 +69,69 @@ const CORE_MODULE := "CORE_MODULE"
 const DETAIL_PATH := "user://detail.json"
 ## How often the sun is moved along its path (seconds); it crawls, so this is plenty.
 const SUN_SECONDS := 1.0
+## How long a notice stays (seconds).
+const NOTICE_SECONDS := 12.0
 
 ## The structure to show when the screen opens; 0 for the home colony. Set before adding it.
 var start_structure := 0
+## The player's structures, shared with the other tabs (set before adding); null: the screen
+## keeps its own.
+var fleet: FleetModel = null
 
 ## The structure on screen; its guests and neighbours hang below it.
 var _model: ColonyModel
-## The structure selected or open: the home structure or one of its guests.
+## The structure selected or open: the home structure or one of its guests (or a neighbour,
+## selected only).
 var _focus: ColonyModel
 var _view: ColonyView
 var _container: SubViewportContainer
 var _viewport: SubViewport
 
-var _title: Label
-var _subtitle: Label
+## The head: the body outside, the structure inside (tappable), "×" inside.
+var _top: PanelContainer
+var _header: LayerHeader
+var _close_x: Button
+## The card over the selected structure outside, and its parts.
+var _card: WorldCard
+var _card_name: Label
+var _card_line: Label
+var _card_button: Button
+## The card over the inspected field inside; it holds _info, _status and _actions in Inspect.
+var _inspect: WorldCard
+## The structure's navigation at the bottom while one is open.
+var _structure_nav: BottomNav
 var _info: Label
 var _status: Label
 var _primary: Button
 var _secondary: Button
 var _palette: BuildPalette
-var _view_tab: Button
-var _build_tab: Button
-var _store_tab: Button
 var _store: StorePanel
-var _log: LogPanel
-var _log_tab: Button
-var _research: ResearchPanel
-var _research_tab: Button
 var _recipes: RecipePanel
-var _workforce_panel: WorkforcePanel
-## Opens the staffing of the inspected module's type.
+## Opens the staffing of the inspected module's type (in the structure details).
 var _staff: Button
-var _actions: HBoxContainer
+var _actions: HFlowContainer
 var _loading: Control
+## The bottom panel: notices, the palette, the inventory, the recipes, a detached structure's tabs.
 var _bottom: PanelContainer
-var _menu: Control
-var _menu_button: Button
-## Opens the system map; shown while no structure is open.
-var _map_button: Button
-## The system map over the colony while it is open; null otherwise.
-var _map: MapScreen = null
-var _tabs: HBoxContainer
+var _rows: VBoxContainer
+## How far the colony is shifted up for the head and the bottom (canvas px): it sits in the
+## middle of the room between them.
+var _applied_shift := 0.0
+## Whether the colony has been placed once; from then on it follows the bars' heights.
+var _placed := false
+## Whether the shell lets the 3D view draw (Base shown, nothing over it).
+var _rendering := true
+## Whether a structure is open with its own navigation (sent as structure_mode_changed).
+var _structure_mode := false
+## The tabs of a structure without ground: Trip and Inventory.
+var _tabs: TabStrip
 ## The player's structures and their trips.
 var _fleet: FleetModel
-## Opens the fleet list; shown while the player has more than one structure.
-var _fleet_button: Button
-## The fleet list over the colony while it is open; null otherwise.
-var _fleet_panel: FleetPanel = null
-## The player's enterprise (kept while the screen lives, so invitations are not missed).
-var _enterprise: EnterpriseModel
-## The enterprise over everything (opened from the menu); null otherwise.
-var _enterprise_panel: EnterprisePanel = null
-## Travel: the action in the closed structure's details, the choice of the target in the bottom
-## panel, the trip tab of a structure without ground, and the surface picker over the colony.
-var _travel: Button
-var _travel_panel: TravelPanel
-var _trip_tab: Button
+## The trip of a structure without ground.
 var _trip_info: TravelInfoPanel
-var _site: TravelSiteScreen = null
-## Whether the map is open to pick a body for a trip: to land on it (true) or to orbit it.
-var _picking_land := false
+## The details over everything while open; the place picker while open.
+var _details: StructureDetails = null
+var _places: PlacePicker = null
 ## The level selector (home structure open) and its parts; the active level (absolute z).
 var _levels: PanelContainer
 var _level_up: Button
@@ -118,15 +143,13 @@ var _level := 0
 var _jump: Button
 ## Stop sites of the routes on the surface (hidden in the cutaway).
 var _stops: RouteStopLayer
-## A short message over the bottom panel (a trip started, arrived or was stopped).
+## A short message over the bottom (a trip started, arrived or was stopped).
 var _notice: Label
 var _notice_left := 0.0
-## How long a notice stays (seconds).
-const NOTICE_SECONDS := 12.0
 
 ## Whether the structure is open for building and editing; closed it shows from outside.
 var _opened := false
-## Whether the closed structure is selected (its details show in the panel).
+## Whether the closed structure is selected (its card shows).
 var _structure_selected := false
 var _mode: Mode = Mode.VIEW
 ## Absolute cell the player tapped; null when none. Only its column counts: which level is
@@ -141,6 +164,8 @@ var _armed := ""
 var _refresh_left := 0.0
 var _sun_left := 0.0
 var _detail := DetailGovernor.new()
+## When the last tap on a structure outside came (ms), for the double tap.
+var _last_tap_ms := 0
 
 var _touches: Dictionary = {}
 var _press_position := Vector2.ZERO
@@ -154,13 +179,12 @@ func _ready() -> void:
 	_model.name = "ColonyModel"
 	add_child(_model)
 	_focus = _model
-	_fleet = FleetModel.new()
-	_fleet.name = "Fleet"
-	add_child(_fleet)
+	_fleet = fleet
+	if _fleet == null:
+		_fleet = FleetModel.new()
+		_fleet.name = "Fleet"
+		add_child(_fleet)
 	_fleet.changed.connect(_on_fleet_changed)
-	_enterprise = EnterpriseModel.new()
-	_enterprise.name = "Enterprise"
-	add_child(_enterprise)
 	_build_world()
 	# Stop sites the routes hold on this body (RouteStopLayer).
 	_stops = RouteStopLayer.new()
@@ -183,7 +207,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _model.structure_id != 0:
+	if _model.structure_id != 0 and _rendering and not _model.detached:
 		_detail.add_frame(delta * 1000.0)
 		if _detail.evaluate(Time.get_ticks_msec()):
 			_view.apply_detail(_detail.tier)
@@ -196,6 +220,8 @@ func _process(delta: float) -> void:
 		_notice_left -= delta
 		if _notice_left <= 0.0:
 			_notice.visible = false
+			_update_layout()
+	_place_cards()
 	_refresh_left -= delta
 	if _refresh_left <= 0.0:
 		_refresh_left = REFRESH_SECONDS
@@ -209,39 +235,146 @@ func _process(delta: float) -> void:
 			_refresh()
 		elif _mode == Mode.STORE:
 			_store.tick()
-		elif _mode == Mode.RESEARCH and _opened:
-			_research.tick()
 
 
-## Android back: close the menu or the recipes, clear the selected field, shut the open
-## structure, clear the selected structure — never quit.
-func handle_back() -> void:
-	if _enterprise_panel != null:
-		if not _enterprise_panel.handle_back():
-			_close_enterprise()
-	elif _site != null:
-		_site.handle_back()
-	elif _fleet_panel != null:
-		if not _fleet_panel.handle_back():
-			_close_fleet()
-	elif _map != null:
-		_map.handle_back()
-	elif _menu != null and _menu.visible:
-		_menu.visible = false
-	elif _travel_panel.visible:
-		_travel_panel.handle_back()
-	elif _opened and _mode == Mode.RESEARCH and _research.handle_back():
-		pass
-	elif _recipes.visible:
+## Back (the layers over the screen belong to the shell's stack): close the recipes, clear the
+## inspected field, leave the open structure, clear the selected structure. False when nothing was
+## left to close.
+func handle_back() -> bool:
+	if _recipes.visible:
 		_close_recipes()
-	elif _workforce_panel.visible:
-		_close_workforce()
 	elif _opened and _cell != null:
 		_select(null)
 	elif _opened and not _model.detached:
 		_close_structure()
 	elif _structure_selected:
 		_select_structure(false)
+	else:
+		return false
+	return true
+
+
+## Whether the 3D view may draw (the shell: Base shown and nothing over it).
+func set_rendering(on: bool) -> void:
+	_rendering = on
+	_apply_rendering()
+
+
+func is_rendering() -> bool:
+	return _viewport != null and _viewport.render_target_update_mode != SubViewport.UPDATE_DISABLED
+
+
+func _apply_rendering() -> void:
+	if _viewport == null:
+		return
+	var draw := _rendering and not _model.detached
+	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE if draw else SubViewport.UPDATE_DISABLED
+
+
+## Whether a structure is open with its own navigation.
+func in_structure_mode() -> bool:
+	return _structure_mode
+
+
+## Centres the structure in focus again in the room between the head and the bottom.
+func recentre() -> void:
+	if _model.structure_id == 0 or _model.detached:
+		return
+	_view.look_at_cell(_focus.centre_cell())
+	_applied_shift = 0.0
+	_follow_bars()
+
+
+## The structure selected or open here (the one on screen while none is); 0 before loading.
+func current_structure() -> int:
+	if _focus != null and _focus.structure_id != 0:
+		return _focus.structure_id
+	return _model.structure_id if _model != null else start_structure
+
+
+## The star system of the structure on screen; "" before loading or while under way.
+func system_id() -> String:
+	return _model.system_id if _model != null else ""
+
+
+## The body the screen stands on; "" before loading or while under way.
+func body_id() -> String:
+	return _model.body_id if _model != null else ""
+
+
+## The measured detail tier of the 3D view (DetailGovernor.Tier).
+func detail_tier() -> int:
+	return _detail.tier
+
+
+## Shows a structure chosen elsewhere: one on screen here (a guest, the home structure) is
+## selected; anything else asks the shell for a new screen.
+func show_structure(structure_id: int) -> void:
+	if structure_id == 0 or structure_id == current_structure():
+		return
+	var here := _model.structure(structure_id)
+	if here != null and not here.is_neighbour() and not _model.detached:
+		if _opened:
+			_close_structure()
+		_focus = here
+		_select_structure(true)
+		return
+	switch_requested.emit(structure_id)
+
+
+## Opens the structure in focus (the selected one): its modules, its navigation.
+func enter_structure() -> void:
+	if _model.structure_id == 0 or _opened:
+		return
+	if _focus.is_neighbour():
+		switch_requested.emit(_focus.structure_id)
+		return
+	_open_structure(Mode.VIEW)
+
+
+## Opens the details of the structure in focus over everything.
+func open_details(tab: StructureDetails.Tab = StructureDetails.Tab.PRODUCTION) -> StructureDetails:
+	if _model.structure_id == 0:
+		return null
+	if _layer_open(_details):
+		_details.show_tab(tab)
+		return _details
+	_details = StructureDetails.new()
+	var place := _place_line(_focus.structure_id) if _model.detached else _model.body_name
+	if _focus.is_guest():
+		place = tr("COLONY_DOCKED_AT").format({"host": _focus.host.structure_name})
+	_details.setup(_focus, _model, not _focus.is_guest() and not _model.detached, place, tab)
+	ScreenStack.push_onto(self, _details)
+	return _details
+
+
+## The details while open; null otherwise.
+func details() -> StructureDetails:
+	return _details if _layer_open(_details) else null
+
+
+## Opens the list of the player's places (bodies with own structures).
+func open_places() -> PlacePicker:
+	if _layer_open(_places):
+		return _places
+	_places = PlacePicker.new()
+	_places.setup(_fleet, _model.body_id)
+	_places.chosen.connect(_on_place_chosen)
+	ScreenStack.push_onto(self, _places)
+	return _places
+
+
+func _on_place_chosen(chosen_body: String, structure_id: int) -> void:
+	ScreenStack.close_layer(_places)
+	_places = null
+	if chosen_body == _model.body_id:
+		recentre()
+		return
+	switch_requested.emit(structure_id)
+
+
+func _layer_open(layer: Variant) -> bool:
+	return ScreenStack.is_open(layer)
 
 
 # --- building the screen --------------------------------------------------------------------
@@ -277,44 +410,47 @@ func _save_detail() -> void:
 
 
 func _build_overlay() -> void:
+	# The cards stand over the colony, under the head and the bottom.
+	_card = WorldCard.new()
+	add_child(_card)
+	_card_name = Ui.dynamic_label(AppTheme.VARIATION_HEADING)
+	_card_name.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_card_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_card.content().add_child(_card_name)
+	_card_line = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_card.content().add_child(_card_line)
+	_card_button = Ui.primary_button("COLONY_ENTER")
+	_card_button.pressed.connect(enter_structure)
+	_card.content().add_child(_card_button)
+	_inspect = WorldCard.new()
+	add_child(_inspect)
+
+	var frame := VBoxContainer.new()
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.add_theme_constant_override("separation", 0)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(frame)
 	var margin := SafeAreaMargin.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(margin)
+	frame.add_child(margin)
 	var column := Ui.column(0)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(column)
 
-	# Top: colony name, body, menu.
-	var top := PanelContainer.new()
-	column.add_child(top)
-	var top_row := HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 16)
-	top.add_child(top_row)
-	var names := Ui.column(4)
-	top_row.add_child(names)
-	_title = Ui.dynamic_label(AppTheme.VARIATION_HEADING)
-	_title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_title)
-	_subtitle = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_subtitle)
-	_map_button = Ui.secondary_button("MAP_OPEN")
-	_map_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_map_button.visible = false
-	_map_button.pressed.connect(_open_map)
-	top_row.add_child(_map_button)
-	_fleet_button = Ui.secondary_button("FLEET_OPEN")
-	_fleet_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_fleet_button.visible = false
-	_fleet_button.pressed.connect(_open_fleet)
-	top_row.add_child(_fleet_button)
-	_menu_button = Ui.secondary_button("COLONY_MENU")
-	_menu_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_menu_button.pressed.connect(_on_menu)
-	top_row.add_child(_menu_button)
+	# Top: the body outside, the structure inside; a tap on the name opens the places or the
+	# structure's details, "×" leaves the structure.
+	_top = PanelContainer.new()
+	column.add_child(_top)
+	_header = LayerHeader.new()
+	_header.show_back(false)
+	_header.set_title_tappable(true)
+	_header.title_pressed.connect(_on_title_pressed)
+	_top.add_child(_header)
+	_close_x = LayerHeader.close_button()
+	_close_x.visible = false
+	_close_x.pressed.connect(_close_structure)
+	_header.add_action(_close_x)
 
 	# Middle: the colony, and the level selector at the right edge.
 	var middle := HBoxContainer.new()
@@ -356,97 +492,64 @@ func _build_overlay() -> void:
 	_jump.visible = false
 	level_box.add_child(_jump)
 
-	# Bottom: tabs, palette, info, actions.
+	# Bottom: notices, a detached structure's tabs, the inventory, the recipes, the palette.
 	_bottom = PanelContainer.new()
 	column.add_child(_bottom)
-	var rows := Ui.column(16)
-	_bottom.add_child(rows)
+	_rows = Ui.column(16)
+	_bottom.add_child(_rows)
 	_notice = Ui.dynamic_label()
 	_notice.visible = false
-	rows.add_child(_notice)
-	_tabs = HBoxContainer.new()
-	rows.add_child(_tabs)
-	var group := ButtonGroup.new()
-	_view_tab = Ui.tab_button("COLONY_TAB_VIEW", group)
-	_view_tab.pressed.connect(_set_mode.bind(Mode.VIEW))
-	_tabs.add_child(_view_tab)
-	_build_tab = Ui.tab_button("COLONY_TAB_BUILD", group)
-	_build_tab.pressed.connect(_set_mode.bind(Mode.BUILD))
-	_tabs.add_child(_build_tab)
-	_store_tab = Ui.tab_button("COLONY_TAB_STORE", group)
-	_store_tab.pressed.connect(_set_mode.bind(Mode.STORE))
-	_tabs.add_child(_store_tab)
-	_log_tab = Ui.tab_button("COLONY_TAB_LOG", group)
-	_log_tab.pressed.connect(_set_mode.bind(Mode.LOG))
-	_tabs.add_child(_log_tab)
-	_research_tab = Ui.tab_button("COLONY_TAB_RESEARCH", group)
-	_research_tab.pressed.connect(_set_mode.bind(Mode.RESEARCH))
-	_tabs.add_child(_research_tab)
-	_trip_tab = Ui.tab_button("TRAVEL_TAB_TRIP", group)
-	_trip_tab.pressed.connect(_set_mode.bind(Mode.TRIP))
-	_tabs.add_child(_trip_tab)
+	_rows.add_child(_notice)
+	_tabs = TabStrip.new()
+	_tabs.add_tab("TRAVEL_TAB_TRIP")
+	_tabs.add_tab("STRUCTURE_NAV_INVENTORY")
+	_tabs.tab_selected.connect(func(index: int) -> void: _set_mode(Mode.TRIP if index == 0 else Mode.STORE))
+	_rows.add_child(_tabs)
 
 	_store = StorePanel.new()
 	_store.setup(_model)
-	rows.add_child(_store)
-	_log = LogPanel.new()
-	_log.setup(_model)
-	_log.visible = false
-	rows.add_child(_log)
-	_research = ResearchPanel.new()
-	_research.setup(_model)
-	_research.visible = false
-	rows.add_child(_research)
+	_rows.add_child(_store)
 	_recipes = RecipePanel.new()
 	_recipes.visible = false
 	_recipes.chosen.connect(_on_recipe_chosen)
 	_recipes.closed.connect(_close_recipes)
-	rows.add_child(_recipes)
-	_workforce_panel = WorkforcePanel.new()
-	_workforce_panel.visible = false
-	_workforce_panel.applied.connect(_on_workforce_applied)
-	_workforce_panel.closed.connect(_close_workforce)
-	rows.add_child(_workforce_panel)
-	_travel_panel = TravelPanel.new()
-	_travel_panel.visible = false
-	_travel_panel.closed.connect(_close_travel)
-	_travel_panel.pick_body_requested.connect(_open_map_pick)
-	_travel_panel.drive_requested.connect(_on_drive_requested)
-	_travel_panel.started.connect(_on_travel_started)
-	rows.add_child(_travel_panel)
+	_rows.add_child(_recipes)
 	_trip_info = TravelInfoPanel.new()
 	_trip_info.visible = false
-	_trip_info.travel_requested.connect(_open_travel)
-	rows.add_child(_trip_info)
+	_trip_info.travel_requested.connect(func() -> void: travel_requested.emit(_model.structure_id))
+	_rows.add_child(_trip_info)
 
 	_palette = BuildPalette.new()
 	_palette.chosen.connect(_choose_tool)
-	rows.add_child(_palette)
+	_rows.add_child(_palette)
 
+	# Info, status and actions: in the bottom while building, on the inspect card in Inspect.
 	_info = Ui.dynamic_label()
-	rows.add_child(_info)
+	_rows.add_child(_info)
 	_status = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	rows.add_child(_status)
-
-	_actions = HBoxContainer.new()
-	_actions.add_theme_constant_override("separation", 16)
-	rows.add_child(_actions)
+	_rows.add_child(_status)
+	_actions = HFlowContainer.new()
+	_actions.add_theme_constant_override("h_separation", 16)
+	_actions.add_theme_constant_override("v_separation", 12)
+	_rows.add_child(_actions)
+	_staff = Ui.secondary_button("WORKFORCE_OPEN")
+	_staff.pressed.connect(_on_staff)
+	_staff.visible = false
+	_actions.add_child(_staff)
 	_secondary = Ui.secondary_button("COLONY_CANCEL")
 	_secondary.pressed.connect(_on_secondary)
 	_actions.add_child(_secondary)
 	_primary = Ui.primary_button("COLONY_BUILD_HERE")
 	_primary.pressed.connect(_on_primary)
 	_actions.add_child(_primary)
-	_staff = Ui.secondary_button("WORKFORCE_OPEN")
-	_staff.pressed.connect(_on_staff)
-	_staff.visible = false
-	_actions.add_child(_staff)
-	_actions.move_child(_staff, 0)
-	_travel = Ui.secondary_button("TRAVEL_OPEN")
-	_travel.pressed.connect(_open_travel)
-	_travel.visible = false
-	_actions.add_child(_travel)
-	_actions.move_child(_travel, 0)
+
+	# The structure's own navigation, over the whole width at the very bottom.
+	_structure_nav = BottomNav.new()
+	for index: int in STRUCTURE_NAV_KEYS.size():
+		_structure_nav.add_entry(STRUCTURE_NAV_KEYS[index], load(STRUCTURE_NAV_ICONS[index]) as Texture2D)
+	_structure_nav.tab_pressed.connect(_on_structure_nav)
+	_structure_nav.visible = false
+	frame.add_child(_structure_nav)
 
 	_loading = CenterContainer.new()
 	_loading.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -454,6 +557,46 @@ func _build_overlay() -> void:
 	loading_text.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_loading.add_child(loading_text)
 	add_child(_loading)
+	# Deferred: while the bars lay out, their new heights are not final yet.
+	for bar: Control in [_top, _bottom, _structure_nav]:
+		bar.resized.connect(_follow_bars, CONNECT_DEFERRED)
+		bar.visibility_changed.connect(_follow_bars, CONNECT_DEFERRED)
+	resized.connect(_follow_bars, CONNECT_DEFERRED)
+
+
+## The room between the head and whatever covers the bottom (panel or navigation), in this
+## screen's coordinates.
+func _free_rect() -> Rect2:
+	var top := _top.get_global_rect().end.y - global_position.y
+	var bottom := size.y
+	if _bottom.visible:
+		bottom = _bottom.get_global_rect().position.y - global_position.y
+	elif _structure_nav.visible:
+		bottom = _structure_nav.get_global_rect().position.y - global_position.y
+	return Rect2(0.0, top, size.x, maxf(bottom - top, 1.0))
+
+
+## The head or the bottom changed: the colony moves so that it stays in the middle of the room
+## between them.
+func _follow_bars() -> void:
+	if not _placed or _model.detached or not is_visible_in_tree():
+		return
+	var room := _free_rect()
+	var wanted := (size.y - room.end.y - room.position.y) * 0.5
+	if is_equal_approx(wanted, _applied_shift):
+		return
+	_view.pan(Vector2(0.0, -(wanted - _applied_shift) * _scale()), Vector2(_viewport.size))
+	_applied_shift = wanted
+
+
+## Keeps the cards over their structure or field.
+func _place_cards() -> void:
+	if _model.structure_id == 0 or _model.detached:
+		return
+	if _card.visible:
+		_card.place(_view.roof_point(_focus) / _scale(), _free_rect())
+	if _inspect.visible and _cell != null:
+		_inspect.place(_view.cell_point(_target() as Vector3i, _focus.is_guest()) / _scale(), _free_rect())
 
 
 # --- data -----------------------------------------------------------------------------------
@@ -464,27 +607,28 @@ func _on_definitions_loaded() -> void:
 
 func _on_ready_to_show() -> void:
 	_loading.visible = false
-	_map_button.visible = not _opened and not _model.system_id.is_empty()
-	_title.text = _model.structure_name
-	_subtitle.text = _model.body_name
 	_fleet.reload()
 	if _model.asked_guest != 0 and _model.structure(_model.asked_guest) != null:
 		_focus = _model.structure(_model.asked_guest)
 		if not _model.detached:
 			_select_structure(true)
+	_show_names()
 	if _model.detached:
 		# No ground: the structure shows as panels only, the 3D view stops drawing.
 		_container.visible = false
-		_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_apply_rendering()
 		_trip_info.setup(_fleet, _model.structure_id)
 		_open_structure(Mode.TRIP)
 		return
 	_view.set_fleet(_fleet.fleet)
 	_view.look_at_cell(_model.centre_cell())
 	_update_sun()
-	# The bottom panel covers the lower part of the view: shift the colony into the part above.
+	# The head and the bottom cover parts of the view: shift the colony into the room between
+	# them (and from then on with every change of their heights).
 	await get_tree().process_frame
-	_view.pan(Vector2(0.0, -_bottom.size.y * 0.5 * _scale()), Vector2(_viewport.size))
+	_applied_shift = 0.0
+	_placed = true
+	_follow_bars()
 	_refresh()
 
 
@@ -548,7 +692,7 @@ func _on_inventory_changed() -> void:
 func _on_guests_changed() -> void:
 	# A guest founded or gone is a structure more or less in the fleet.
 	_fleet.reload()
-	if _focus != _model and not _model.guests.has(_focus.structure_id):
+	if _focus != _model and not _model.guests.has(_focus.structure_id) and not _focus.is_neighbour():
 		var was_open := _opened
 		_focus = _model
 		if was_open:
@@ -558,8 +702,6 @@ func _on_guests_changed() -> void:
 			_stops.visible = true
 			_view.open_structure(0)
 			_view.show_preview([], false)
-			_menu_button.text = tr("COLONY_MENU")
-			_map_button.visible = true
 			_select(null)
 			_set_mode(Mode.VIEW)
 		_select_structure(false)
@@ -573,52 +715,80 @@ func _set_mode(mode: Mode) -> void:
 	_mode = mode
 	if _recipes != null and _recipes.visible:
 		_close_recipes()
-	if _workforce_panel != null and _workforce_panel.visible:
-		_close_workforce()
-	_view_tab.set_pressed_no_signal(mode == Mode.VIEW)
-	_build_tab.set_pressed_no_signal(mode == Mode.BUILD)
-	_store_tab.set_pressed_no_signal(mode == Mode.STORE)
-	_log_tab.set_pressed_no_signal(mode == Mode.LOG)
-	_research_tab.set_pressed_no_signal(mode == Mode.RESEARCH)
-	_trip_tab.set_pressed_no_signal(mode == Mode.TRIP)
-	if _travel_panel.visible:
-		_travel_panel.visible = false
-	# A closed structure shows only its details: no tabs, no store, no log.
-	_tabs.visible = _opened
-	# The research tab shows the labs of the home structure; a guest does not offer it (yet).
-	# A structure without ground (orbit, under way) has nothing to inspect or build in 3D, but
-	# its trip.
-	_research_tab.visible = not _focus.is_guest() and not _model.detached
-	_view_tab.visible = not _model.detached
-	_build_tab.visible = not _model.detached
-	_trip_tab.visible = _model.detached
-	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.LOG or mode == Mode.RESEARCH or mode == Mode.TRIP)
+	_structure_nav.select(_nav_index(mode))
+	_tabs.select(0 if mode == Mode.TRIP else 1)
+	var panel_mode := _opened and (mode == Mode.STORE or mode == Mode.TRIP)
 	_palette.visible = _opened and mode == Mode.BUILD
 	_store.visible = _opened and mode == Mode.STORE
-	_log.visible = _opened and mode == Mode.LOG
-	_research.visible = _opened and mode == Mode.RESEARCH
 	_trip_info.visible = _opened and mode == Mode.TRIP
 	if _trip_info.visible:
 		_trip_info.tick()
-	_info.visible = not panel_mode
-	_status.visible = not panel_mode
-	_actions.visible = not panel_mode
+	_info.visible = _opened and not panel_mode
+	_status.visible = _opened and not panel_mode
+	_actions.visible = _opened and not panel_mode
 	if panel_mode:
 		_view.show_preview([], false)
-	if _opened and mode == Mode.LOG:
-		_log.reload()
-	if _opened and mode == Mode.RESEARCH:
-		_research.reload()
 	if _opened and mode == Mode.STORE:
 		_store.show_inventory(_focus.inventory)
 		_store.show_balance(_focus)
-		_view.show_preview([], false)
 	_tool = ""
 	_armed = ""
 	_status.text = ""
 	_update_levels()
 	_fill_palette()
 	_refresh()
+	_show_names()
+	_update_layout()
+
+
+## Index in the structure's navigation of a mode.
+func _nav_index(mode: Mode) -> int:
+	match mode:
+		Mode.BUILD:
+			return 1
+		Mode.STORE:
+			return 2
+	return 0
+
+
+func _on_structure_nav(index: int) -> void:
+	var modes: Array[Mode] = [Mode.VIEW, Mode.BUILD, Mode.STORE]
+	var mode := modes[clampi(index, 0, modes.size() - 1)]
+	if mode == _mode:
+		# The active entry again: start over (no field, no tool).
+		_select(null)
+	_set_mode(mode)
+
+
+## Shows and hides the bars and cards for the current state and tells the shell when the
+## structure's navigation takes over.
+func _update_layout() -> void:
+	if _bottom == null:
+		return
+	var in_structure := _opened and not _model.detached
+	_close_x.visible = in_structure
+	_structure_nav.visible = in_structure
+	_tabs.visible = _opened and _model.detached
+	var in_card := in_structure and _mode == Mode.VIEW
+	_move_details(in_card)
+	_inspect.visible = in_card and _cell != null and not _recipes.visible
+	_card.visible = not _opened and _structure_selected and not _model.detached
+	var details_below := _opened and _mode == Mode.BUILD and not _recipes.visible
+	_bottom.visible = _notice.visible or _tabs.visible or _palette.visible or _store.visible \
+		or _recipes.visible or _trip_info.visible or details_below
+	if in_structure != _structure_mode:
+		_structure_mode = in_structure
+		structure_mode_changed.emit(in_structure)
+	_place_cards()
+
+
+## Puts info, status and actions on the inspect card or into the bottom panel.
+func _move_details(on_card: bool) -> void:
+	var target: Control = _inspect.content() if on_card else _rows
+	if _info.get_parent() == target:
+		return
+	for node: Control in [_info, _status, _actions]:
+		node.reparent(target, false)
 
 
 ## The palette offers what the store that builds the open structure holds: its own, or the
@@ -715,7 +885,8 @@ func _z_line(module_def: GameDefinitions.ModuleDef, z: int) -> String:
 func _update_levels() -> void:
 	if _levels == null:
 		return
-	_levels.visible = _uses_levels() and (_mode == Mode.VIEW or _mode == Mode.BUILD) and not _travel_panel.visible
+	# While the recipes fill the bottom the selector would push the navigation off the screen.
+	_levels.visible = _uses_levels() and (_mode == Mode.VIEW or _mode == Mode.BUILD) and not _recipes.visible
 	if not _levels.visible:
 		return
 	var bounds := _level_range()
@@ -805,8 +976,6 @@ func _choose_tool(tool: String) -> void:
 func _select(cell: Variant) -> void:
 	if _recipes.visible:
 		_close_recipes()
-	if _workforce_panel.visible:
-		_close_workforce()
 	_cell = cell
 	_armed = ""
 	_status.text = ""
@@ -816,9 +985,11 @@ func _select(cell: Variant) -> void:
 	if _mode == Mode.BUILD and _uses_levels() and _level == 0:
 		_fill_palette()
 	_refresh()
+	_show_names()
+	_update_layout()
 
 
-## Selects the closed structure in focus (shows its details) or clears the selection; then the
+## Selects the closed structure in focus (its card shows) or clears the selection; then the
 ## home structure is in focus again.
 func _select_structure(on: bool) -> void:
 	_structure_selected = on
@@ -829,9 +1000,10 @@ func _select_structure(on: bool) -> void:
 	_view.highlight(_focus.structure_id if on else 0)
 	_show_names()
 	_refresh()
+	_update_layout()
 
 
-## Opens the structure in focus in place and switches to a tab: its shut hulls give way to the
+## Opens the structure in focus in place and switches to a mode: its shut hulls give way to the
 ## modules. The other structures stay shut.
 func _open_structure(mode: Mode) -> void:
 	_opened = true
@@ -843,29 +1015,45 @@ func _open_structure(mode: Mode) -> void:
 	_level = 0
 	_view.set_level(0, _uses_levels())
 	_store.setup(_focus)
-	_log.setup(_focus)
-	_menu_button.text = tr("COLONY_MENU") if _model.detached else tr("COLONY_CLOSE_STRUCTURE")
-	_map_button.visible = _model.detached and not _model.system_id.is_empty()
-	_fleet_button.visible = _model.detached and _fleet.fleet.size() > 1
-	_show_names()
 	_set_mode(mode)
 
 
-## Name and place in the top bar: the guest in focus with its host, otherwise the home structure
-## with its body.
+## The head: the body outside (with how many own structures stand there), the structure inside
+## (with where it is, or the hint of the mode).
 func _show_names() -> void:
-	_title.text = _focus.structure_name
-	if _focus.is_guest():
-		_subtitle.text = tr("COLONY_DOCKED_AT").format({"host": _focus.host.structure_name})
-	elif _model.detached:
-		_subtitle.text = _place_line(_focus.structure_id)
-	else:
-		_subtitle.text = _model.body_name
-
-
-## Shuts the open structure again; it stays selected, so its details show.
-func _close_structure() -> void:
+	if _header == null or _model.structure_id == 0:
+		return
+	if not _opened:
+		_header.set_title(_model.body_name)
+		var count := _model.drawn_structures().size()
+		for place: Fleet.Place in _fleet.fleet.places():
+			if place.body_id == _model.body_id:
+				count = place.structure_ids.size()
+		_header.set_subtitle(tr("COLONY_PLACE_COUNT").format({"count": count}))
+		return
+	_header.set_title(_focus.structure_name)
 	if _model.detached:
+		_header.set_subtitle(_place_line(_focus.structure_id))
+	elif _mode == Mode.VIEW and _cell == null:
+		_header.set_subtitle(tr("COLONY_HINT_VIEW"))
+	elif _focus.is_guest():
+		_header.set_subtitle(tr("COLONY_DOCKED_AT").format({"host": _focus.host.structure_name}))
+	else:
+		_header.set_subtitle(_model.body_name)
+
+
+func _on_title_pressed() -> void:
+	if _model.structure_id == 0:
+		return
+	if _opened:
+		open_details()
+	else:
+		open_places()
+
+
+## Shuts the open structure again: back outside with the shell's navigation.
+func _close_structure() -> void:
+	if _model.detached or not _opened:
 		return
 	_opened = false
 	_level = 0
@@ -873,31 +1061,27 @@ func _close_structure() -> void:
 	_stops.visible = true
 	_view.open_structure(0)
 	_view.show_preview([], false)
-	_menu_button.text = tr("COLONY_MENU")
-	_map_button.visible = _model.structure_id != 0
-	_fleet_button.visible = _fleet.fleet.size() > 1
-	_select(null)
+	_cell = null
+	_view.select_cell(null)
 	_set_mode(Mode.VIEW)
-	_select_structure(true)
+	_select_structure(false)
 
 
-## Updates preview, info text and buttons from the current state.
+## Updates preview, info text, cards and buttons from the current state.
 func _refresh() -> void:
 	if _view == null or _model.structure_id == 0:
 		return
 	_staff.visible = false
-	_travel.visible = false
 	_jump.visible = false
 	_update_levels()
-	if _travel_panel.visible:
-		return
 	if not _opened:
 		_refresh_closed()
 		return
+	if _mode == Mode.STORE or _mode == Mode.TRIP:
+		_view.select_cell(null)
+		return
 	if _cell != null:
 		_view.select_cell(_target(), _target_on_guest())
-	if _mode == Mode.STORE or _mode == Mode.LOG or _mode == Mode.RESEARCH or _mode == Mode.TRIP:
-		return
 	_primary.disabled = _busy
 	_secondary.disabled = _busy
 	if _mode == Mode.BUILD:
@@ -907,61 +1091,32 @@ func _refresh() -> void:
 		_refresh_view()
 
 
-## The closed structure: a hint, or the details of the selected structure with Edit and Build.
+## Outside: the card of the selected structure — its name, its trip, "Enter structure" (or
+## "Go there" for a neighbour).
 func _refresh_closed() -> void:
-	_primary.disabled = _busy
-	_secondary.disabled = _busy
 	if not _structure_selected:
-		_info.text = tr("COLONY_HINT_OUTSIDE")
-		_info.remove_theme_color_override("font_color")
-		_actions.visible = false
 		return
-	_actions.visible = true
-	var layout := _focus.layout
-	var lines := PackedStringArray([tr("COLONY_STRUCTURE_SUMMARY").format({
-		"hulls": layout.hull_count(), "modules": layout.module_count()})])
+	_card_name.text = _focus.structure_name
+	var lines := PackedStringArray()
 	var trip := _trip_line(_focus.structure_id)
 	if not trip.is_empty():
 		lines.append(trip)
 	if _focus.is_neighbour():
 		lines.append(tr("COLONY_NEIGHBOUR"))
-		_info.text = "\n".join(lines)
-		_info.remove_theme_color_override("font_color")
-		_secondary.visible = false
-		_primary.visible = true
-		_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
-		_primary.text = tr("COLONY_GO_THERE")
-		return
-	var building := StructureLook.modules_building(layout)
-	if building > 0:
-		lines.append(tr("COLONY_STRUCTURE_BUILDING").format({"count": building}))
-	var workforce := _focus.workforce
-	lines.append(tr("WORKFORCE_SUMMARY").format({"people": workforce.total_population(),
-		"assigned": workforce.assigned_total(), "needed": workforce.needed_total()}))
-	lines.append(StorePanel.balance_text(_focus))
-	_info.text = "\n".join(lines)
-	if StorePanel.is_short(_focus):
-		_info.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
-	else:
-		_info.remove_theme_color_override("font_color")
-	_travel.visible = _can_travel(_focus)
-	_secondary.visible = true
-	_secondary.text = tr("COLONY_OPEN_EDIT")
-	_primary.visible = true
-	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
-	_primary.text = tr("COLONY_OPEN_BUILD")
-	if not trip.is_empty():
-		# Nothing is built while it travels (STRUCTURE_MOVING).
-		_primary.visible = false
+	elif _focus.is_guest():
+		lines.append(tr("COLONY_DOCKED_AT").format({"host": _focus.host.structure_name}))
+	_card_line.text = "\n".join(lines)
+	_card_line.visible = not lines.is_empty()
+	_card_button.text = tr("COLONY_GO_THERE") if _focus.is_neighbour() else tr("COLONY_ENTER")
 
 
 func _refresh_view() -> void:
 	_info.remove_theme_color_override("font_color")
 	_secondary.visible = false
-	# Everything the inspect view offers on the main button removes something.
+	# Everything the inspect card offers on the main button removes something.
 	_primary.theme_type_variation = AppTheme.VARIATION_DANGER_BUTTON
 	if _cell == null:
-		_info.text = tr("COLONY_HINT_VIEW")
+		_info.text = ""
 		_primary.visible = false
 		return
 	var target: Vector3i = _target()
@@ -995,7 +1150,9 @@ func _refresh_view() -> void:
 			"module": module_name, "hull": hull_name, "duration": TimeFormat.duration(maxi(remaining, 0))})
 	else:
 		_info.text = tr("COLONY_CELL_MODULE").format({"module": module_name, "hull": hull_name})
-		_info.text += "\n" + _recipe_line(placed)
+		var recipe_line := _recipe_line(placed)
+		if not recipe_line.is_empty():
+			_info.text += "\n" + recipe_line
 		if placed.is_disabled():
 			_info.text += "\n" + tr("COLONY_MODULE_DISABLED")
 	_primary.visible = true
@@ -1014,10 +1171,9 @@ func _refresh_view() -> void:
 	if module_def != null and module_def.blueprint_driven and not placed.is_building():
 		_secondary.visible = true
 		_secondary.text = tr("COLONY_CHOOSE_RECIPE")
-	if _staffable(module_def) and not placed.is_building():
-		var group := _group_of(placed.module_type)
-		_info.text += "
-" + tr("WORKFORCE_LINE").format({"assigned": group.assigned(),
+	if StructureDetails.staffable(module_def) and not placed.is_building():
+		var group := StructureDetails.group_of(_focus, placed.module_type)
+		_info.text += "\n" + tr("WORKFORCE_LINE").format({"assigned": group.assigned(),
 			"needed": group.needed(), "modules": group.modules})
 		_staff.visible = true
 
@@ -1190,13 +1346,7 @@ func _verdict_text(verdict: BuildRules.Verdict) -> String:
 # --- actions --------------------------------------------------------------------------------
 
 func _on_primary() -> void:
-	if not _opened:
-		if _structure_selected and _focus.is_neighbour():
-			switch_requested.emit(_focus.structure_id)
-		elif _structure_selected:
-			_open_structure(Mode.BUILD)
-		return
-	if _busy or _cell == null:
+	if not _opened or _busy or _cell == null:
 		return
 	if _mode == Mode.BUILD:
 		_build()
@@ -1216,8 +1366,6 @@ func _on_primary() -> void:
 
 func _on_secondary() -> void:
 	if not _opened:
-		if _structure_selected and not _focus.is_neighbour():
-			_open_structure(Mode.VIEW)
 		return
 	if _mode == Mode.BUILD and _is_multi_cell() and _cell != null:
 		_rotation = (_rotation + 90) % 360
@@ -1230,85 +1378,35 @@ func _on_secondary() -> void:
 		elif placed != null:
 			_open_recipes(placed)
 		return
-	_set_mode(Mode.VIEW)
+	# Build without a tool or field: start over.
+	_tool = ""
+	_select(null)
+	_fill_palette()
 
 
-## Whether a module needs workers (and so can be staffed).
-func _staffable(module_def: GameDefinitions.ModuleDef) -> bool:
-	return module_def != null and not module_def.workforce_exempt and module_def.required_workers > 0
-
-
-## The workforce group of a module type in the structure on screen; a type the rate solution
-## does not list yet (just finished) starts empty with its active modules.
-func _group_of(module_type: String) -> Workforce.Group:
-	var known: Variant = _focus.workforce.groups.get(module_type)
-	if known != null:
-		return known as Workforce.Group
-	var group := Workforce.Group.new()
-	group.module_type = module_type
-	var module_def := Services.definitions.module(module_type)
-	if module_def != null:
-		group.required_workers = module_def.required_workers
-		group.base_tier = module_def.base_tier
-	for placed: StructureLayout.Module in _focus.layout.modules():
-		if placed.module_type == module_type and not placed.is_building():
-			group.modules += 1
-	return group
-
-
+## The staffing of the inspected module's type, in the structure details.
 func _on_staff() -> void:
 	if _cell == null:
 		return
 	var placed := _focus.layout.module_at(_focus.layout.to_local(_target() as Vector3i))
 	if placed == null:
 		return
-	var module_def := Services.definitions.module(placed.module_type)
-	_workforce_panel.visible = true
-	_info.visible = false
-	_status.visible = false
-	_actions.visible = false
-	_workforce_panel.show_group(_group_of(placed.module_type), _focus.workforce, _focus.robots_in_store(),
-		module_def.display_name if module_def != null else "")
-
-
-func _close_workforce() -> void:
-	_workforce_panel.visible = false
-	_info.visible = true
-	_status.visible = true
-	_actions.visible = true
-	_refresh()
-
-
-func _on_workforce_applied(module_type: String, humans: Array[int], robots: Array[int], auto: Array[bool]) -> void:
-	if _busy:
-		return
-	_busy = true
-	_workforce_panel.set_busy(true)
-	var result := await _focus.set_workforce(module_type, humans, robots, auto)
-	_busy = false
-	_workforce_panel.set_busy(false)
-	if result.is_ok():
-		_close_workforce()
-		_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
-		_status.text = tr("COLONY_DONE")
-	else:
-		_workforce_panel.show_error(ErrorText.describe(result.error, self))
+	var details_screen := open_details(StructureDetails.Tab.WORKERS)
+	if details_screen != null:
+		details_screen.open_workforce(placed.module_type)
 
 
 func _open_recipes(placed: StructureLayout.Module) -> void:
 	_recipes.visible = true
-	_info.visible = false
-	_status.visible = false
-	_actions.visible = false
 	_recipes.show_recipes(placed.module_type, placed.blueprint, _focus.usable_blueprints, _focus.atmosphere)
+	_update_levels()
+	_update_layout()
 
 
 func _close_recipes() -> void:
 	_recipes.visible = false
-	_info.visible = true
-	_status.visible = true
-	_actions.visible = true
 	_refresh()
+	_update_layout()
 
 
 func _on_recipe_chosen(blueprint: String) -> void:
@@ -1362,78 +1460,11 @@ func _send(ops: Array[Dictionary]) -> void:
 	_refresh()
 
 
-func _on_menu() -> void:
-	# While the structure is open, the button closes it (one without ground stays open).
-	if _opened and not _model.detached:
-		_close_structure()
-		return
-	if _menu == null:
-		_menu = _build_menu()
-		add_child(_menu)
-	_menu.visible = true
-
-
-## Opens the enterprise over everything (the menu stays below it).
-func _open_enterprise() -> void:
-	if _enterprise_panel != null:
-		return
-	_enterprise_panel = EnterprisePanel.new()
-	_enterprise_panel.setup(_enterprise)
-	_enterprise_panel.closed.connect(_close_enterprise)
-	add_child(_enterprise_panel)
-	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-
-
-func _close_enterprise() -> void:
-	if _enterprise_panel == null:
-		return
-	_enterprise_panel.queue_free()
-	_enterprise_panel = null
-	if not _model.detached:
-		_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
-
-
-## Opens the list of own structures over the colony.
-func _open_fleet() -> void:
-	if _fleet_panel != null:
-		return
-	_fleet_panel = FleetPanel.new()
-	_fleet_panel.setup(_fleet, _focus.structure_id)
-	_fleet_panel.chosen.connect(_on_fleet_chosen)
-	_fleet_panel.closed.connect(_close_fleet)
-	add_child(_fleet_panel)
-	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-
-
-func _close_fleet() -> void:
-	if _fleet_panel == null:
-		return
-	_fleet_panel.queue_free()
-	_fleet_panel = null
-	if not _model.detached:
-		_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
-
-
-func _on_fleet_chosen(structure_id: int) -> void:
-	_close_fleet()
-	if structure_id == _focus.structure_id:
-		return
-	# Already on screen (a guest or a neighbour): select it there; anything else: switch.
-	var here := _model.structure(structure_id)
-	if here != null and not here.is_neighbour() and not _model.detached:
-		if _opened:
-			_close_structure()
-		_focus = here
-		_select_structure(true)
-		return
-	switch_requested.emit(structure_id)
-
-
-## The fleet changed: the button shows with more than one structure, trips update the texts.
+## The fleet changed: trips update the texts; a structure that took off or landed gets a new
+## screen.
 func _on_fleet_changed() -> void:
 	if _model.structure_id != 0 and _switch_if_moved():
 		return
-	_fleet_button.visible = _fleet.fleet.size() > 1 and (not _opened or _model.detached)
 	if _model.structure_id != 0 and not _model.detached:
 		_model.sync_with_fleet(_fleet.fleet, Services.clock.now_ms())
 		_view.set_fleet(_fleet.fleet)
@@ -1448,7 +1479,7 @@ func _on_fleet_changed() -> void:
 ## ground: the structure is drawn moving over it. Returns whether a new screen was asked for.
 func _switch_if_moved() -> bool:
 	var entry := _fleet.fleet.find(_model.structure_id)
-	if entry == null or _site != null:
+	if entry == null:
 		return false
 	var away := entry.where() == Fleet.Where.ORBIT or entry.where() == Fleet.Where.TRANSIT
 	var driving := entry.motion != null and entry.motion.mode == TravelPlan.MODE_GROUND
@@ -1458,101 +1489,7 @@ func _switch_if_moved() -> bool:
 	return false
 
 
-# --- travel ---------------------------------------------------------------------------------
-
-## Whether a structure on screen can be sent on a trip from here: an own one with a drive (not a
-## neighbour, which is seen only), resting.
-func _can_travel(structure: ColonyModel) -> bool:
-	if structure.is_neighbour() or structure.structure_id == 0:
-		return false
-	var entry := _fleet.fleet.find(structure.structure_id)
-	if entry == null or entry.is_moving(Services.clock.now_ms()):
-		return false
-	var can := TravelPanel.allowed(_fleet.fleet, entry)
-	return can.get("fly") == true or can.get("drive") == true
-
-
-## Opens the choice of a trip for the structure in focus in the bottom panel.
-func _open_travel() -> void:
-	if _busy or not _can_travel(_focus):
-		return
-	for node: Control in [_info, _status, _actions, _tabs, _store, _log, _research, _palette, _trip_info,
-			_recipes, _workforce_panel, _levels]:
-		node.visible = false
-	_travel_panel.visible = true
-	_travel_panel.open(_fleet, _focus)
-	_view.show_preview([], false)
-
-
-func _close_travel() -> void:
-	_travel_panel.visible = false
-	_set_mode(_mode)
-
-
-## Opens the system map to pick the body of a trip.
-func _open_map_pick(land: bool) -> void:
-	if _map != null:
-		return
-	_picking_land = land
-	_map = MapScreen.new()
-	var account := Services.session.account
-	_map.setup(_model.system_id, account.home_body_id if account != null else "")
-	_map.pick = MapScreen.PICK_LAND if land else MapScreen.PICK_ORBIT
-	_map.fleet = _fleet
-	_map.closed.connect(_close_map)
-	_map.body_picked.connect(_on_body_picked)
-	add_child(_map)
-	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-
-
-func _on_body_picked(body_id: String) -> void:
-	_close_map()
-	if _picking_land:
-		_open_site(TravelSiteScreen.MODE_LAND, body_id)
-		return
-	var body_name := _fleet.body_name(body_id)
-	if body_name.is_empty():
-		var body := await Services.api.get_json("/v2/bodies/" + body_id.uri_encode())
-		body_name = Wire.as_string(body.data.get("name")) if body.is_ok() else tr("FLEET_UNKNOWN_PLACE")
-	_travel_panel.show_orbit(body_id, body_name)
-
-
-func _on_drive_requested() -> void:
-	_open_site(TravelSiteScreen.MODE_DRIVE, _model.body_id)
-
-
-## The surface of a body over the colony, to choose where the structure in focus lands or stops.
-func _open_site(mode: String, body_id: String) -> void:
-	if _site != null:
-		return
-	_site = TravelSiteScreen.new()
-	_site.setup(_focus, mode, body_id, _fleet)
-	_site.closed.connect(_close_site)
-	_site.started.connect(_on_travel_started)
-	add_child(_site)
-	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-
-
-func _close_site() -> void:
-	if _site == null:
-		return
-	_site.queue_free()
-	_site = null
-	if not _model.detached:
-		_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
-
-
-## A trip started: the fleet learns its motion at once (the event follows), the choice closes.
-func _on_travel_started(details: Dictionary) -> void:
-	_close_site()
-	_close_travel()
-	_fleet.fleet.apply_details(details)
-	var entry := _fleet.fleet.find(Wire.as_int(details.get("structureId")))
-	if entry != null and entry.motion != null:
-		_show_notice(tr("TRAVEL_NOTICE_STARTED").format({"name": entry.name,
-			"duration": TimeFormat.duration(entry.motion.remaining_ms(Services.clock.now_ms()))}), AppTheme.COLOR_OK)
-	_fleet.changed.emit()
-
+# --- trips ----------------------------------------------------------------------------------
 
 ## Arrivals and stopped trips of own structures as a notice.
 func _on_travel_event(event: SseEvent) -> void:
@@ -1562,24 +1499,26 @@ func _on_travel_event(event: SseEvent) -> void:
 	var entry := _fleet.fleet.find(Wire.as_int(data.get("structureId")))
 	var who := entry.name if entry != null else tr("FLEET_UNKNOWN_PLACE")
 	if event.type == "travel.arrived":
-		_show_notice(tr("TRAVEL_NOTICE_ARRIVED").format({"name": who}), AppTheme.COLOR_OK)
+		show_notice(tr("TRAVEL_NOTICE_ARRIVED").format({"name": who}), AppTheme.COLOR_OK)
 		return
 	var reason := ApiError.new()
 	reason.code = Wire.as_string(data.get("reason"))
 	var anchor := Wire.as_dict(data.get("anchor"))
 	var body := _fleet.body_name(Wire.as_string(anchor.get("bodyId")))
-	_show_notice(tr("TRAVEL_NOTICE_BLOCKED").format({"name": who, "reason": ErrorText.describe(reason, self),
+	show_notice(tr("TRAVEL_NOTICE_BLOCKED").format({"name": who, "reason": ErrorText.describe(reason, self),
 		"body": body if not body.is_empty() else tr("FLEET_UNKNOWN_PLACE")}), AppTheme.COLOR_DANGER)
 
 
-func _show_notice(text: String, color: Color) -> void:
+## A short message at the bottom for a while.
+func show_notice(text: String, color: Color) -> void:
 	_notice.text = text
 	_notice.add_theme_color_override("font_color", color)
 	_notice.visible = true
 	_notice_left = NOTICE_SECONDS
+	_update_layout()
 
 
-## Where a structure is, for the top bar of one without ground.
+## Where a structure is, for the head of one without ground.
 func _place_line(structure_id: int) -> String:
 	var entry := _fleet.fleet.find(structure_id)
 	if entry == null:
@@ -1587,56 +1526,12 @@ func _place_line(structure_id: int) -> String:
 	return FleetPanel.status_text(_fleet, entry, Services.clock.now_ms(), self)
 
 
-## The trip of a structure for its details; "" when it rests.
+## The trip of a structure for its card; "" when it rests.
 func _trip_line(structure_id: int) -> String:
 	var entry := _fleet.fleet.find(structure_id)
 	if entry == null or entry.motion == null or not entry.is_moving(Services.clock.now_ms()):
 		return ""
 	return FleetPanel.status_text(_fleet, entry, Services.clock.now_ms(), self)
-
-
-## Opens the system map over the colony; the colony stops drawing while it is covered.
-func _open_map() -> void:
-	if _map != null:
-		return
-	_map = MapScreen.new()
-	var account := Services.session.account
-	_map.setup(_model.system_id, account.home_body_id if account != null else "")
-	_map.fleet = _fleet
-	_map.closed.connect(_close_map)
-	add_child(_map)
-	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-
-
-func _close_map() -> void:
-	if _map == null:
-		return
-	_map.queue_free()
-	_map = null
-	if not _model.detached:
-		_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
-
-
-func _build_menu() -> Control:
-	var overlay := Control.new()
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var background := ColorRect.new()
-	background.color = AppTheme.COLOR_BACKGROUND
-	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(background)
-	var account_page := HomeScreen.new()
-	account_page.home_name = _model.body_name
-	account_page.enterprise_requested.connect(_open_enterprise)
-	overlay.add_child(account_page)
-	var margin := SafeAreaMargin.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	margin.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	overlay.add_child(margin)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.size_flags_horizontal = Control.SIZE_SHRINK_END
-	close.pressed.connect(func() -> void: overlay.visible = false)
-	margin.add_child(close)
-	return overlay
 
 
 # --- input on the world ---------------------------------------------------------------------
@@ -1706,8 +1601,9 @@ func _scale() -> float:
 	return float(_viewport.size.y) / maxf(_container.size.y, 1.0)
 
 
-## Closed: a tap on a guest selects the guest, on the rest the home structure, beside them
-## nothing. Open: a tap chooses a column of the open structure.
+## Outside: a tap on a structure gives its card, a second one soon after enters it, a tap beside
+## the structures clears the card. Inside: a tap chooses a column of the open structure; the same
+## field again (in Inspect) clears it.
 func _on_tap(position_in_container: Vector2) -> void:
 	if _model.structure_id == 0:
 		return
@@ -1716,7 +1612,13 @@ func _on_tap(position_in_container: Vector2) -> void:
 		if picked == null:
 			_select_structure(false)
 			return
+		var now := Time.get_ticks_msec()
+		var again := _structure_selected and picked == _focus and now - _last_tap_ms <= DOUBLE_TAP_MS
+		_last_tap_ms = now
 		_focus = picked
+		if again:
+			enter_structure()
+			return
 		_select_structure(true)
 		return
 	# The home structure is tapped on its active level, a guest on its lowest one.

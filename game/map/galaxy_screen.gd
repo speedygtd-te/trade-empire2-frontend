@@ -2,8 +2,8 @@ class_name GalaxyScreen
 extends Control
 ## The galaxy around the player: the whole spiral from the galaxy's parameters, down to the real
 ## systems near the camera. Home and the systems with own structures are marked; a tap on a system
-## shows its details, and from there its system map opens over the galaxy. Opened from a system
-## map; Close or Back returns there.
+## shows its details, and from there its system map opens as a layer over the galaxy. A layer
+## pushed from a system map; "‹ Back" or Back returns there.
 ##
 ## Loading the systems: one `GET /v2/galaxy/systems` sphere around the camera (GalaxyCamera
 ## decides when and how large), at most one request at a time, sent once the camera has rested
@@ -53,8 +53,7 @@ var _content: Control
 var _view: GalaxyView
 var _top: PanelContainer
 var _bottom: PanelContainer
-var _title: Label
-var _subtitle: Label
+var _header: LayerHeader
 var _hint: Label
 var _status: Label
 var _retry: Button
@@ -117,14 +116,19 @@ func _exit_tree() -> void:
 	_parse_task = -1
 
 
-## Back: close the system map opened from here, the details, or the galaxy.
-func handle_back() -> void:
-	if _system_map != null:
-		_system_map.handle_back()
-	elif _view.selected != null:
+## Back closes the details; false when none were open (the stack takes the galaxy off).
+func handle_back() -> bool:
+	if _view.selected != null:
 		_select("")
-	else:
-		closed.emit()
+		return true
+	return false
+
+
+## The system map opened from here while it is open; null otherwise.
+func system_map() -> MapScreen:
+	if _system_map == null or not is_instance_valid(_system_map) or _system_map.is_queued_for_deletion():
+		return null
+	return _system_map
 
 
 # --- building the screen --------------------------------------------------------------------
@@ -140,23 +144,10 @@ func _build_overlay() -> void:
 
 	_top = PanelContainer.new()
 	column.add_child(_top)
-	var top_row := HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 16)
-	_top.add_child(top_row)
-	var names := Ui.column(4)
-	top_row.add_child(names)
-	_title = Ui.label("GALAXY_TITLE", AppTheme.VARIATION_HEADING)
-	_title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_title)
-	_subtitle = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_subtitle)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.size_flags_horizontal = Control.SIZE_SHRINK_END
-	close.pressed.connect(func() -> void: closed.emit())
-	top_row.add_child(close)
+	_header = LayerHeader.new()
+	_header.set_title(tr("GALAXY_TITLE"))
+	_header.back_pressed.connect(func() -> void: closed.emit())
+	_top.add_child(_header)
 
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -298,7 +289,8 @@ func _load() -> void:
 	# The server's name is generated from the seed ("Galaxy 1116014313"); a description of the
 	# shape says more to a player.
 	var across := AmountFormat.units(roundi(_shape.radius * 2.0))
-	_subtitle.text = tr("GALAXY_SUBTITLE_SPIRAL").format({"arms": _shape.arm_count, "across": across}) 		if _shape.arm_count > 0 else tr("GALAXY_SUBTITLE").format({"across": across})
+	_header.set_subtitle(tr("GALAXY_SUBTITLE_SPIRAL").format({"arms": _shape.arm_count, "across": across})
+		if _shape.arm_count > 0 else tr("GALAXY_SUBTITLE").format({"across": across}))
 	_view.marks = marks
 	_view.home_id = _home_system
 	_update_trips()
@@ -347,7 +339,7 @@ func _make_glow() -> void:
 ## Work done on worker threads arrives here; waiting in `_process` instead of an await keeps a
 ## closed screen from resuming.
 func _process(_delta: float) -> void:
-	if not _view.trips.is_empty():
+	if not _view.trips.is_empty() and is_visible_in_tree():
 		_view.redraw_marks()
 	if _glow_task >= 0 and WorkerThreadPool.is_task_completed(_glow_task):
 		WorkerThreadPool.wait_for_task_completion(_glow_task)
@@ -442,24 +434,19 @@ func _open_system(system_id: String) -> void:
 	if system_id == _from_system:
 		closed.emit()
 		return
-	if _system_map != null:
+	if system_map() != null:
 		return
 	_system_map = MapScreen.new()
 	_system_map.setup(system_id, _home_body, true)
 	_system_map.pick = pick
 	_system_map.fleet = fleet
 	_system_map.body_picked.connect(func(body_id: String) -> void: body_picked.emit(body_id))
-	_system_map.closed.connect(_close_system)
-	add_child(_system_map)
-	_content.visible = false
+	ScreenStack.push_onto(self, _system_map)
 
 
 func _close_system() -> void:
-	if _system_map == null:
-		return
-	_system_map.queue_free()
+	ScreenStack.close_layer(_system_map)
 	_system_map = null
-	_content.visible = true
 
 
 func _on_home() -> void:

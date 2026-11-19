@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Workers: two people, the one in front with a helmet -->
+  <circle cx="33" cy="14" r="6.5" fill="#24345e" stroke="#e3b341" stroke-width="3"/>
+  <path d="M24 38 Q24 25 34 25 Q45 25 45 38 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="17" cy="19" r="7.5" fill="#24345e" stroke="#e3b341" stroke-width="3"/>
+  <path d="M9 16 A8 8 0 0 1 25 16 Z" fill="#e3b341"/>
+  <path d="M3 44 Q3 30 17 30 Q31 30 31 44 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+</svg>

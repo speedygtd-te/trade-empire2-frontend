@@ -17,9 +17,7 @@ LOGIN_SERVER,Server: {server}
 UNREACHABLE_TITLE,Cannot reach the server
 UNREACHABLE_BODY,Your session is kept. Check your connection and try again.
 UNREACHABLE_SIGN_OUT,Sign out on this device
-HOME_WELCOME,"Welcome, {name}"
 HOME_ACCOUNT,Account
-HOME_PLAYER_ID,Player ID
 HOME_EMAIL,E-mail
 HOME_HOME_BODY,Home colony
 HOME_NO_COLONY,No colony yet
@@ -50,11 +48,8 @@ ERROR_INTERNAL,The server ran into a problem. Please try again.
 ERROR_NO_CONNECTION,Cannot reach the server. Check your connection.
 ERROR_UNKNOWN,Something went wrong. Please try again.
 COMMON_CLOSE,Close
-COLONY_MENU,Menu
 COLONY_LOADING,Loading your colony…
 COLONY_LOAD_FAILED,The colony could not be loaded.
-COLONY_TAB_VIEW,Inspect
-COLONY_TAB_BUILD,Build
 COLONY_HINT_VIEW,Tap a field to see what is there.
 COLONY_HINT_BUILD,"Choose a hull or module from the store, then tap a field."
 COLONY_HINT_PLACE,Tap a field to place {name}.
@@ -106,7 +101,6 @@ ERROR_CARGO_WOULD_OVERFLOW,The store has no room for the returned items.
 ERROR_STRUCTURE_NOT_FOUND,This colony no longer exists.
 ERROR_MODULE_NOT_FOUND,There is no module here.
 ERROR_NOT_HULL_OWNER,This hull belongs to someone else.
-COLONY_TAB_STORE,Store
 STORE_UNKNOWN_ITEM,Unknown item
 STORE_FILL,{used} of {capacity} units stored
 COLONY_CHOOSE_RECIPE,Recipe
@@ -137,7 +131,6 @@ LOGIN_RESET_SUBMIT,Set password and sign in
 ERROR_VALIDATION_RESET_CODE,The code has 8 characters.
 ERROR_RESET_CODE_INVALID,This code is not valid. Check it or ask for a new one.
 ERROR_RESET_CODE_EXPIRED,This code has expired. Please ask for a new one.
-COLONY_TAB_LOG,Log
 LOG_EMPTY,Nothing has happened here yet.
 LOG_OLDER,Show older entries
 LOG_AGO,{duration} ago
@@ -175,16 +168,11 @@ HOME_CLIENT_VERSION,App version
 HOME_VERSION_CURRENT,Up to date
 HOME_VERSION_OUTDATED,Update available
 HOME_VERSION_UNKNOWN,Unknown
-COLONY_HINT_OUTSIDE,Tap a structure to see its details.
 COLONY_STRUCTURE_SUMMARY,Hulls: {hulls} · Modules: {modules}
 COLONY_STRUCTURE_BUILDING,Under construction: {count}
-COLONY_OPEN_EDIT,Edit
-COLONY_OPEN_BUILD,Build
-COLONY_CLOSE_STRUCTURE,Close
 RECIPE_NEEDS_GAS,"Needs {gas} in the air – here {share}."
 RECIPE_NEEDS_DEPOSIT,Needs {resource} in the ground.
 RECIPE_ORBIT_ONLY,Works only in orbit.
-COLONY_TAB_RESEARCH,Research
 RESEARCH_LOADING,Loading research…
 RESEARCH_SUMMARY,Researched {done} of {total} technologies.
 RESEARCH_LABS_HEADING,Labs here
@@ -321,7 +309,6 @@ STORE_TRANSFER_ALL,All
 STORE_TRANSFER_NOTHING,There is nothing of it to move.
 STORE_TRANSFER_NO_ROOM,There is not enough room in the store of {name}.
 STORE_TRANSFERRED,{count} {name} moved to {target}.
-MAP_OPEN,Map
 MAP_TITLE,Star system
 MAP_LOADING,Loading the star system…
 MAP_LOAD_FAILED,The star system could not be loaded.
@@ -440,7 +427,6 @@ LOG_INTENT_FALLBACK,"Without cargo space nothing can be captured; the structure 
 ERROR_NO_CARGO_SPACE,"Capturing needs cargo space: set a storage module to cargo first."
 GALAXY_SUBTITLE_SPIRAL,"Spiral galaxy · {arms} arms · {across} ly across"
 GALAXY_SUBTITLE,"{across} ly across"
-FLEET_OPEN,Fleet
 FLEET_TITLE,Your structures
 FLEET_LOADING,Loading your structures…
 FLEET_EMPTY,You have no structures.
@@ -687,7 +673,6 @@ LEVEL_REMOVE_SHAFT,Remove shaft
 LEVEL_GO_UP,Shaft top
 LEVEL_GO_DOWN,Shaft foot
 LEVEL_EMPTY,Nothing built here on this level.
-HOME_ENTERPRISE,Enterprise
 STORE_TAXED,Tax to your enterprise: {items}
 ENTERPRISE_TITLE,Enterprise
 ENTERPRISE_TAB_BROWSE,Browse
@@ -896,3 +881,60 @@ ERROR_INVALID_DIPLOMACY,This step is not possible now (an alliance only between 
 ERROR_PROPOSAL_NOT_FOUND,There is no proposal to answer or withdraw.
 ERROR_NOT_FOUND,Not found.
 ERROR_NOT_TAXABLE,"Modules, hull parts, energy and housing cannot be taxed."
+COMMON_BACK,‹ Back
+COMMON_CHEVRON,›
+COMMON_CLOSE_X,×
+NAV_BASE,Base
+NAV_MAP,Map
+NAV_FLEET,Fleet
+NAV_PROFILE,Profile
+PROFILE_TITLE,Profile
+PROFILE_HOME_LINE,Home colony: {body}
+PROFILE_ENTERPRISE,Enterprise
+PROFILE_ENTERPRISE_JOIN,Join or found an enterprise
+PROFILE_ENTERPRISE_NONE,You are not in an enterprise yet.
+PROFILE_ENTERPRISE_INVITED,{count} invitation(s) waiting
+PROFILE_DETAIL,3D detail
+PROFILE_DETAIL_HIGH,High
+PROFILE_DETAIL_MEDIUM,Medium
+PROFILE_DETAIL_LOW,Low
+PROFILE_DETAIL_UNKNOWN,Not measured yet
+PROFILE_SIGN_OUT_CONFIRM,Tap again to sign out
+PROFILE_SIGN_OUT_HINT,Only this device signs out. Your game stays on the server.
+COLONY_ENTER,Enter structure
+COLONY_PLACE_COUNT,{count} of your structures here
+STRUCTURE_NAV_INSPECT,Inspect
+STRUCTURE_NAV_BUILD,Build
+STRUCTURE_NAV_INVENTORY,Inventory
+DETAILS_TAB_PRODUCTION,Production
+DETAILS_TAB_WORKERS,Workers
+DETAILS_TAB_LOG,Log
+DETAILS_TAB_RESEARCH,Research
+DETAILS_BALANCE,Supply
+DETAILS_MODULES,Modules
+DETAILS_NO_MODULES,No modules yet.
+DETAILS_TYPE_COUNT,{name} × {count}
+DETAILS_RUNNING,running at {percent} %
+DETAILS_BUILDING,{count} under construction
+DETAILS_IDLE_NO_RECIPE,{count} idle: no recipe
+DETAILS_IDLE_LOCATION,{count} idle: cannot work at this spot
+DETAILS_IDLE_OTHER,{count} idle
+DETAILS_NO_STAFF,No module here needs staff.
+DETAILS_STAFF_LINE,Staff {assigned} of {needed} · {modules} module(s)
+PLACES_TITLE,Your places
+PLACES_EMPTY,None of your structures stands on a surface right now.
+PLACES_ROW,{body} · {count} structure(s)
+FLEET_SECTION_MOVABLE,Ships and vehicles
+FLEET_SECTION_STATIONARY,Bases and stations
+FLEET_PROGRESS,{percent} %
+FLEET_SHOW_IN_BASE,Show in Base
+FLEET_ROUTES,Routes
+FLEET_EDIT_ROUTE,Edit route
+FLEET_DRIVES_ROUTE,Drives the route “{name}”
+FLEET_STATION_OF,Station of {count} route(s)
+FLEET_NO_ROUTE,No route
+FLEET_NO_DRIVE,It has no drive and cannot travel.
+FLEET_UNDER_WAY_NOW,It is under way right now.
+FLEET_CANNOT_TRAVEL_HERE,It cannot set off from where it is.
+FLEET_TRAVEL_LOADING,Loading the structure…
+FLEET_TRAVEL_LOAD_FAILED,The structure could not be loaded.

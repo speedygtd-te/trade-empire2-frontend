@@ -1,12 +1,13 @@
 class_name FleetPanel
 extends Control
-## The player's own structures over the whole screen (FleetModel): each with where it is or
-## where it is heading and when it arrives. A tap on one switches the colony screen to it; the
-## structure on screen is marked. Close or Back returns.
+## The Fleet tab: the player's own structures (FleetModel) and the routes between them. Ships and
+## vehicles come first, each with where it is or where it is heading and when it arrives (and its
+## route); bases and stations follow in a section of their own. The structure Base shows is
+## marked. A tap opens the structure's details (FleetDetail, a layer): travel, show it in Base,
+## its routes. The route editor is a layer as well.
 
-## The player chose a structure.
+## The player wants to see a structure in Base.
 signal chosen(structure_id: int)
-signal closed
 
 ## How often the arrival times are refreshed (seconds).
 const REFRESH_SECONDS := 1.0
@@ -17,15 +18,15 @@ var _list: VBoxContainer
 var _state: Label
 var _retry: Button
 var _left := 0.0
-var _structures_tab: Button
-var _routes_tab: Button
+var _tabs: TabStrip
 var _structures: VBoxContainer
 var _routes: RouteList
 var _editor: RouteEditor = null
+var _detail: FleetDetail = null
 var _start_with_routes := false
 
 
-## `current`: the structure the colony screen shows; `routes`: open on the routes tab.
+## `current`: the structure Base shows; `routes`: open on the routes tab.
 func setup(fleet: FleetModel, current: int, routes: bool = false) -> void:
 	_fleet = fleet
 	_current = current
@@ -44,26 +45,16 @@ func _ready() -> void:
 	add_child(margin)
 	var column := Ui.column(16)
 	margin.add_child(column)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 16)
-	column.add_child(top)
-	var title := Ui.label("FLEET_TITLE", AppTheme.VARIATION_HEADING)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	top.add_child(title)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.pressed.connect(func() -> void: closed.emit())
-	top.add_child(close)
+	var header := LayerHeader.new()
+	header.show_back(false)
+	header.set_title(tr("FLEET_TITLE"))
+	column.add_child(header)
 	# Two tabs: the structures, and the routes between them.
-	var tabs := HBoxContainer.new()
-	column.add_child(tabs)
-	var group := ButtonGroup.new()
-	_structures_tab = Ui.tab_button("ROUTE_TAB_STRUCTURES", group)
-	_structures_tab.pressed.connect(_show_tab.bind(false))
-	tabs.add_child(_structures_tab)
-	_routes_tab = Ui.tab_button("ROUTE_TAB", group)
-	_routes_tab.pressed.connect(_show_tab.bind(true))
-	tabs.add_child(_routes_tab)
+	_tabs = TabStrip.new()
+	_tabs.add_tab("ROUTE_TAB_STRUCTURES")
+	_tabs.add_tab("ROUTE_TAB")
+	_tabs.tab_selected.connect(func(index: int) -> void: _show_tab(index == 1))
+	column.add_child(_tabs)
 	_structures = Ui.column(16)
 	_structures.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(_structures)
@@ -95,37 +86,70 @@ func _ready() -> void:
 
 ## Shows the structures or the routes.
 func _show_tab(routes: bool) -> void:
-	_structures_tab.set_pressed_no_signal(not routes)
-	_routes_tab.set_pressed_no_signal(routes)
+	_tabs.select(1 if routes else 0)
 	_structures.visible = not routes
 	_routes.visible = routes
 
 
-## Opens the route editor over the panel: an existing route (its rules), or a new one (0),
+## Marks the structure Base shows.
+func set_current(structure_id: int) -> void:
+	if structure_id == _current:
+		return
+	_current = structure_id
+	for row: Node in _list.get_children():
+		var button := row as ListButton
+		if button != null:
+			var id: int = button.get_meta("structure", 0)
+			button.set_chosen(id == structure_id)
+
+
+## Opens a structure's details as a layer; `travel` opens its trip choice right away.
+func open_detail(structure_id: int, travel: bool = false) -> FleetDetail:
+	ScreenStack.close_layer(_detail)
+	_detail = FleetDetail.new()
+	_detail.setup(_fleet, structure_id, travel)
+	_detail.show_requested.connect(func(id: int) -> void: chosen.emit(id))
+	_detail.route_requested.connect(_on_route_requested)
+	ScreenStack.push_onto(self, _detail)
+	return _detail
+
+
+## The details layer while it is open; null otherwise.
+func detail() -> FleetDetail:
+	return _detail if _detail != null and is_instance_valid(_detail) and not _detail.is_queued_for_deletion() else null
+
+
+func _on_route_requested(route_id: int) -> void:
+	if route_id != 0:
+		open_route_editor(route_id)
+		return
+	ScreenStack.close_layer(_detail)
+	_show_tab(true)
+
+
+## Opens the route editor as a layer: an existing route (its rules), or a new one (0),
 ## prefilled with a transporter when `transporter_id` is not 0.
 func open_route_editor(route_id: int, transporter_id: int = 0) -> void:
-	if _editor != null:
-		_editor.queue_free()
-	_show_tab(true)
+	_close_editor()
 	_editor = RouteEditor.new()
 	_editor.setup(_fleet, route_id, transporter_id)
-	_editor.closed.connect(_close_editor)
 	_editor.saved.connect(func(_route_id: int) -> void: _close_editor())
-	add_child(_editor)
+	ScreenStack.push_onto(self, _editor)
 
 
 func _close_editor() -> void:
 	if _editor != null:
-		_editor.queue_free()
+		ScreenStack.close_layer(_editor)
 		_editor = null
 
 
-## Back closes the route editor (or its picker) first; false when there was nothing to close
-## (the owner closes the panel then).
+## The route editor while it is open; null otherwise.
+func editor() -> RouteEditor:
+	return _editor if _editor != null and is_instance_valid(_editor) and not _editor.is_queued_for_deletion() else null
+
+
+## The root has nothing of its own to close (layers are the stack's).
 func handle_back() -> bool:
-	if _editor != null:
-		_editor.handle_back()
-		return true
 	return false
 
 
@@ -146,15 +170,32 @@ func _rebuild() -> void:
 		return
 	_state.visible = _fleet.fleet.size() == 0
 	_state.text = tr("FLEET_EMPTY")
+	var movables := _fleet.fleet.movables()
+	var others: Array[Fleet.Entry] = []
 	for entry: Fleet.Entry in _fleet.fleet.entries():
-		var row := ListButton.new()
-		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		row.set_chosen(entry.structure_id == _current)
-		row.set_meta("structure", entry.structure_id)
-		row.tapped.connect(func() -> void: chosen.emit(entry.structure_id))
-		_list.add_child(row)
+		if not movables.has(entry):
+			others.append(entry)
+	if not movables.is_empty():
+		_list.add_child(Ui.label("FLEET_SECTION_MOVABLE", AppTheme.VARIATION_MUTED))
+		for entry: Fleet.Entry in movables:
+			_add_row(entry)
+	if not others.is_empty():
+		_list.add_child(Ui.spacer(8))
+		_list.add_child(Ui.label("FLEET_SECTION_STATIONARY", AppTheme.VARIATION_MUTED))
+		for entry: Fleet.Entry in others:
+			_add_row(entry)
 	_update_lines()
+
+
+func _add_row(entry: Fleet.Entry) -> void:
+	var row := ListButton.new()
+	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.set_chosen(entry.structure_id == _current)
+	row.set_meta("structure", entry.structure_id)
+	var id := entry.structure_id
+	row.tapped.connect(func() -> void: open_detail(id))
+	_list.add_child(row)
 
 
 func _update_lines() -> void:
@@ -167,7 +208,10 @@ func _update_lines() -> void:
 		var entry := _fleet.fleet.find(id)
 		if entry == null:
 			continue
-		button.text = "%s\n%s" % [entry.name, status_text(_fleet, entry, now, self)]
+		var line := status_text(_fleet, entry, now, self)
+		if entry.motion != null and entry.is_moving(now):
+			line += " · " + tr("FLEET_PROGRESS").format({"percent": roundi(entry.motion.progress_at(now) * 100.0)})
+		button.text = "%s\n%s" % [entry.name, line]
 
 
 func _on_failed(error: ApiError) -> void:
