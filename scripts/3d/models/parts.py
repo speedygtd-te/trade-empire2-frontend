@@ -475,6 +475,30 @@ def dish(model, radius: float, depth: float, inner: str = "white", outer: str = 
                    segments=8)
 
 
+def probe(model, length: float, radius: float, accent: str = "glow_cyan", body: str = "white") -> None:
+    """A small exploration probe along +Z of the current frame, its nozzle at the origin: an
+    engine bell, a slim body with a lit band and two folded solar panels (on +x and -x), four
+    tail fins, a nose cone and a whip antenna."""
+    bell = length * 0.10
+    body_end = length * 0.70
+    nose_end = length * 0.90
+    model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, bell), radius * 0.85, "steel_dark", segments=8,
+                   end_radius=radius * 0.45)
+    model.cylinder((0.0, 0.0, bell), (0.0, 0.0, body_end), radius, body, segments=10)
+    model.cylinder((0.0, 0.0, body_end * 0.62), (0.0, 0.0, body_end * 0.62 + length * 0.04), radius * 1.06,
+                   accent, segments=10)
+    model.cylinder((0.0, 0.0, bell + 0.004), (0.0, 0.0, bell + length * 0.05), radius * 1.06, "steel", segments=10)
+    middle = (bell + body_end * 0.58) / 2.0 + length * 0.04
+    for side in (-1, 1):
+        model.box((side * (radius + 0.004), 0.0, middle), (0.006, radius * 1.5, length * 0.30), "solar")
+        model.box((side * (radius + 0.002), 0.0, middle), (0.004, radius * 1.7, length * 0.32), "steel_light")
+    for turn in (0.0, math.pi / 2.0):
+        model.box((0.0, 0.0, bell + length * 0.06), (radius * 2.0 + length * 0.12, 0.006, length * 0.10),
+                  "steel_dark", turn=turn)
+    model.cylinder((0.0, 0.0, body_end), (0.0, 0.0, nose_end), radius, body, segments=10, end_radius=radius * 0.25)
+    model.cylinder((0.0, 0.0, nose_end), (0.0, 0.0, length), 0.004, "steel_dark", segments=4)
+
+
 def torus(model, center, major: float, minor: float, color: str, segments: int = 20,
           sides: int = 8) -> None:
     """A ring lying in the XY plane of the current frame around *center*."""
