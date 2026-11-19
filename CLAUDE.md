@@ -56,6 +56,7 @@ verschärft, wenn es nötig wird.
 | Showcase-Kolonie ansehen | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase` |
 | Masten, Radar und Lichtkegel um die Basis ansehen | `godot --path . --resolution 720x1280 res://smoke/perimeter_view.tscn -- --out=build/perimeter` (Modelle: `tools\build-models.ps1 -Only perimeter`) |
 | Bewegte Modulteile ansehen (Rotoren, Lüfter, Schüsseln, Solarpanels; Showcase-Konto) | `godot --path . --resolution 720x1280 res://smoke/motion_view.tscn -- --out=build/motion` (Bildfolgen je Typ, Kosten je Frame) |
+| Gelände um wachsende Basen ansehen (Rodung, Zaun, Beton, Mauer; nur im Client vergrößert) | `godot --path . --resolution 720x1280 res://smoke/grounds_view.tscn -- --out=build/grounds` (Schwellen in `core/base_grounds.gd`; Modelle: `tools\build-models.ps1 -Only grounds`; Beton: `python -I tools/paving_texture.py`) |
 | Entwicklerkonto, echte Antworten ansehen | `node tools/dev-account.cjs /v2/structures` (Zugang in `.local/`, nie committen) |
 | Lokales Backend (nur Ausnahme) | `powershell -File tools\dev-backend.ps1 start` (auch `stop`, `status`, `sync`, `build`, `reset`) |
 | Bildschirmfotos | `powershell -File tools\screenshots.ps1` → `build\screenshots\` |

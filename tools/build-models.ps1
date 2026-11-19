@@ -5,10 +5,11 @@
 #   powershell -File tools\build-models.ps1 -Only families [-Types academy,rtg]
 #
 # Every script builds one model (pump.py -> pump.glb), except families.py, hulls_closed.py,
-# props.py and perimeter.py, which build several (-Types limits them); families.py builds the
+# props.py, perimeter.py and grounds.py, which build several (-Types limits them); families.py builds the
 # module types without a script of their own from shared templates, props.py the surface props
 # (trees, stones ...) into the subfolder props, perimeter.py the masts, radar and beacons around a
-# base into the subfolder perimeter. kit.py, parts.py and
+# base into the subfolder perimeter, grounds.py the fence and wall around a large base into the
+# subfolder grounds. kit.py, parts.py and
 # hulls.py are libraries. Default output: game\world\models (the models the game loads).
 # Look at them with
 #   powershell -File tools\preview-models.ps1 game\world\models build\model-preview -NoFit
@@ -35,9 +36,9 @@ $models = Get-ChildItem -LiteralPath (Join-Path $root 'scripts\3d\models') -Filt
     Where-Object { $_.BaseName -notin @('kit', 'parts', 'hulls') -and (-not $Only -or $_.BaseName -eq $Only) } |
     Sort-Object Name
 foreach ($model in $models) {
-    if ($model.BaseName -in @('families', 'hulls_closed', 'props', 'perimeter')) {
+    if ($model.BaseName -in @('families', 'hulls_closed', 'props', 'perimeter', 'grounds')) {
         # The surface props (trees, stones ...) and the perimeter go into folders of their own.
-        $target = if ($model.BaseName -in @('props', 'perimeter')) { Join-Path $Out $model.BaseName } else { $Out }
+        $target = if ($model.BaseName -in @('props', 'perimeter', 'grounds')) { Join-Path $Out $model.BaseName } else { $Out }
         New-Item -ItemType Directory -Force -Path $target | Out-Null
         $arguments = @('--output-dir', $target)
         if ($Types) { $arguments += @('--only', $Types) }

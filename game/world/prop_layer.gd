@@ -108,6 +108,8 @@ var _job: Job = null
 ## Cells (x wrapped, y) under a hull on the surface, and those above an underground hull only.
 var _covered: Dictionary = {}
 var _vented: Dictionary = {}
+## Cells cleared of nature around a large base (BaseGrounds): only a vent cover may stand there.
+var _cleared: Dictionary = {}
 ## "family_variant" → Mesh, or null when the model or sprite is missing.
 var _meshes: Dictionary = {}
 var _tier := DetailGovernor.DEFAULT_TIER
@@ -257,6 +259,8 @@ func _work(job: Job, deadline: int) -> bool:
 			var vent := PropRules.vent(x, y)
 			if vent != null:
 				_place(job, vent, centre)
+		if _cleared.has(key):
+			continue
 		var cell := model.surface.cell(x, y)
 		if cell != null:
 			for prop: PropRules.Prop in PropRules.layout(x, y, cell.biome, cell.vegetation):
@@ -373,6 +377,7 @@ func _read_structures() -> void:
 	var model := _view.model
 	_covered.clear()
 	_vented.clear()
+	_cleared.clear()
 	var below: Array[Vector2i] = []
 	var structures := model.drawn_structures()
 	for structure: ColonyModel in structures:
@@ -389,6 +394,12 @@ func _read_structures() -> void:
 	for key: Vector2i in below:
 		if not _covered.has(key):
 			_vented[key] = true
+	# Around a large base nature gives way: the cleared ring, the concrete, the fence line.
+	for plan: BaseGrounds.Plan in PerimeterLayer.grounds_for(model):
+		for key: Vector2i in plan.cleared + plan.paved:
+			_cleared[key] = true
+		for post: BaseGrounds.Post in plan.posts:
+			_cleared[post.cell] = true
 
 
 ## Hulls changed: rebuild the blocks whose bare or vented cells changed.
@@ -397,10 +408,12 @@ func _on_structures_changed() -> void:
 		return
 	var covered_before := _covered.duplicate()
 	var vented_before := _vented.duplicate()
+	var cleared_before := _cleared.duplicate()
 	_read_structures()
 	var touched: Dictionary = {}
-	for key: Vector2i in covered_before.keys() + vented_before.keys() + _covered.keys() + _vented.keys():
-		if covered_before.has(key) != _covered.has(key) or vented_before.has(key) != _vented.has(key):
+	for key: Vector2i in covered_before.keys() + vented_before.keys() + cleared_before.keys() + _covered.keys() + _vented.keys() + _cleared.keys():
+		if covered_before.has(key) != _covered.has(key) or vented_before.has(key) != _vented.has(key) \
+				or cleared_before.has(key) != _cleared.has(key):
 			touched[_view.model.surface.block_of(key.x, key.y)] = true
 	for block: Vector2i in touched.keys():
 		if _blocks.has(block):
