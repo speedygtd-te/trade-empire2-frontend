@@ -154,9 +154,22 @@ func set_pads(pads: Array[Pad]) -> Dictionary:
 		if not corners.has(key):
 			_touch_corner(touched, key)
 	_pad_corners = corners
+	# Blocks a pad may reach: those around its bounding box (cheaper than every corner).
 	_pad_blocks.clear()
-	for key: Vector2i in corners.keys():
-		_touch_corner(_pad_blocks, key)
+	for pad: Pad in pads:
+		if pad.cells.is_empty():
+			continue
+		var low := pad.cells[0]
+		var high := pad.cells[0]
+		for cell: Vector2i in pad.cells:
+			low = low.min(cell)
+			high = high.max(cell)
+		var b := SurfaceBlocks.BLOCK
+		# A pad's corners run from low − BLEND to high + 1 + BLEND; block k's cache holds corners
+		# k·BLOCK − 1 … k·BLOCK + BLOCK + 1 (_touch_corner).
+		for by: int in range(ceili(float(low.y - BLEND - b - 1) / b), floori(float(high.y + BLEND + 2) / b) + 1):
+			for bx: int in range(ceili(float(low.x - BLEND - b - 1) / b), floori(float(high.x + BLEND + 2) / b) + 1):
+				_pad_blocks[_wrap_block(Vector2i(bx, by))] = true
 	for block: Vector2i in touched.keys():
 		_cache.erase(block)
 	return touched

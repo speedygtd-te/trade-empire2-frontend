@@ -150,6 +150,18 @@ func test_pads_report_the_blocks_they_change_and_nothing_when_unchanged() -> voi
 	assert_float(relief.corner(15, 15)).is_equal_approx((240.0 + 240.0 + 250.0 + 250.0) / 4.0, 0.001)
 
 
+func test_a_pad_in_one_block_shapes_the_ring_of_the_block_beside() -> void:
+	var relief := TerrainRelief.new(_surface([Vector2i(0, 0), Vector2i(1, 0)], _slope_x))
+	var cells: Array[Vector2i] = [Vector2i(17, 5)]
+	relief.set_pads([TerrainRelief.Pad.new(cells, 100.0)])
+
+	var left := relief.block_heights(Vector2i(0, 0))
+	var side := TerrainRelief.SIDE
+	# Corner (17, 5) lies in the left block's ring: cut down there as well.
+	assert_float(left[(5 + 1) * side + 17 + 1]).is_equal(relief.corner(17, 5))
+	assert_float(relief.corner(17, 5)).is_less(265.0)
+
+
 func test_the_nearer_and_then_the_lower_pad_wins_where_pads_meet() -> void:
 	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], func(_x: int, _y: int) -> int: return 100))
 	var left: Array[Vector2i] = [Vector2i(4, 4)]
