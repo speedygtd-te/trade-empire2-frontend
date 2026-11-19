@@ -26,6 +26,10 @@ uniform float band = 0.05;
 uniform float wobble = 0.3;
 // Noise repeats every 1 / noise_scale cells; that must divide block_size (the blocks meet).
 uniform float noise_scale = 0.25;
+// Unexplored cells (alpha 0 in the cell texture, draft.31) are fog: a dark, grainy slate, with a
+// soft and ragged edge toward the explored ground and a faint cyan rim along it.
+uniform vec3 fog_color = vec3(0.10, 0.11, 0.14);
+uniform vec3 fog_rim = vec3(0.10, 0.36, 0.42);
 
 // Position on the block in cells: x east, y north, 0..block_size.
 varying vec2 block_pos;
@@ -64,6 +68,24 @@ vec3 cell_color(vec4 data, vec2 t, vec2 gx, vec2 gy) {
 	return color * (data.b + 0.5);
 }
 
+// The neighbour's data, or the own when the neighbour is fog: the biomes never blend into fog.
+vec4 explored_or(vec4 own, ivec2 cell) {
+	vec4 data = cell_data(cell);
+	return data.a < 0.5 ? own : data;
+}
+
+// How explored a point is, 0..1: the cells' flags interpolated between the cell centres.
+float explored_at(vec2 p) {
+	vec2 q = p - vec2(0.5);
+	ivec2 c = ivec2(floor(q));
+	vec2 f = q - vec2(c);
+	float a = cell_data(c).a;
+	float b = cell_data(c + ivec2(1, 0)).a;
+	float d = cell_data(c + ivec2(0, 1)).a;
+	float e = cell_data(c + ivec2(1, 1)).a;
+	return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
+}
+
 void fragment() {
 	vec2 p = block_pos;
 	ivec2 cell = clamp(ivec2(floor(p)), ivec2(0), ivec2(block_size - 1));
@@ -72,6 +94,11 @@ void fragment() {
 	vec2 gx = dFdx(t);
 	vec2 gy = dFdy(t);
 	vec4 own = cell_data(cell);
+	if (own.a < 0.5) {
+		// A fog cell next to explored ground shows that ground under the fog's soft edge.
+		own = explored_or(explored_or(explored_or(explored_or(own, cell + ivec2(1, 0)),
+			cell + ivec2(-1, 0)), cell + ivec2(0, 1)), cell + ivec2(0, -1));
+	}
 	vec3 color = cell_color(own, t, gx, gy);
 	if (soft) {
 		// Toward the nearer border on each axis; the weight is 0.5 on the border itself, so
@@ -84,12 +111,12 @@ void fragment() {
 		bool blend_x = weight.x > 0.002;
 		bool blend_y = weight.y > 0.002;
 		if (blend_x) {
-			color = mix(color, cell_color(cell_data(cell + ivec2(side.x, 0)), t, gx, gy), weight.x);
+			color = mix(color, cell_color(explored_or(own, cell + ivec2(side.x, 0)), t, gx, gy), weight.x);
 		}
 		if (blend_y) {
-			vec3 row = cell_color(cell_data(cell + ivec2(0, side.y)), t, gx, gy);
+			vec3 row = cell_color(explored_or(own, cell + ivec2(0, side.y)), t, gx, gy);
 			if (blend_x) {
-				row = mix(row, cell_color(cell_data(cell + side), t, gx, gy), weight.x);
+				row = mix(row, cell_color(explored_or(own, cell + side), t, gx, gy), weight.x);
 			}
 			color = mix(color, row, weight.y);
 		}
@@ -99,6 +126,22 @@ void fragment() {
 	vec3 lifted = color * brightness;
 	vec3 over = max(lifted - knee, vec3(0.0));
 	lifted = min(lifted, vec3(knee)) + (1.0 - knee) * (vec3(1.0) - exp(-over / (1.0 - knee)));
-	ALBEDO = lifted * tint;
+	vec3 albedo = lifted * tint;
+	float explored = explored_at(p);
+	if (explored < 0.999) {
+		// Periods of 16 and 4 cells: they divide block_size, so the fog meets across blocks.
+		float coarse = texture(noise, p * 0.0625).r;
+		float fine = texture(noise, p * 0.25 + vec2(0.37, 0.11)).g;
+		float shown = smoothstep(0.36, 0.64, explored + (coarse - 0.5) * 0.45 + (fine - 0.5) * 0.25);
+		vec3 fog = fog_color * (0.55 + 0.9 * coarse + 0.6 * (fine - 0.5));
+		// A faint survey grid every 4 cells: blank map, not water or a hole.
+		vec2 grid = abs(fract(p * 0.25 + 0.5) - 0.5) / max(fwidth(p * 0.25), vec2(0.0001));
+		float line = 1.0 - clamp(min(grid.x, grid.y) - 0.5, 0.0, 1.0);
+		fog += fog_rim * line * 0.22;
+		float rim = 1.0 - abs(shown * 2.0 - 1.0);
+		fog += fog_rim * rim * rim * 0.9;
+		albedo = mix(fog, albedo, shown);
+	}
+	ALBEDO = albedo;
 	ROUGHNESS = 0.95;
 }

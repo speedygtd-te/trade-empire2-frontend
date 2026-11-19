@@ -256,6 +256,8 @@ func _ready() -> void:
 		_fleet.name = "Fleet"
 		add_child(_fleet)
 	_fleet.changed.connect(_on_fleet_changed)
+	_fleet.probes.reveal_changed.connect(_on_reveal_changed)
+	_fleet.probes.arrived.connect(_on_probe_arrived)
 	_build_world()
 	# Stop sites the routes hold on this body (RouteStopLayer).
 	_stops = RouteStopLayer.new()
@@ -755,6 +757,8 @@ func _on_ready_to_show() -> void:
 	_view.set_fleet(_fleet.fleet)
 	_view.look_at_cell(_model.centre_cell())
 	_update_sun()
+	# Foreign structures probes have seen here (draft.31); nothing on an older server.
+	_fleet.probes.load_reveal(_model.body_id)
 	# The head and the bottom cover parts of the view: shift the colony into the room between
 	# them (and from then on with every change of their heights).
 	await get_tree().process_frame
@@ -762,6 +766,23 @@ func _on_ready_to_show() -> void:
 	_placed = true
 	_follow_bars()
 	_refresh()
+
+
+## The explored areas of this body arrived or changed: the ghosts of seen structures follow.
+func _on_reveal_changed(changed_body: String) -> void:
+	if changed_body == _model.body_id and not _model.detached:
+		_view.set_reveal(_fleet.probes.reveal(changed_body))
+
+
+## A probe arrived: say so; on this body the newly explored ground loads.
+func _on_probe_arrived(probe: Probes.Probe, sightings: int) -> void:
+	var body := _fleet.body_name(probe.body_id)
+	if body.is_empty():
+		body = _model.body_name if probe.body_id == _model.body_id else tr("FLEET_UNKNOWN_PLACE")
+	var key := "PROBE_NOTICE_ARRIVED_SEEN" if sightings > 0 else "PROBE_NOTICE_ARRIVED"
+	show_notice(tr(key).format({"body": body, "count": sightings}), AppTheme.COLOR_OK)
+	if probe.body_id == _model.body_id and not _model.detached:
+		_model.reset_surface()
 
 
 ## Sets the sun over the cell in the middle of the view from the body's orbit and rotation at
@@ -1637,6 +1658,9 @@ func _refresh_view() -> void:
 	_ground.visible = not _ground.text.is_empty()
 	if hull_type.is_empty():
 		_info.text = tr("COLONY_FREE_GROUND") if target.z == 0 else tr("LEVEL_EMPTY")
+		if _model.is_unexplored(target):
+			_info.text = tr("COLONY_UNEXPLORED")
+			_ground.visible = false
 		_primary.visible = false
 		return
 	var hull_name := definitions.hull(hull_type).display_name if definitions.hull(hull_type) != null else ""
@@ -1700,6 +1724,74 @@ func _refresh_view() -> void:
 		_staff.visible = true
 	if Sight.is_telescope(placed.module_type):
 		_refresh_telescope(placed)
+	elif Probes.is_launcher(placed.module_type):
+		_refresh_launcher(placed)
+
+
+## A probe launcher (draft.31): the probes in this structure's own supply, the probes it sent that
+## are still under way (with their countdown), and Launch probe — disabled with the reason while it
+## is built, switched off, its structure travels, power is short or no probe is in store. The
+## server checks again.
+func _refresh_launcher(placed: StructureLayout.Module) -> void:
+	# Deposits under a launcher say nothing; the card keeps room for the probes.
+	_ground.visible = false
+	_scope.visible = true
+	var now := Services.clock.now_ms()
+	var lines := PackedStringArray()
+	var stock := ProbeTargetScreen.probe_stock(_focus)
+	if stock >= 0:
+		lines.append(tr("PROBE_IN_STORE").format({"stock": ProbeTargetScreen.stock_text(_focus, self)}))
+	var color := AppTheme.COLOR_OK if stock > 0 else AppTheme.COLOR_MUTED
+	for probe: Probes.Probe in _fleet.probes.list.flying(now):
+		if probe.structure_id == _focus.structure_id and probe.module_id == placed.module_id:
+			lines.append(tr("PROBE_UNDER_WAY").format({"body": _probe_body(probe.body_id),
+				"duration": TimeFormat.duration(probe.remaining_ms(now))}))
+			color = AppTheme.COLOR_PENDING
+	_scope.text = "\n".join(lines)
+	_scope.visible = not lines.is_empty()
+	_scope.add_theme_color_override("font_color", color)
+	var reason := ProbeTargetScreen.launch_reason(_focus, placed, _fleet, self)
+	_scope_block.text = reason
+	_scope_block.visible = not reason.is_empty()
+	_scope_block.add_theme_color_override("font_color",
+		AppTheme.COLOR_DANGER if reason == tr("PROBE_BLOCK_NO_PROBE") else AppTheme.COLOR_MUTED)
+	_secondary.visible = true
+	_secondary.text = tr("PROBE_LAUNCH_OPEN")
+	_secondary.disabled = _busy or not reason.is_empty()
+
+
+## The name of a body for a probe line; "somewhere" while it is unknown.
+func _probe_body(body_id: String) -> String:
+	var known := _fleet.body_name(body_id)
+	if known.is_empty() and body_id == _model.body_id:
+		known = _model.body_name
+	return known if not known.is_empty() else tr("FLEET_UNKNOWN_PLACE")
+
+
+## Launch probe: the system map in pick mode for the target body (other systems through the
+## galaxy), then that body's surface map for the target cell (ProbeTargetScreen).
+func _open_probe_pick(placed: StructureLayout.Module) -> void:
+	var map := MapScreen.new()
+	var account := Services.session.account
+	map.setup(_model.system_id, account.home_body_id if account != null else "")
+	map.pick = MapScreen.PICK_PROBE
+	map.fleet = _fleet
+	var structure := _focus
+	map.body_picked.connect(func(body_id: String) -> void:
+		ScreenStack.close_layer(map)
+		_open_probe_target(structure, placed, body_id))
+	ScreenStack.push_onto(self, map)
+
+
+func _open_probe_target(structure: ColonyModel, placed: StructureLayout.Module, body_id: String) -> void:
+	var target := ProbeTargetScreen.new()
+	target.setup_launch(_fleet, structure, placed, body_id)
+	target.launched.connect(func(probe: Probes.Probe) -> void:
+		ScreenStack.close_layer(target)
+		show_notice(tr("PROBE_NOTICE_LAUNCHED").format({"body": _probe_body(probe.body_id),
+			"duration": TimeFormat.duration(probe.remaining_ms(Services.clock.now_ms()))}), AppTheme.COLOR_OK)
+		_refresh())
+	ScreenStack.push_onto(self, target)
 
 
 ## A telescope: "Level 2 · sees 14 ly" (emerald while it sees, amber when it does not, and why),
@@ -1869,6 +1961,8 @@ func _ground_text(cell: Vector3i) -> String:
 		return ""
 	var ground := _model.ground_cell(cell)
 	if ground == null:
+		if _model.is_unexplored(cell):
+			return tr("COLONY_GROUND_UNEXPLORED")
 		return tr("COLONY_GROUND_FAILED") if _model.deposits_failed else tr("COLONY_GROUND_LOADING")
 	var lines := PackedStringArray()
 	var biome_key := "COLONY_BIOME_" + ground.biome
@@ -2208,6 +2302,8 @@ func _on_secondary() -> void:
 		var placed := _focus.layout.module_at(_focus.layout.to_local(_target() as Vector3i))
 		if placed != null and Sight.is_telescope(placed.module_type):
 			_upgrade_telescope(placed)
+		elif placed != null and Probes.is_launcher(placed.module_type):
+			_open_probe_pick(placed)
 		elif _focus.layout.is_shaft(placed):
 			_extend_shaft()
 		elif placed != null:

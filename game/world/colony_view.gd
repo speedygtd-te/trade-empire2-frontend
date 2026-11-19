@@ -172,6 +172,8 @@ var _travel: TravelLayer
 var _travelling: Dictionary = {}
 var _trip_signature := ""
 var _trip_left := 0.0
+## Foreign structures probes have seen nearby (draft.31 snapshots).
+var _sightings: SightingLayer
 
 
 func setup(colony: ColonyModel) -> void:
@@ -179,6 +181,7 @@ func setup(colony: ColonyModel) -> void:
 	model.layout_changed.connect(_rebuild_structure)
 	model.guests_changed.connect(_rebuild_structure)
 	model.surface_loaded.connect(_on_surface_loaded)
+	model.surface_reset.connect(_on_surface_reset)
 	model.production_changed.connect(_mover.refresh_activity)
 
 
@@ -208,6 +211,10 @@ func _ready() -> void:
 	_travel.name = "Travel"
 	_travel.setup(self)
 	add_child(_travel)
+	_sightings = SightingLayer.new()
+	_sightings.name = "Sightings"
+	_sightings.setup(self)
+	add_child(_sightings)
 
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -840,7 +847,25 @@ func _rebuild_all() -> void:
 	_underground.redraw()
 	_rebuild_structure()
 	_travel.redraw()
+	_sightings.redraw()
 	origin_moved.emit()
+
+
+## What the player has explored of this body (draft.31): the foreign structures probes have seen
+## show as ghosts. Null: nothing to show.
+func set_reveal(reveal: RevealMap) -> void:
+	var seen: Array[RevealMap.Sighting] = []
+	if reveal != null:
+		seen = reveal.sightings
+	_sightings.show_sightings(seen)
+
+
+## More of the body was explored: the ground loads again around the camera.
+func _on_surface_reset() -> void:
+	if not is_inside_tree():
+		return
+	_rebuild_all()
+	model.ensure_surface(focus_cell())
 
 
 func _rebuild_structure() -> void:

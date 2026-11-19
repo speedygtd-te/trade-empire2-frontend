@@ -1151,3 +1151,58 @@ COLONY_PATH_LEGEND,"Cyan floor: corridors staff can reach. Amber: cut off. Arrow
 ERROR_NOT_CONNECTED,This would leave modules without a corridor to the entrance.
 ERROR_LEVEL_NOT_CONNECTED,This level is not connected to the ground yet – build a staircase or elevator.
 ERROR_NO_ENTRANCE,Keep at least one entrance on the ground level: a free hull at the outer edge.
+COLONY_UNEXPLORED,Unexplored — send a probe to see this ground.
+COLONY_GROUND_UNEXPLORED,Unexplored: terrain and deposits are unknown.
+ERROR_SURFACE_NOT_REVEALED,"This ground is unexplored. Land only where you have explored, or send a probe first."
+ERROR_NOT_A_PROBE_LAUNCHER,This module is not a probe launcher.
+ERROR_LAUNCHER_NOT_READY,"The probe launcher is not ready: it must be finished, fully powered and its structure at rest."
+ERROR_NO_PROBE,There is no probe in the own supply of this structure.
+PROBE_TAB,Probes
+PROBE_TARGET_TITLE,Send a probe
+PROBE_VIEW_TITLE,Explored ground
+PROBE_LAUNCH,Launch probe
+PROBE_LAUNCH_OPEN,Launch probe…
+PROBE_LOADING,Loading the surface…
+PROBE_LOAD_FAILED,The surface could not be loaded.
+PROBE_NO_SURFACE,This body has no surface for a probe to land on.
+PROBE_TARGET_HINT,Tap the map where the probe should land.
+PROBE_TARGET_CELL,"Target: field {x}, {y} · explores {radius} fields ({km} km) around it"
+PROBE_TARGET_EXPLORED,This spot is explored already.
+PROBE_COST,Costs 1 Exploration Probe · {stock}
+PROBE_FLIGHT_TIME,"Flight time: at least 1 min, shown once it is launched."
+PROBE_STOCK,{count} in store
+PROBE_STOCK_NONE,none in store
+PROBE_IN_STORE,Probes: {stock}
+PROBE_UNDER_WAY,Probe to {body} · arrives in {duration}
+PROBE_BLOCK_BUILDING,Can launch once it is built.
+PROBE_BLOCK_DISABLED,The launcher is switched off.
+PROBE_BLOCK_MOVING,Cannot launch while the structure travels.
+PROBE_BLOCK_NO_POWER,Needs full power to launch.
+PROBE_BLOCK_NO_PROBE,"No probe in store: an Assembler builds them (research Exploration Probes)."
+PROBE_EXPLORED_ALL,The whole surface is known.
+PROBE_EXPLORED_NONE,Not explored yet — send a probe.
+PROBE_EXPLORED_SHARE,Explored areas: {count} · about {percent} % of the surface
+PROBE_EXPLORED_AREAS,Explored areas: {count}
+PROBE_VIEW_FLYING,{count} probe(s) on the way here.
+PROBE_SIGHTING,"{owner}'s structure · {hulls} hulls · seen {ago} ago"
+PROBE_UNKNOWN_OWNER,Someone
+PROBE_UNKNOWN_BODY,an unknown body
+PROBE_NOTICE_LAUNCHED,Probe launched to {body} · arrives in {duration}.
+PROBE_NOTICE_ARRIVED,"Probe arrived at {body}: the ground around it is explored."
+PROBE_NOTICE_ARRIVED_SEEN,"Probe arrived at {body}: the ground around it is explored, {count} foreign structure(s) seen."
+PROBE_LIST_LOADING,Loading your probes…
+PROBE_LIST_FAILED,Your probes could not be loaded.
+PROBE_LIST_EMPTY,"No probes yet. Build a Probe Launcher (research Exploration Probes) and launch one from its card."
+PROBE_ROW,"To {body} · field {x}, {y}"
+PROBE_ROW_FLYING,Arrives in {duration} · {percent} %
+PROBE_ROW_ARRIVED,Arrived · {radius} fields around it explored
+MAP_PICK_PROBE,Send the probe here
+MAP_PICK_PROBE_NO_SURFACE,No surface: a probe needs ground to land on.
+MAP_PICK_HINT_PROBE,Tap the body to explore. Other star systems are on the galaxy map.
+MAP_PICK_UNEXPLORED,Not explored yet: send a probe first to find a landing site.
+TRAVEL_SITE_UNEXPLORED,Unexplored ground: land only where you have explored.
+LOG_PROBE_LAUNCHED,"A probe was launched to {body}, field {x}, {y}."
+LOG_PROBE_ARRIVED,A probe arrived at {body} and explored the ground around it.
+LOG_PROBE_ARRIVED_SEEN,"A probe arrived at {body}, explored the ground around it and saw {count} foreign structure(s)."
+PROBE_MAP_GRID,Grid: {km} km
+PROBE_MAP_LEGEND,Cyan: your structures · Green: explored · Amber: probes and structures seen

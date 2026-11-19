@@ -21,6 +21,8 @@ const TIME_LAPSE := 86400.0
 const PICK_NONE := ""
 const PICK_ORBIT := "orbit"
 const PICK_LAND := "land"
+## The target body of an exploration probe (draft.31): it needs a surface.
+const PICK_PROBE := "probe"
 
 ## Pick mode (set before adding): the details offer to choose the body as the target of a trip.
 var pick := PICK_NONE
@@ -272,8 +274,13 @@ func _load() -> void:
 	_update_free_area()
 	_view.show_map(_map)
 	_update_fleet_marks()
-	if pick != PICK_NONE:
-		_hint.text = tr("MAP_PICK_HINT_LAND") if pick == PICK_LAND else tr("MAP_PICK_HINT_ORBIT")
+	match pick:
+		PICK_LAND:
+			_hint.text = tr("MAP_PICK_HINT_LAND")
+		PICK_ORBIT:
+			_hint.text = tr("MAP_PICK_HINT_ORBIT")
+		PICK_PROBE:
+			_hint.text = tr("MAP_PICK_HINT_PROBE")
 
 
 # --- selection and time ---------------------------------------------------------------------
@@ -293,7 +300,26 @@ func _select(body_id: String) -> void:
 		_details.show_pick(_pick_key(), _pick_reason(body_id))
 		# The panel grows over the lower map: keep the body in the middle of what stays free.
 		_view.focus_body(body_id, false)
+		_show_exploration(body_id)
 	_view.queue_redraw()
+
+
+## How much of a body with a surface the player has explored (draft.31), once its reveal is
+## there; landing on a body nobody explored is refused up front.
+func _show_exploration(body_id: String) -> void:
+	if fleet == null or not fleet.probes.supported():
+		return
+	var body := _map.body(body_id)
+	var grid := Wire.as_dict(body.data.get("grid")) if body != null else {}
+	if grid.is_empty() or body.data.get("surfaceBuildable") == false:
+		return
+	var reveal := await fleet.probes.ensure_reveal(body_id)
+	if _view.selected != body_id or not fleet.probes.has_reveal(body_id):
+		return
+	_details.show_exploration(ProbeTargetScreen.exploration_text(reveal, Wire.as_int(grid.get("sizeX")),
+		Wire.as_int(grid.get("sizeY")), self), reveal != null and reveal.fog and reveal.areas.is_empty())
+	if pick == PICK_LAND and reveal != null and reveal.fog and reveal.areas.is_empty():
+		_details.show_pick(_pick_key(), tr("MAP_PICK_UNEXPLORED"))
 
 
 ## The button text of pick mode; "" outside it.
@@ -303,16 +329,18 @@ func _pick_key() -> String:
 			return "MAP_PICK_ORBIT"
 		PICK_LAND:
 			return "MAP_PICK_LAND"
+		PICK_PROBE:
+			return "MAP_PICK_PROBE"
 	return ""
 
 
-## Why a body cannot be picked (translated); "" when it can: landing needs a surface.
+## Why a body cannot be picked (translated); "" when it can: landing and probes need a surface.
 func _pick_reason(body_id: String) -> String:
 	var body := _map.body(body_id)
-	if pick != PICK_LAND or body == null:
+	if (pick != PICK_LAND and pick != PICK_PROBE) or body == null:
 		return ""
 	if Wire.as_dict(body.data.get("grid")).is_empty() or body.data.get("surfaceBuildable") == false:
-		return tr("MAP_PICK_NO_SURFACE")
+		return tr("MAP_PICK_NO_SURFACE") if pick == PICK_LAND else tr("MAP_PICK_PROBE_NO_SURFACE")
 	return ""
 
 

@@ -14,6 +14,8 @@ const FLIP_V := 4
 const DEFAULT_MIRROR := FLIP_V
 ## Brightness is stored as (shade − SHADE_OFFSET) in one byte.
 const SHADE_OFFSET := 0.5
+## Alpha of an unexplored cell in the cell texture (explored and unloaded cells: 255).
+const FOG_ALPHA := 0
 
 var _first_layers: Dictionary
 var _variants: int
@@ -66,19 +68,25 @@ static func shade(vegetation: int, elevation: int) -> float:
 ## orientation, b = shade − SHADE_OFFSET (0..255 each). `cell_at(x, y)` returns the
 ## SurfacePatch.Cell at an absolute cell or null. A missing ring cell repeats the block's own
 ## edge (no blend toward the unknown); a missing block cell shows the fallback layer.
-func cell_image(x0: int, y0: int, size: int, wrap_width: int, cell_at: Callable) -> Image:
+## `hidden_at(x, y)` (optional) says whether a cell is unexplored (fog, draft.31): its alpha is
+## FOG_ALPHA instead of 255 (the shader draws fog there), also in the ring, so the fog's edge
+## runs on across blocks.
+func cell_image(x0: int, y0: int, size: int, wrap_width: int, cell_at: Callable, hidden_at: Callable = Callable()) -> Image:
 	var side := size + 2
 	var bytes := PackedByteArray()
 	bytes.resize(side * side * 4)
+	var fog := hidden_at.is_valid()
 	for j: int in side:
 		for i: int in side:
 			var x := x0 - 1 + i
 			var y := y0 - 1 + j
 			var found: Variant = cell_at.call(x, y)
-			if found == null and (i == 0 or j == 0 or i == side - 1 or j == side - 1):
+			var hidden: bool = fog and found == null and hidden_at.call(x, y) == true
+			if found == null and not hidden and (i == 0 or j == 0 or i == side - 1 or j == side - 1):
 				x = clampi(x, x0, x0 + size - 1)
 				y = clampi(y, y0, y0 + size - 1)
 				found = cell_at.call(x, y)
+				hidden = fog and found == null and hidden_at.call(x, y) == true
 			var cell := found as SurfacePatch.Cell
 			var at := (j * side + i) * 4
 			var wrapped := WorldGrid.wrap_x(x, wrap_width)
@@ -90,7 +98,7 @@ func cell_image(x0: int, y0: int, size: int, wrap_width: int, cell_at: Callable)
 				bytes[at] = layer(cell.biome, cell.variant)
 				bytes[at + 1] = orientation(wrapped, y, mirror(cell.biome))
 				bytes[at + 2] = _shade_byte(shade(cell.vegetation, cell.elevation))
-			bytes[at + 3] = 255
+			bytes[at + 3] = FOG_ALPHA if hidden else 255
 	return Image.create_from_data(side, side, false, Image.FORMAT_RGBA8, bytes)
 
 

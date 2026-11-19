@@ -137,6 +137,14 @@ func _run() -> void:
 		await _capture_telescope(colony)
 		await _finish(shell, session, had_session)
 		return
+	if OS.get_cmdline_user_args().has("--only=fog"):
+		await _capture_fog(colony)
+		await _finish(shell, session, had_session)
+		return
+	if OS.get_cmdline_user_args().has("--only=probes"):
+		await _capture_probes(shell, colony)
+		await _finish(shell, session, had_session)
+		return
 
 	var layout := colony._model.layout
 	var with_module := layout.modules()
@@ -774,9 +782,9 @@ func _capture_fleet(shell: MainShell) -> void:
 		shell.nav().entry(MainShell.Tab.FLEET).pressed.emit()
 		await get_tree().process_frame
 		print("FLEET  second tap returns to the list: %s" % (shell.stack(MainShell.Tab.FLEET).depth() == 0))
-	panel._show_tab(true)
+	panel._show_tab(FleetPanel.TAB_ROUTES)
 	await _capture("fleet_routes")
-	panel._show_tab(false)
+	panel._show_tab(FleetPanel.TAB_STRUCTURES)
 	shell.handle_back()
 	print("BACK  from Fleet to Base: %s" % (shell.active_tab() == MainShell.Tab.BASE))
 
@@ -1071,6 +1079,204 @@ func _capture_telescope(colony: ColonyScreen) -> void:
 	scope.upgrade_to = 0
 	colony._model.reload_telescopes()
 	colony._select(null)
+
+
+## The surface fog of draft.31 on the live server: a fresh base sees 1 000 cells around itself, so
+## the camera goes to the edge of that circle (east of the base), close and far; then a tap on an
+## unexplored cell (the structure is open) shows what Inspect says there.
+func _capture_fog(colony: ColonyScreen) -> void:
+	var model := colony._model
+	var centre := model.centre_cell()
+	var edge := Vector3i(centre.x + 1000, centre.y, 0)
+	_centre(colony, edge)
+	colony._view.zoom = 14.0
+	colony._view._update_camera()
+	await _until(func() -> bool: return model.surface.is_loaded(model.surface.block_of(edge.x, edge.y)), 10000)
+	await get_tree().create_timer(3.0).timeout
+	await _capture("colony_fog_edge")
+	print("FOG  edge at %s: hidden %s, inside hidden %s" % [edge, model.surface.is_hidden(edge.x + 8, edge.y),
+		model.surface.is_hidden(edge.x - 8, edge.y)])
+	colony._view.zoom = ColonyView.ZOOM_MAX
+	colony._view._update_camera()
+	model.ensure_surface(edge)
+	await get_tree().create_timer(4.0).timeout
+	await _capture("colony_fog_far")
+	colony._view.zoom = ColonyView.ZOOM_DEFAULT
+	colony._view._update_camera()
+	var unknown := Vector3i(edge.x + 6, edge.y, 0)
+	colony._select(unknown)
+	await get_tree().create_timer(1.5).timeout
+	await _capture("colony_inspect_unexplored")
+	print("FOG  inspect unexplored: %s | %s" % [colony._info.text, colony._ground.text])
+	colony._select(null)
+	colony.recentre()
+
+
+## Probes and exploration (draft.31). Live: the reveal of the home body, a landing site in the fog
+## (travel site picker), the body panel's explored line, the empty probe list. Made up and marked
+## SAMPLE (a fresh account has no launcher or probe, and nobody seen): a solar panel shown as a
+## launcher (its card without and with probes in store), the target choice (Launch is sent for
+## real: the server refuses, the module is no launcher), a probe area, a drive and a foreign
+## structure near the base, the probe list with a probe under way and one arrived, the explored
+## ground of the body, the notice of an arrival. Everything made up is put back.
+func _capture_probes(shell: MainShell, colony: ColonyScreen) -> void:
+	var model := colony._model
+	var fleet := colony._fleet
+	var probes := fleet.probes
+	await _until(func() -> bool: return fleet.loaded, 10000)
+	print("PROBES  supported: %s" % probes.supported())
+	var live := await probes.load_reveal(model.body_id)
+	print("PROBES  live reveal: %s" % ("none" if live == null else "fog %s, %d areas, %d sightings" % [
+		live.fog, live.areas.size(), live.sightings.size()]))
+	var centre := model.centre_cell()
+
+	# Live: a landing site in the fog is refused before the server is asked.
+	var site := TravelSiteScreen.new()
+	site.setup(model, TravelSiteScreen.MODE_LAND, model.body_id, fleet)
+	ScreenStack.push_onto(colony, site)
+	await _until(func() -> bool: return not site._loading.visible, 15000)
+	await get_tree().create_timer(1.0).timeout
+	var fogged := Vector2i(centre.x + 1003, centre.y)
+	site._suggested = false
+	site._site = fogged
+	site._view.zoom = 16.0
+	site._view.look_at_cell(Vector3i(fogged.x, fogged.y, 0))
+	site._show_site()
+	await get_tree().create_timer(4.0).timeout
+	await _capture("probe_site_unexplored")
+	print("SITE  in the fog: %s | client ok %s" % [site._hint.text, site._client_ok])
+	ScreenStack.close_layer(site)
+	await get_tree().process_frame
+
+	# Live: the probe list (empty on a fresh account).
+	shell.show_tab(MainShell.Tab.FLEET)
+	var panel := shell.stack(MainShell.Tab.FLEET).root() as FleetPanel
+	panel.show_probes()
+	await _until(func() -> bool: return probes.loaded or probes.error != null, 8000)
+	await _capture("probe_list_live")
+	print("PROBES  live list: %d, tab shown %s" % [probes.list.probes.size(), panel._probes_tab.visible])
+
+	# Live: the explored line of the home body on the system map.
+	shell.show_tab(MainShell.Tab.MAP)
+	var map_screen := shell.stack(MainShell.Tab.MAP).root() as MapScreen
+	await _until(func() -> bool: return map_screen._map != null, 15000)
+	await get_tree().create_timer(1.0).timeout
+	map_screen._select(model.body_id)
+	await get_tree().create_timer(2.0).timeout
+	await _capture("probe_map_body")
+	print("MAP  explored line: %s" % (map_screen._details._explored.text if map_screen._details._explored != null else "-"))
+	map_screen._select("")
+	shell.show_tab(MainShell.Tab.BASE)
+	await get_tree().process_frame
+
+	# SAMPLE: a solar panel shown as a probe launcher.
+	var panel_module: StructureLayout.Module = null
+	for placed: StructureLayout.Module in model.layout.modules():
+		if placed.module_type == "SOLAR_PANEL":
+			panel_module = placed
+			break
+	if panel_module == null:
+		print("SKIP  launcher samples (no solar panel)")
+		return
+	var banner := Ui.dynamic_label()
+	banner.text = "SAMPLE: made-up draft.31 data"
+	banner.add_theme_color_override("font_color", Color.MAGENTA)
+	banner.autowrap_mode = TextServer.AUTOWRAP_OFF
+	banner.position = Vector2(24, 140)
+	add_child(banner)
+	panel_module.module_type = Probes.LAUNCHER
+	var at := model.layout.to_absolute(panel_module.origin)
+	colony._select(at)
+	await get_tree().create_timer(1.0).timeout
+	await _capture("SAMPLE_launcher_card_empty")
+	print("SAMPLE  launcher, none in store: %s | %s | button disabled %s" % [colony._scope.text, colony._scope_block.text,
+		colony._secondary.disabled])
+	var now := Services.clock.now_ms()
+	model.inventory.apply_rates([{"resource": Probes.ITEM, "value": 3000000, "ratePerHour": 0, "at": now}])
+	var flying := {"probeId": 9001, "structureId": model.structure_id, "moduleId": panel_module.module_id,
+		"bodyId": model.body_id, "x": centre.x + 6000, "y": centre.y + 2000, "radius": 5000,
+		"launchedAt": now - 30000, "arrivesAt": now + 154000, "status": "flying"}
+	probes.list.apply(flying)
+	colony._refresh()
+	await _capture("SAMPLE_launcher_card_ready")
+	print("SAMPLE  launcher, 3 in store: %s | button disabled %s" % [colony._scope.text.replace("\n", " / "), colony._secondary.disabled])
+
+	# The target: the system map in probe pick mode, then the body's surface map.
+	colony._on_secondary()
+	var pick := shell.stack(MainShell.Tab.BASE).top() as MapScreen
+	if pick != null:
+		await _until(func() -> bool: return pick._map != null, 15000)
+		await get_tree().create_timer(1.0).timeout
+		pick._select(model.body_id)
+		await get_tree().create_timer(2.0).timeout
+		await _capture("SAMPLE_probe_map_pick")
+		pick.body_picked.emit(model.body_id)
+	var target := shell.stack(MainShell.Tab.BASE).top() as ProbeTargetScreen
+	if target != null:
+		await _until(func() -> bool: return target._size_x > 0, 15000)
+		await get_tree().create_timer(1.0).timeout
+		await _capture("SAMPLE_probe_target_hint")
+		target._on_cell_tapped(Vector2i(centre.x - 9000, centre.y - 4000))
+		await _capture("SAMPLE_probe_target")
+		print("SAMPLE  target: %s | %s | launch disabled %s" % [target._lines.text.replace("\n", " / "), target._reason.text,
+			target._launch.disabled])
+		# For real: the server refuses (the module is a solar panel).
+		await target._on_launch()
+		await _capture("SAMPLE_probe_target_refused")
+		print("PROBE  launch refused: %s" % target._status.text)
+		ScreenStack.close_layer(target)
+
+	# SAMPLE: a probe area, a drive and a foreign structure seen near the base.
+	var sample := RevealMap.from_wire({"bodyId": model.body_id, "fog": true, "areas": [
+		{"x0": centre.x, "y0": centre.y, "x1": centre.x, "y1": centre.y, "radius": 1000, "since": 1, "source": "structure"},
+		{"x0": centre.x - 9000, "y0": centre.y - 4000, "x1": centre.x - 9000, "y1": centre.y - 4000, "radius": 5000,
+			"since": now - 3600000, "source": "probe"},
+		{"x0": centre.x + 800, "y0": centre.y, "x1": centre.x + 7000, "y1": centre.y + 3000, "radius": 1000,
+			"since": now - 7200000, "source": "vehicle"}],
+		"sightings": [{"structureId": 77, "ownerId": 5, "ownerName": "Orsk Mining", "x": centre.x + 12, "y": centre.y + 5,
+			"hulls": 20, "seenAt": now - 8100000, "probeId": 9000}]})
+	probes._reveals[model.body_id] = sample
+	probes.reveal_changed.emit(model.body_id)
+	colony._select(null)
+	colony._close_structure()
+	colony._view.zoom = 18.0
+	colony._view.look_at_cell(Vector3i(centre.x + 13, centre.y + 7, 0))
+	await get_tree().create_timer(2.0).timeout
+	await _capture("SAMPLE_colony_sighting")
+
+	# SAMPLE: the probe list and the explored ground of the body.
+	probes.list.apply({"probeId": 9000, "structureId": model.structure_id, "moduleId": panel_module.module_id,
+		"bodyId": model.body_id, "x": centre.x - 9000, "y": centre.y - 4000, "radius": 5000,
+		"launchedAt": now - 3700000, "arrivesAt": now - 3600000, "status": "arrived"})
+	probes.loaded = true
+	probes.changed.emit()
+	shell.show_tab(MainShell.Tab.FLEET)
+	panel.show_probes()
+	await _capture("SAMPLE_fleet_probes")
+	var explored := panel.open_exploration(model.body_id)
+	await _until(func() -> bool: return explored._size_x > 0, 15000)
+	explored._map.look_at(Vector2i(centre.x - 2000, centre.y - 1000))
+	await get_tree().create_timer(1.0).timeout
+	await _capture("SAMPLE_probe_explored")
+	print("SAMPLE  explored: %s" % explored._lines.text.replace("\n", " / "))
+	ScreenStack.close_layer(explored)
+	shell.show_tab(MainShell.Tab.BASE)
+
+	# SAMPLE: the notice when a probe arrives (the ground here loads again, for real).
+	var landed := probes.list.find(9001)
+	landed.status = Probes.STATUS_ARRIVED
+	probes.arrived.emit(landed, 1)
+	await get_tree().create_timer(1.0).timeout
+	await _capture("SAMPLE_probe_arrived_notice")
+	print("SAMPLE  notice: %s" % colony._notice.text)
+
+	# Back to the real state.
+	banner.queue_free()
+	panel_module.module_type = "SOLAR_PANEL"
+	model.reload_inventory()
+	probes.reload()
+	await probes.load_reveal(model.body_id)
+	colony.recentre()
 
 
 ## A hull of the ground level without a module (local); NO_CELL when every hull carries one.

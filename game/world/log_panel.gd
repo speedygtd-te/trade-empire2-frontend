@@ -183,6 +183,13 @@ func describe(entry: StructureLog.Entry) -> String:
 			return tr("LOG_TELESCOPE_UPGRADE_STARTED").format({"level": Wire.as_int(fields.get("to"))})
 		"telescopeUpgraded":
 			return tr("LOG_TELESCOPE_UPGRADED").format({"level": Wire.as_int(fields.get("level"))})
+		"probeLaunched":
+			return tr("LOG_PROBE_LAUNCHED").format({"body": _travel_place(fields, "body"),
+				"x": AmountFormat.units(Wire.as_int(fields.get("x"))), "y": AmountFormat.units(Wire.as_int(fields.get("y")))})
+		"probeArrived":
+			var seen := Wire.as_int(fields.get("sightings"))
+			return tr("LOG_PROBE_ARRIVED_SEEN" if seen > 0 else "LOG_PROBE_ARRIVED").format({
+				"body": _travel_place(fields, "body"), "count": seen})
 	return ""
 
 
@@ -194,7 +201,7 @@ static var _travel_names: Dictionary = {}
 ## Looks up the names of the places the trips of a page mention that are not known yet.
 func _name_travel_places(entries: Array[StructureLog.Entry]) -> void:
 	for entry: StructureLog.Entry in entries:
-		if not entry.type.begins_with("travel"):
+		if not entry.type.begins_with("travel") and not entry.type.begins_with("probe"):
 			continue
 		var body := Wire.as_string(entry.fields.get("bodyId"))
 		if not body.is_empty() and not _travel_names.has("body:" + body):

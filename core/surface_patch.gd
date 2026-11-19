@@ -35,6 +35,9 @@ var include_deposits := false
 var complete := false
 
 var _cells: Dictionary = {}
+## Cells the player has not explored (draft.31: `null` in `SurfaceRow.cells`) → true. They have
+## no terrain and no deposits; `cell` returns null for them.
+var _hidden: Dictionary = {}
 
 
 ## Reads a finished surface stream; null when the first line is no surface header.
@@ -84,10 +87,22 @@ func cell_count() -> int:
 	return _cells.size()
 
 
+## Whether the cell at absolute (x, y) lies in the patch but is not explored (fog, draft.31).
+func is_hidden(x: int, y: int) -> bool:
+	return _hidden.has(Vector2i(x, y))
+
+
+func hidden_count() -> int:
+	return _hidden.size()
+
+
 func _read_row(line: Dictionary) -> void:
 	var y := Wire.as_int(line.get("y"))
 	var cells: Array = line.get("cells")
 	for offset: int in cells.size():
+		if typeof(cells[offset]) != TYPE_DICTIONARY:
+			_hidden[Vector2i(x0 + offset, y)] = true
+			continue
 		var data := Wire.as_dict(cells[offset])
 		var entry := Cell.new()
 		entry.biome = Wire.as_string(data.get("b"))

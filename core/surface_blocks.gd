@@ -86,6 +86,12 @@ func cell(x: int, y: int) -> SurfacePatch.Cell:
 	return patch.cell(WorldGrid.wrap_x(x, size_x), y) if patch != null else null
 
 
+## Whether an absolute cell is loaded and unexplored (fog, draft.31); false while it loads.
+func is_hidden(x: int, y: int) -> bool:
+	var patch := _blocks.get(block_of(x, y)) as SurfacePatch
+	return patch != null and patch.is_hidden(WorldGrid.wrap_x(x, size_x), y)
+
+
 func is_loaded(block: Vector2i) -> bool:
 	return _blocks.get(block) != null
 

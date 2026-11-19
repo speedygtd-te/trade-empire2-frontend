@@ -11,6 +11,10 @@ signal chosen(structure_id: int)
 
 ## How often the arrival times are refreshed (seconds).
 const REFRESH_SECONDS := 1.0
+## The tabs: structures, routes, probes (draft.31).
+const TAB_STRUCTURES := 0
+const TAB_ROUTES := 1
+const TAB_PROBES := 2
 
 var _fleet: FleetModel
 var _current := 0
@@ -24,6 +28,9 @@ var _routes: RouteList
 var _editor: RouteEditor = null
 var _detail: FleetDetail = null
 var _start_with_routes := false
+var _probes_tab: Button
+var _probes: ProbeList
+var _exploration: ProbeTargetScreen = null
 
 
 ## `current`: the structure Base shows; `routes`: open on the routes tab.
@@ -53,7 +60,9 @@ func _ready() -> void:
 	_tabs = TabStrip.new()
 	_tabs.add_tab("ROUTE_TAB_STRUCTURES")
 	_tabs.add_tab("ROUTE_TAB")
-	_tabs.tab_selected.connect(func(index: int) -> void: _show_tab(index == 1))
+	# Probes only on a server that has them (draft.31 game data).
+	_probes_tab = _tabs.add_tab("PROBE_TAB")
+	_tabs.tab_selected.connect(_show_tab)
 	column.add_child(_tabs)
 	_structures = Ui.column(16)
 	_structures.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -76,19 +85,47 @@ func _ready() -> void:
 	_routes.edit_requested.connect(func(route_id: int) -> void: open_route_editor(route_id))
 	_routes.new_requested.connect(func() -> void: open_route_editor(0))
 	column.add_child(_routes)
+	_probes = ProbeList.new()
+	_probes.setup(_fleet)
+	_probes.view_requested.connect(open_exploration)
+	column.add_child(_probes)
 	_fleet.changed.connect(_rebuild)
 	_fleet.load_failed.connect(_on_failed)
+	Services.definitions_loaded.connect(_offer_probes)
+	_offer_probes()
 	_rebuild()
-	_show_tab(_start_with_routes)
+	_show_tab(TAB_ROUTES if _start_with_routes else TAB_STRUCTURES)
 	if not _fleet.loaded:
 		_fleet.reload()
 
 
-## Shows the structures or the routes.
-func _show_tab(routes: bool) -> void:
-	_tabs.select(1 if routes else 0)
-	_structures.visible = not routes
-	_routes.visible = routes
+## Shows the structures, the routes or the probes.
+func _show_tab(index: int) -> void:
+	_tabs.select(index)
+	_structures.visible = index == TAB_STRUCTURES
+	_routes.visible = index == TAB_ROUTES
+	_probes.visible = index == TAB_PROBES
+
+
+## The Probes tab shows only on a server with probes.
+func _offer_probes() -> void:
+	_probes_tab.visible = _fleet.probes.supported()
+	if not _probes_tab.visible and _tabs.selected() == TAB_PROBES:
+		_show_tab(TAB_STRUCTURES)
+
+
+## Opens the Probes tab (for review scenes and the launcher).
+func show_probes() -> void:
+	_show_tab(TAB_PROBES)
+
+
+## What is explored of a body, as a layer (from the probe list).
+func open_exploration(body_id: String) -> ProbeTargetScreen:
+	ScreenStack.close_layer(_exploration)
+	_exploration = ProbeTargetScreen.new()
+	_exploration.setup_view(_fleet, body_id)
+	ScreenStack.push_onto(self, _exploration)
+	return _exploration
 
 
 ## Marks the structure Base shows.
@@ -124,7 +161,7 @@ func _on_route_requested(route_id: int) -> void:
 		open_route_editor(route_id)
 		return
 	ScreenStack.close_layer(_detail)
-	_show_tab(true)
+	_show_tab(TAB_ROUTES)
 
 
 ## Opens the route editor as a layer: an existing route (its rules), or a new one (0),
@@ -158,6 +195,7 @@ func _process(delta: float) -> void:
 	if _left <= 0.0:
 		_left = REFRESH_SECONDS
 		_update_lines()
+		_probes.tick()
 
 
 func _rebuild() -> void:
