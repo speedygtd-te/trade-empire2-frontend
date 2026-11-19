@@ -5,6 +5,10 @@ extends Control
 ## (not a `-s` script): the screens use the `Services` autoload, which only exists in a normal
 ## run. The signed-in screens use the development account of tools/dev-account.cjs
 ## (.local/dev-account.json, created by `node tools/dev-account.cjs`); without it they are skipped.
+## The signed-in screens run in the MainShell as the app shows them: Base outside (structure card,
+## places), inside (structure navigation, inspect card, build, inventory), the structure details
+## with their tabs, the Fleet tab with a structure's details, the Map tab with the galaxy as
+## layers, the Profile tab with the enterprise as a layer, and the Back chains between them.
 ## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map and
 ## the galaxy (`--only=galaxy` does the same).
 
@@ -81,14 +85,16 @@ func _run() -> void:
 		get_tree().quit()
 		return
 
-	var colony := ColonyScreen.new()
-	add_child(colony)
+	var shell := MainShell.new()
+	add_child(shell)
+	var colony := shell.colony()
 	var deadline := Time.get_ticks_msec() + 20000
 	while colony._model.structure_id == 0 and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 	# Ground blocks stream in after the colony.
 	await get_tree().create_timer(4.0).timeout
 	await _capture("colony")
+	print("NAV  Base outside: nav %s, title '%s'" % [shell.nav_visible(), colony._header.title()])
 	# The same view at night: windows, lamps and the floodlights' cones around the base. The
 	# screen sets the real sun again once the hold-off ends.
 	var model := colony._model
@@ -98,13 +104,28 @@ func _run() -> void:
 	await _capture("colony_night")
 	colony._sun_left = 0.0
 	if OS.get_cmdline_user_args().has("--only=map") or OS.get_cmdline_user_args().has("--only=galaxy"):
-		await _capture_map(colony)
-		await _finish(colony, session, had_session)
+		await _capture_map(shell)
+		await _finish(shell, session, had_session)
 		return
-	colony._select_structure(true)
-	await _capture("colony_structure")
-	colony._open_structure(ColonyScreen.Mode.VIEW)
+	# Outside: a tap on the structure puts its card over it; the head opens the places.
+	var home_roof := WorldGrid.to_scene(model.centre_cell(), colony._view.origin, model.size_x) \
+		+ Vector3(0.0, ColonyView.HULL_CLOSED_HEIGHT, 0.0)
+	colony._on_tap(colony._view._camera.unproject_position(home_roof) / colony._scale())
+	await _capture("colony_structure_card")
+	print("CARD  single tap selects: %s, card shown: %s" % [colony._structure_selected, colony._card.visible])
+	var places := colony.open_places()
+	await _until(func() -> bool: return colony._fleet.loaded, 10000)
+	await _capture("places")
+	print("PLACES  %d listed" % places.place_count())
+	shell.handle_back()
+	await get_tree().process_frame
+	print("BACK  places closed: %s" % (not colony._layer_open(colony._places)))
+	# A double tap enters the structure: its own navigation replaces the shell's.
+	colony._last_tap_ms = Time.get_ticks_msec()
+	colony._on_tap(colony._view._camera.unproject_position(home_roof) / colony._scale())
 	await _capture("colony_opened")
+	print("ENTER  double tap opened: %s, shell nav %s, structure nav %s" % [colony._opened, shell.nav_visible(),
+		colony._structure_nav.visible])
 
 	var layout := colony._model.layout
 	var with_module := layout.modules()
@@ -138,23 +159,22 @@ func _run() -> void:
 	colony._store._on_discard(10)
 	await _capture("colony_store_discard")
 	colony._store._select("")
-	colony._set_mode(ColonyScreen.Mode.LOG)
-	await get_tree().create_timer(2.0).timeout
-	await _capture("colony_log")
-	await _capture_research(colony)
-	await _capture_staff(colony)
+	await _capture_details(shell, colony)
+	await _capture_staff(shell, colony)
 
-	colony._close_structure()
-	await _dock_screens(colony)
-	await _capture_map(colony)
-	colony._on_menu()
-	await get_tree().create_timer(1.0).timeout
-	await _capture("account")
-	await _finish(colony, session, had_session)
+	# "×" leaves the structure: outside again with the shell's navigation.
+	colony._close_x.pressed.emit()
+	await get_tree().process_frame
+	print("LEAVE  x closed the structure: %s, shell nav %s" % [not colony._opened, shell.nav_visible()])
+	await _dock_screens(shell, colony)
+	await _capture_fleet(shell)
+	await _capture_map(shell)
+	await _capture_profile(shell)
+	await _finish(shell, session, had_session)
 
 
-func _finish(colony: ColonyScreen, session: SessionController, had_session: bool) -> void:
-	colony.queue_free()
+func _finish(shell: MainShell, session: SessionController, had_session: bool) -> void:
+	shell.queue_free()
 	if not had_session:
 		await session.logout()
 	get_tree().quit()
@@ -163,7 +183,7 @@ func _finish(colony: ColonyScreen, session: SessionController, had_session: bool
 ## Docks and a guest on the live server: two docks next to the colony, the founding preview, a
 ## guest founded by the screen's own Build button, picked by a tap, selected, opened, built on —
 ## then everything is taken down again, so the account is as before.
-func _dock_screens(colony: ColonyScreen) -> void:
+func _dock_screens(shell: MainShell, colony: ColonyScreen) -> void:
 	var model := colony._model
 	var host := model.layout
 	if not model.guests.is_empty():
@@ -183,7 +203,8 @@ func _dock_screens(colony: ColonyScreen) -> void:
 	await _until(func() -> bool: return host.hull_at(row[1]) == "DOCK")
 	# The docks lie at the colony's edge: bring them into the middle of the view above the panel.
 	colony._view.look_at_cell(second)
-	colony._view.pan(Vector2(0.0, -colony._bottom.size.y * 0.5 * colony._scale()), Vector2(colony._viewport.size))
+	colony._applied_shift = 0.0
+	colony._follow_bars()
 
 	# On the open home structure a hull on a dock founds a guest.
 	colony._select_structure(true)
@@ -204,19 +225,20 @@ func _dock_screens(colony: ColonyScreen) -> void:
 	await _capture("dock_guest_closed")
 	# The fleet: the colony and its new guest, the structure on screen marked.
 	await _until(func() -> bool: return colony._fleet.fleet.find(guest.structure_id) != null, 10000)
-	print("FLEET  button shown with two structures: ", colony._fleet_button.visible)
-	colony._open_fleet()
-	await _capture("fleet")
-	colony._close_fleet()
+	shell.show_tab(MainShell.Tab.FLEET)
+	await _capture("fleet_with_guest")
+	shell.show_tab(MainShell.Tab.BASE)
 
 	# A tap on the guest's roof selects the guest, a tap on the home structure the home structure.
 	var view := colony._view
 	var roof := WorldGrid.to_scene(first + Vector3i(0, 0, 1), view.origin, model.size_x) \
 		+ Vector3(0.0, view.lift_of(guest) + ColonyView.HULL_CLOSED_HEIGHT, 0.0)
+	colony._last_tap_ms = 0
 	colony._on_tap(view._camera.unproject_position(roof) / colony._scale())
 	print("DOCK  tap on the guest selects it: ", colony._focus == guest and colony._structure_selected)
 	await _capture("dock_guest_selected")
 	var home_roof := WorldGrid.to_scene(model.centre_cell(), view.origin, model.size_x) + Vector3(0.0, ColonyView.HULL_CLOSED_HEIGHT, 0.0)
+	colony._last_tap_ms = 0
 	colony._on_tap(view._camera.unproject_position(home_roof) / colony._scale())
 	print("DOCK  tap on the home structure selects it: ", colony._focus == model and colony._structure_selected)
 	colony._focus = guest
@@ -278,15 +300,40 @@ func _until(condition: Callable, timeout_ms: int = 8000) -> void:
 		await get_tree().process_frame
 
 
+## The structure's details over everything (the shell's navigation gives way): production,
+## workers, log and research; then Back closes them again.
+func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
+	colony._set_mode(ColonyScreen.Mode.VIEW)
+	colony._select(null)
+	colony._on_title_pressed()
+	var details := colony.details()
+	await get_tree().create_timer(2.0).timeout
+	await _capture("details_production")
+	print("DETAILS  open: %s, shell nav %s" % [details != null, shell.nav_visible()])
+	if details == null:
+		return
+	details.show_tab(StructureDetails.Tab.WORKERS)
+	await _capture("details_workers")
+	details.show_tab(StructureDetails.Tab.LOG)
+	await get_tree().create_timer(2.0).timeout
+	await _capture("details_log")
+	await _capture_research(colony, details)
+	# Back closes what is open in the research tab first, then the details.
+	while colony.details() != null:
+		shell.handle_back()
+		await get_tree().process_frame
+	print("BACK  details closed: %s, structure still open: %s" % [colony.details() == null, colony._opened])
+
+
 ## The research tab. With a real lab in the structure it aims the lab at the first research
 ## whose inputs are in the store and shows the progress; a fresh starter has no lab, so after the
 ## real (empty) state a made-up lab is shown — clearly a sample, nothing is sent for it.
-func _capture_research(colony: ColonyScreen) -> void:
-	colony._set_mode(ColonyScreen.Mode.RESEARCH)
+func _capture_research(colony: ColonyScreen, details: StructureDetails) -> void:
+	details.show_tab(StructureDetails.Tab.RESEARCH)
 	await get_tree().create_timer(3.0).timeout
 	await _capture("colony_research")
 	var model := colony._model
-	var panel := colony._research
+	var panel := details.research_panel()
 	if model.research == null:
 		print("RESEARCH  not loaded: ", model.research_error.code if model.research_error != null else "?")
 		return
@@ -334,14 +381,14 @@ func _capture_research(colony: ColonyScreen) -> void:
 	await model.reload_research()
 
 
-## The staff of a module that needs workers: the line in Inspect, the panel, and a plan that
-## fills up with robots (not sent).
-func _capture_staff(colony: ColonyScreen) -> void:
+## The staff of a module that needs workers: the line on the inspect card, the staffing in the
+## structure details, and a plan that fills up with robots (not sent).
+func _capture_staff(shell: MainShell, colony: ColonyScreen) -> void:
 	colony._set_mode(ColonyScreen.Mode.VIEW)
 	var model := colony._model
 	var chosen: StructureLayout.Module = null
 	for placed: StructureLayout.Module in model.layout.modules():
-		if colony._staffable(Services.definitions.module(placed.module_type)) and not placed.is_building():
+		if StructureDetails.staffable(Services.definitions.module(placed.module_type)) and not placed.is_building():
 			chosen = placed
 			if placed.module_type == "RESEARCH_LAB":
 				break
@@ -351,20 +398,70 @@ func _capture_staff(colony: ColonyScreen) -> void:
 	colony._select(model.layout.to_absolute(chosen.origin))
 	await _capture("colony_staff_line")
 	colony._on_staff()
+	var details := colony.details()
 	await _capture("colony_staff_panel")
-	colony._workforce_panel._on_fill(false, true)
+	details.workforce_panel()._on_fill(false, true)
 	await _capture("colony_staff_plan")
-	print("STAFF  %s: %s" % [chosen.module_type, colony._workforce_panel._verdict.text])
-	colony._close_workforce()
+	print("STAFF  %s: %s" % [chosen.module_type, details.workforce_panel()._verdict.text])
+	# Back: the staffing, then the details.
+	shell.handle_back()
+	shell.handle_back()
+	await get_tree().process_frame
 	colony._select(null)
 
 
+## The Fleet tab: ships and vehicles first, a structure's details (travel, show in Base, routes),
+## the routes tab; a second tap on Fleet returns to the list, Back goes to Base.
+func _capture_fleet(shell: MainShell) -> void:
+	shell.show_tab(MainShell.Tab.FLEET)
+	var panel := shell.stack(MainShell.Tab.FLEET).root() as FleetPanel
+	await _until(func() -> bool: return shell.colony()._fleet.loaded, 10000)
+	await _capture("fleet")
+	var fleet := shell.colony()._fleet
+	var entries := fleet.fleet.entries()
+	if not entries.is_empty():
+		var detail := panel.open_detail(entries[0].structure_id)
+		await _capture("fleet_detail")
+		print("FLEET  detail of %s: travel %s (%s)" % [entries[0].name,
+			"offered" if not detail._travel_button.disabled else "not offered", detail._travel_note.text])
+		shell.nav().entry(MainShell.Tab.FLEET).pressed.emit()
+		await get_tree().process_frame
+		print("FLEET  second tap returns to the list: %s" % (shell.stack(MainShell.Tab.FLEET).depth() == 0))
+	panel._show_tab(true)
+	await _capture("fleet_routes")
+	panel._show_tab(false)
+	shell.handle_back()
+	print("BACK  from Fleet to Base: %s" % (shell.active_tab() == MainShell.Tab.BASE))
+
+
+## The Profile tab: the player, the enterprise card, the account; the enterprise as a layer;
+## "sign out" armed (not sent); Back closes the layer, then returns to Base.
+func _capture_profile(shell: MainShell) -> void:
+	shell.show_tab(MainShell.Tab.PROFILE)
+	var profile := shell.stack(MainShell.Tab.PROFILE).root() as ProfileScreen
+	await get_tree().create_timer(2.0).timeout
+	await _capture("profile")
+	profile.open_enterprise()
+	await get_tree().create_timer(2.0).timeout
+	await _capture("profile_enterprise")
+	shell.handle_back()
+	await get_tree().process_frame
+	print("BACK  enterprise closed, still on Profile: %s" % (profile.enterprise_panel() == null
+		and shell.active_tab() == MainShell.Tab.PROFILE))
+	profile._on_sign_out()
+	await _capture("profile_sign_out_armed")
+	shell.handle_back()
+	print("BACK  disarms sign-out: %s" % (not profile.is_sign_out_armed()))
+	shell.handle_back()
+	print("BACK  from Profile to Base: %s" % (shell.active_tab() == MainShell.Tab.BASE))
+
+
 ## The system map: the whole system, the home planet up close and selected, a giant with its
-## moons, a moon, time-lapse; then Back twice returns to the colony.
-func _capture_map(colony: ColonyScreen) -> void:
-	colony._select_structure(false)
-	colony._open_map()
-	var screen := colony._map
+## moons, a moon, time-lapse; then Back returns to Base.
+func _capture_map(shell: MainShell) -> void:
+	shell.colony()._select_structure(false)
+	shell.show_tab(MainShell.Tab.MAP)
+	var screen := shell.stack(MainShell.Tab.MAP).root() as MapScreen
 	await _capture("map_loading")
 	await _until(func() -> bool: return screen._map != null or screen._state.visible and screen._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
 	await get_tree().create_timer(1.0).timeout
@@ -372,7 +469,7 @@ func _capture_map(colony: ColonyScreen) -> void:
 	var map := screen._map
 	if map == null:
 		print("MAP  not loaded")
-		colony._close_map()
+		shell.show_tab(MainShell.Tab.BASE)
 		return
 	print("MAP  %s: %d bodies, extent %.0f, fit zoom %.3f" % [map.star_name, map.bodies.size(), map.extent, screen._view.zoom()])
 	for body: SystemMap.Body in map.star_orbits():
@@ -397,11 +494,10 @@ func _capture_map(colony: ColonyScreen) -> void:
 	await get_tree().create_timer(3.0).timeout
 	await _capture("map_time_lapse")
 	screen._lapse_button.button_pressed = false
-	await _capture_galaxy(colony, screen)
-	colony.handle_back()
-	colony.handle_back()
+	await _capture_galaxy(shell, screen)
+	shell.handle_back()
 	await get_tree().process_frame
-	print("MAP  Back twice returns to the colony: ", colony._map == null)
+	print("MAP  Back from the map root returns to Base: ", shell.active_tab() == MainShell.Tab.BASE)
 
 	# The error state: a system the server does not know.
 	var broken := MapScreen.new()
@@ -414,9 +510,9 @@ func _capture_map(colony: ColonyScreen) -> void:
 
 ## The galaxy from the home system's map: the neighbourhood of home, the whole spiral, a middle
 ## zoom, a selected system and the map of a foreign system; then Back step by step to the map.
-func _capture_galaxy(colony: ColonyScreen, map: MapScreen) -> void:
+func _capture_galaxy(shell: MainShell, map: MapScreen) -> void:
 	map._on_galaxy()
-	var galaxy := map._galaxy
+	var galaxy := map.galaxy()
 	await _capture("galaxy_loading")
 	await _until(func() -> bool: return galaxy._shape != null or galaxy._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
 	if galaxy._shape == null:
@@ -485,17 +581,18 @@ func _capture_galaxy(colony: ColonyScreen, map: MapScreen) -> void:
 		await _capture("galaxy_selected")
 		print("GALAXY  selected %s (%.1f ly from home)" % [foreign, best])
 		galaxy._open_system(foreign)
-		var system_map := galaxy._system_map
+		var system_map := galaxy.system_map()
 		await _until(func() -> bool: return system_map._map != null or system_map._state.mouse_filter == Control.MOUSE_FILTER_STOP, 15000)
 		await get_tree().create_timer(1.0).timeout
 		await _capture("galaxy_foreign_system")
-		colony.handle_back()
+		shell.handle_back()
 		await get_tree().process_frame
-		print("GALAXY  Back from the foreign map returns to the galaxy: ", galaxy._system_map == null)
-	colony.handle_back()
-	colony.handle_back()
+		print("GALAXY  Back from the foreign map returns to the galaxy: ", galaxy.system_map() == null)
+	shell.handle_back()
+	shell.handle_back()
 	await get_tree().process_frame
-	print("GALAXY  Back twice more returns to the system map: ", map._galaxy == null and colony._map == map)
+	print("GALAXY  Back twice more returns to the system map: ",
+		map.galaxy() == null and shell.stack(MainShell.Tab.MAP).top() == map)
 
 
 ## The heaviest answer there is: 200 ly around the galactic centre (20 000 rows, truncated).

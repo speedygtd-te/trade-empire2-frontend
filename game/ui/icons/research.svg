@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Research: a flask -->
+  <path d="M19 5 L29 5 M21 5 L21 18 L9 38 Q7 43 13 43 L35 43 Q41 43 39 38 L27 18 L27 5" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M14 33 L34 33 L37 39 Q38 40 36 40 L12 40 Q10 40 11 39 Z" fill="#e3b341"/>
+  <circle cx="22" cy="27" r="2" fill="#e3b341"/>
+</svg>

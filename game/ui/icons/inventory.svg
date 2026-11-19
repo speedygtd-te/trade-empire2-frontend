@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Inventory: a crate with a lid and a label -->
+  <rect x="6" y="16" width="36" height="27" rx="2" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M4 9 L44 9 L44 16 L4 16 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="19" y="22" width="10" height="6" rx="1" fill="#e3b341"/>
+</svg>

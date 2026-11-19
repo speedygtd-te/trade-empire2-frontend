@@ -53,21 +53,26 @@ func _run() -> void:
 			var summary := Wire.as_dict(value)
 			if Wire.as_string(summary.get("kind")) == "base" and base == 0:
 				base = Wire.as_int(summary.get("structureId"))
-	var colony := await _open_colony(base)
+	var shell := await _open_shell(base)
+	var colony := shell.colony()
 	var fleet := colony._fleet
 	await _until(func() -> bool: return fleet.loaded and fleet.routes.loaded, 15000)
 	var vehicles := _vehicles(fleet)
 	var transporter: int = vehicles[0]
 	var station: int = vehicles[1]
 	print("ROUTES  base %d, transporter %d, station %d, %d route(s)" % [base, transporter, station, fleet.routes.book.size()])
-	colony._open_fleet()
-	var panel := colony._fleet_panel
+	shell.show_tab(MainShell.Tab.FLEET)
+	var panel := shell.stack(MainShell.Tab.FLEET).root() as FleetPanel
 	await _capture("routes_fleet_structures")
+	if transporter != 0:
+		panel.open_detail(transporter)
+		await _capture("routes_fleet_detail")
+		shell.stack(MainShell.Tab.FLEET).pop_to_root()
 
 	# The editor for a new route (before the picture route takes the transporter): prefilled, a
 	# live quote, a rule, the pickers, a refused quote.
 	panel.open_route_editor(0, transporter)
-	var editor := panel._editor
+	var editor := panel.editor()
 	editor._draft.station_a = base
 	editor._draft.station_b = station
 	editor._draft.start_at = RoutePlan.A
@@ -98,7 +103,7 @@ func _run() -> void:
 	print("ROUTES  refused quote says: ", editor._quote_label.text.replace("\n", " | "))
 	panel._close_editor()
 
-	colony._close_fleet()
+	shell.show_tab(MainShell.Tab.BASE)
 	var made := 0
 	if fleet.routes.book.size() == 0 and transporter != 0 and station != 0:
 		made = await _make_route(fleet, transporter, base, station)
@@ -111,8 +116,7 @@ func _run() -> void:
 		colony._view._update_camera()
 		await get_tree().create_timer(3.0).timeout
 	await _capture("routes_colony_stops")
-	colony._open_fleet()
-	panel = colony._fleet_panel
+	shell.show_tab(MainShell.Tab.FLEET)
 	panel._show_tab(true)
 	await _capture("routes_list")
 	await _samples(panel, fleet, transporter, base, station)
@@ -122,8 +126,7 @@ func _run() -> void:
 		await get_tree().create_timer(1.0).timeout
 		await _capture("routes_editor_edit")
 		panel._close_editor()
-	colony._close_fleet()
-	colony.queue_free()
+	shell.queue_free()
 	await get_tree().process_frame
 
 	# The transporter's store: cargo hold and storage modes; then its log.
@@ -140,7 +143,7 @@ func _run() -> void:
 			store._select("URANIUM")
 		store._scroll.scroll_vertical = 100000
 		await _capture("routes_store_move")
-		vehicle._set_mode(ColonyScreen.Mode.LOG)
+		vehicle.open_details(StructureDetails.Tab.LOG)
 		await get_tree().create_timer(4.0).timeout
 		await _capture("routes_log")
 		vehicle.queue_free()
@@ -151,6 +154,17 @@ func _run() -> void:
 	if not had_session:
 		await Services.session.logout()
 	get_tree().quit()
+
+
+## The app's shell with Base on a structure, once its store has loaded.
+func _open_shell(structure_id: int) -> MainShell:
+	var shell := MainShell.new()
+	shell.start_structure = structure_id
+	add_child(shell)
+	var colony := shell.colony()
+	await _until(func() -> bool: return colony._model.structure_id != 0 and colony._model.inventory != null, 20000)
+	await get_tree().create_timer(4.0).timeout
+	return shell
 
 
 func _open_colony(structure_id: int) -> ColonyScreen:

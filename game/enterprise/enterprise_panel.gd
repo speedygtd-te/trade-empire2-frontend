@@ -1,13 +1,14 @@
 class_name EnterprisePanel
 extends Control
-## The enterprise over the whole screen. Without one: browse the enterprises (invitations first)
-## or found one. As a member: logo, name, ticker and members on top, and the tabs Overview,
-## Members, Roles, Diplomacy, Taxes and Log. Close or Back returns (Back first closes whatever
-## is open inside a tab).
+## The enterprise over the whole screen, a layer of the Profile tab. Without one: browse the
+## enterprises (invitations first) or found one. As a member: logo, name, ticker and members on
+## top, and the tabs Overview, Members, Roles, Diplomacy, Taxes and Log in one row (it scrolls
+## sideways when it is wider than the screen). "‹ Back" or Back returns (Back first closes
+## whatever is open inside a tab).
 
 signal closed
 
-## Tab keys in the order they are shown (two rows of three for members).
+## Tab keys in the order they are shown.
 const OUTSIDE_TABS: Array[String] = ["ENTERPRISE_TAB_BROWSE", "ENTERPRISE_TAB_FOUND"]
 const MEMBER_TABS: Array[String] = [
 	"ENTERPRISE_TAB_OVERVIEW", "ENTERPRISE_TAB_MEMBERS", "ENTERPRISE_TAB_ROLES",
@@ -18,11 +19,11 @@ const HEADER_LOGO := 128
 var _model: EnterpriseModel
 var _column: VBoxContainer
 var _body: VBoxContainer
-var _title: Label
+var _header: LayerHeader
 ## The enterprise the body was built for ("" outside one); null before the first build.
 var _built_for: Variant = null
 var _tabs: Array[EnterpriseTab] = []
-var _tab_buttons: Array[Button] = []
+var _strip: TabStrip = null
 var _current := 0
 var _header_logo: EnterpriseLogo
 var _header_name: Label
@@ -45,17 +46,10 @@ func _ready() -> void:
 	add_child(margin)
 	_column = Ui.column(16)
 	margin.add_child(_column)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 16)
-	_column.add_child(top)
-	_title = Ui.label("ENTERPRISE_TITLE", AppTheme.VARIATION_HEADING)
-	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	top.add_child(_title)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.size_flags_horizontal = Control.SIZE_SHRINK_END
-	close.pressed.connect(func() -> void: closed.emit())
-	top.add_child(close)
+	_header = LayerHeader.new()
+	_header.set_title(tr("ENTERPRISE_TITLE"))
+	_header.back_pressed.connect(func() -> void: closed.emit())
+	_column.add_child(_header)
 	_body = Ui.column(16)
 	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_column.add_child(_body)
@@ -83,7 +77,8 @@ func show_tab(index: int) -> void:
 	_current = index
 	for position: int in _tabs.size():
 		_tabs[position].visible = position == index
-		_tab_buttons[position].set_pressed_no_signal(position == index)
+	if _strip != null:
+		_strip.select(index)
 	_tabs[index].say("")
 	_tabs[index].shown()
 
@@ -105,7 +100,7 @@ func _build_state() -> void:
 		return
 	EnterpriseTab.clear(_body)
 	_tabs.clear()
-	_tab_buttons.clear()
+	_strip = null
 	var state := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_body.add_child(state)
 	if _model.error != null:
@@ -121,9 +116,8 @@ func _build(mine: Enterprise) -> void:
 	_built_for = mine.enterprise_id if mine != null else ""
 	EnterpriseTab.clear(_body)
 	_tabs.clear()
-	_tab_buttons.clear()
+	_strip = null
 	_header_logo = null
-	_title.visible = mine == null
 	if mine != null:
 		var header := HBoxContainer.new()
 		header.add_theme_constant_override("separation", 20)
@@ -138,16 +132,11 @@ func _build(mine: Enterprise) -> void:
 		_header_line = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 		names.add_child(_header_line)
 	var keys := MEMBER_TABS if mine != null else OUTSIDE_TABS
-	var group := ButtonGroup.new()
-	var row: HBoxContainer = null
-	for index: int in keys.size():
-		if index % 3 == 0:
-			row = HBoxContainer.new()
-			_body.add_child(row)
-		var button := Ui.tab_button(keys[index], group)
-		button.pressed.connect(show_tab.bind(index))
-		row.add_child(button)
-		_tab_buttons.append(button)
+	_strip = TabStrip.new()
+	for key: String in keys:
+		_strip.add_tab(key)
+	_strip.tab_selected.connect(show_tab)
+	_body.add_child(_strip)
 	for key: String in keys:
 		var tab := _make_tab(key)
 		tab.setup(_model)

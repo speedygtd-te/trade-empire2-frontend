@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Production: a factory with saw-tooth roofs and a chimney -->
+  <path d="M5 43 L5 24 L15 30 L15 24 L25 30 L25 24 L31 27 L31 8 L39 8 L39 43 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="10" y="35" width="5" height="5" fill="#e3b341"/>
+  <rect x="20" y="35" width="5" height="5" fill="#e3b341"/>
+  <circle cx="41" cy="4" r="2.5" fill="#e3b341"/>
+</svg>

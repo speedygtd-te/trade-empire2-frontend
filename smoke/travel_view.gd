@@ -6,7 +6,8 @@ extends Control
 ##
 ##   godot --path . --resolution 720x1280 res://smoke/travel_view.tscn -- --out=build/travel
 ##
-## Root script of smoke/travel_view.tscn (the screens need the Services autoload).
+## Root script of smoke/travel_view.tscn (the screens need the Services autoload). Trips are planned
+## in the Fleet tab (FleetDetail); the map pick and the landing site are layers there.
 
 const ACCOUNT := "res://.local/travel-account.json"
 
@@ -71,7 +72,8 @@ func _run() -> void:
 ## `--drive`: really drives the vehicle off the base's docks to a free site and back, and shows
 ## the base meanwhile: the vehicle moving, standing beside the base, back on its dock.
 func _drive_screens(vehicle: int) -> void:
-	var colony := await _open(0)
+	var shell := await _open(0)
+	var colony := shell.colony()
 	var model := colony._model
 	var fleet := colony._fleet
 	var layout := model.structure(vehicle).layout if model.structure(vehicle) != null else null
@@ -115,36 +117,39 @@ func _drive_screens(vehicle: int) -> void:
 	print("DRIVE  guests %s, neighbours %s, travellers %s" % [model.guests.keys(), model.neighbours.keys(), model.travellers.keys()])
 	colony._view.look_at_cell(model.layout.to_absolute(offset as Vector3i))
 	await _capture("travel_drive_docked")
-	colony.queue_free()
+	shell.queue_free()
 
 
 ## `--fly`: really starts a trip of the ship (into orbit when it rests on the docks, onto the
 ## base's docks when it is in orbit) and shows it under way: the trip tab, the base with the
 ## reserved cells and the descent, the system map.
 func _flight_screens(ship: int) -> void:
-	var colony := await _open(ship)
-	var fleet := colony._fleet
+	var shell := await _open(ship)
+	var fleet := shell.colony()._fleet
 	var entry := fleet.fleet.find(ship)
 	var home := 0
 	for other: Fleet.Entry in fleet.fleet.entries():
 		if other.kind == "base" and home == 0:
 			home = other.structure_id
+	var detail := await _travel_detail(shell, ship)
+	if detail == null:
+		return
 	var request: Dictionary
 	if entry.where() == Fleet.Where.ORBIT:
 		var host_answer := await Services.api.get_ndjson("/v2/structures/%d/layout" % home)
 		var host := StructureLayout.new()
 		host.apply(host_answer.stream)
-		var offset: Variant = TravelPlan.dock_offset(host, TravelPlan.mover_cells(colony._model.layout), ship)
+		var offset: Variant = TravelPlan.dock_offset(host, TravelPlan.mover_cells(detail._mover.layout), ship)
 		if offset == null:
 			print("FAIL  no room on the docks")
 			return
 		request = TravelPlan.request(TravelPlan.MODE_FLIGHT, TravelPlan.dock_target(home, offset as Vector3i))
 	else:
 		request = TravelPlan.request(TravelPlan.MODE_FLIGHT, TravelPlan.orbit_target(fleet.fleet.body_of(ship)))
-	colony._open_travel()
-	var quote := colony._travel_panel._quote
+	var panel := detail.travel_panel()
+	var quote := panel._quote
 	quote.ask(request)
-	colony._travel_panel._show_step(TravelPanel.Step.QUOTE)
+	panel._show_step(TravelPanel.Step.QUOTE)
 	await _until(func() -> bool: return quote.quote() != null, 10000)
 	quote._on_start()
 	await _capture("travel_confirm")
@@ -152,23 +157,23 @@ func _flight_screens(ship: int) -> void:
 	await _until(func() -> bool: return fleet.fleet.find(ship).motion != null, 10000)
 	await get_tree().create_timer(2.0).timeout
 	await _capture("travel_started_notice")
-	colony.queue_free()
-	colony = await _open(ship)
-	if colony._model.detached:
-		colony._set_mode(ColonyScreen.Mode.TRIP)
+	shell.queue_free()
+	shell = await _open(ship)
+	if shell.colony()._model.detached:
+		shell.colony()._set_mode(ColonyScreen.Mode.TRIP)
 	await _capture("travel_trip_under_way")
-	colony.queue_free()
-	colony = await _open(home)
-	var base_fleet := colony._fleet
+	shell.queue_free()
+	shell = await _open(home)
+	var base_fleet := shell.colony()._fleet
 	await get_tree().create_timer(2.0).timeout
 	await _capture("travel_base_during_trip")
-	colony._open_map()
-	var map := colony._map
+	shell.show_tab(MainShell.Tab.MAP)
+	var map := shell.stack(MainShell.Tab.MAP).root() as MapScreen
 	await _until(func() -> bool: return map._map != null, 15000)
 	await get_tree().create_timer(1.0).timeout
 	map._view.focus_body(base_fleet.fleet.body_of(home))
 	await _capture("travel_map_under_way")
-	colony._close_map()
+	shell.show_tab(MainShell.Tab.BASE)
 	var motion := base_fleet.fleet.find(ship).motion
 	if motion != null:
 		# Half of the landing: the ship comes down onto its docks.
@@ -178,28 +183,49 @@ func _flight_screens(ship: int) -> void:
 		await _until(func() -> bool: return base_fleet.fleet.find(ship).motion == null, 400000)
 		await get_tree().create_timer(3.0).timeout
 		await _capture("travel_base_arrived")
-	colony.queue_free()
+	shell.queue_free()
 
 
-func _open(structure_id: int) -> ColonyScreen:
-	var colony := ColonyScreen.new()
-	colony.start_structure = structure_id
-	add_child(colony)
+## The app's shell with Base on a structure, once it has loaded.
+func _open(structure_id: int) -> MainShell:
+	var shell := MainShell.new()
+	shell.start_structure = structure_id
+	add_child(shell)
+	var colony := shell.colony()
 	await _until(func() -> bool: return colony._model.structure_id != 0 and colony._fleet.loaded, 20000)
 	await get_tree().create_timer(3.0).timeout
-	return colony
+	return shell
+
+
+## The Fleet tab with the structure's details and its trip choice open (the structure loaded).
+func _travel_detail(shell: MainShell, structure_id: int) -> FleetDetail:
+	shell.show_travel(structure_id)
+	var panel := shell.stack(MainShell.Tab.FLEET).root() as FleetPanel
+	var detail := panel.detail()
+	await _until(func() -> bool: return detail != null and detail.travel_panel().visible, 20000)
+	if detail == null or not detail.travel_panel().visible:
+		print("FAIL  the trip choice did not open: ", detail._status.text if detail != null else "no detail")
+		return null
+	return detail
 
 
 func _vehicle_screens(vehicle: int) -> void:
-	var colony := await _open(vehicle)
+	var shell := await _open(vehicle)
+	var colony := shell.colony()
 	# Standing alone the vehicle is the structure on screen; docked, it is a guest of the base.
 	var vehicle_model := colony._model.structure(vehicle)
 	colony._focus = vehicle_model if vehicle_model != null else colony._model
 	colony._select_structure(true)
+	await _capture("travel_vehicle_card")
+	shell.show_tab(MainShell.Tab.FLEET)
+	var fleet_panel := shell.stack(MainShell.Tab.FLEET).root() as FleetPanel
+	fleet_panel.open_detail(vehicle)
 	await _capture("travel_vehicle_details")
-	colony._open_travel()
+	var detail := await _travel_detail(shell, vehicle)
+	if detail == null:
+		return
 	await _capture("travel_choose_vehicle")
-	var panel := colony._travel_panel
+	var panel := detail.travel_panel()
 	panel._show_hosts()
 	await _until(func() -> bool: return panel._hosts_state.text != tr("TRAVEL_DOCK_LOADING"), 15000)
 	await _capture("travel_dock_list")
@@ -211,8 +237,8 @@ func _vehicle_screens(vehicle: int) -> void:
 	await _until(func() -> bool: return panel._quote.quote() != null, 10000)
 	await _capture("travel_dock_quote")
 	panel.handle_back()
-	colony._on_drive_requested()
-	var site := colony._site
+	detail._on_drive_requested()
+	var site := detail.site()
 	await _until(func() -> bool: return site._model.size_x != 0 and not site._loading.visible, 15000)
 	await get_tree().create_timer(2.0).timeout
 	await _capture("travel_drive_empty")
@@ -230,31 +256,40 @@ func _vehicle_screens(vehicle: int) -> void:
 	site._view.look_at_cell(Vector3i(site._around().x, site._around().y, 0))
 	await _until(func() -> bool: return site._quote.quote() != null, 10000)
 	await _capture("travel_drive_error")
-	colony._close_site()
-	colony._close_travel()
-	colony.queue_free()
+	# Back: the landing site, then the trip choice, then the details.
+	shell.handle_back()
+	await get_tree().process_frame
+	print("BACK  site closed: %s, trip choice open: %s" % [detail.site() == null, detail.travel_panel().visible])
+	shell.handle_back()
+	shell.handle_back()
+	await get_tree().process_frame
+	print("BACK  details closed: %s" % (fleet_panel.detail() == null))
+	shell.queue_free()
 	await get_tree().process_frame
 
 
 func _ship_screens(ship: int) -> void:
-	var colony := await _open(ship)
+	var shell := await _open(ship)
+	var colony := shell.colony()
 	await _capture("travel_ship_start")
 	if not colony._model.detached:
 		colony._focus = colony._model.structure(ship)
 		colony._select_structure(true)
-		await _capture("travel_ship_details")
-	colony._open_travel()
+		await _capture("travel_ship_card")
+	var detail := await _travel_detail(shell, ship)
+	if detail == null:
+		return
 	await _capture("travel_choose_ship")
-	colony._open_map_pick(true)
-	var map := colony._map
+	detail._open_map_pick(true)
+	var map := detail.pick_map()
 	await _until(func() -> bool: return map._map != null, 15000)
 	await get_tree().create_timer(1.0).timeout
 	var body := colony._model.body_id
 	map._select(body)
 	await get_tree().create_timer(1.0).timeout
 	await _capture("travel_map_pick_land")
-	colony._on_body_picked(body)
-	var site := colony._site
+	detail._on_body_picked(body)
+	var site := detail.site()
 	await _until(func() -> bool: return site != null and site._model.size_x != 0 and not site._loading.visible, 15000)
 	await get_tree().create_timer(2.0).timeout
 	await _capture("travel_land_suggested")
@@ -268,16 +303,15 @@ func _ship_screens(ship: int) -> void:
 	await _until(func() -> bool: return site._quote.quote() != null, 10000)
 	await get_tree().create_timer(1.0).timeout
 	await _capture("travel_land_error")
-	colony._close_site()
-	colony._close_travel()
-	colony._open_map()
-	var overview := colony._map
+	ScreenStack.close_layer(site)
+	detail._close_travel()
+	shell.show_tab(MainShell.Tab.MAP)
+	var overview := shell.stack(MainShell.Tab.MAP).root() as MapScreen
 	await _until(func() -> bool: return overview._map != null, 15000)
 	await get_tree().create_timer(1.0).timeout
 	overview._view.focus_body(body)
 	await _capture("travel_map_fleet")
-	colony._close_map()
-	colony.queue_free()
+	shell.queue_free()
 	await get_tree().process_frame
 
 

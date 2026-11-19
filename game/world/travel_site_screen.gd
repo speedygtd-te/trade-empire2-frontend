@@ -10,7 +10,8 @@ extends Control
 ## the ones before are waypoints (up to 16); the line shows the way.
 ##
 ## The ghost's colour comes from the client's check (own structures known) until the quote
-## arrives, then from the quote. Close or Back leaves without starting.
+## arrives, then from the quote. A layer over the Fleet tab: "‹ Back" or Back leaves without
+## starting.
 
 ## The trip started; `details` is the structure as the server sent it back.
 signal started(details: Dictionary)
@@ -41,8 +42,7 @@ var _model: ColonyModel
 var _view: ColonyView
 var _container: SubViewportContainer
 var _viewport: SubViewport
-var _title: Label
-var _subtitle: Label
+var _header: LayerHeader
 var _hint: Label
 var _quote: TravelQuotePanel
 var _undo: Button
@@ -99,8 +99,9 @@ func _ready() -> void:
 	_model.load_body_view(_body_id)
 
 
-func handle_back() -> void:
-	closed.emit()
+## Nothing to close inside: the stack takes the screen off.
+func handle_back() -> bool:
+	return false
 
 
 func _build_overlay() -> void:
@@ -113,24 +114,10 @@ func _build_overlay() -> void:
 	margin.add_child(column)
 	var top := PanelContainer.new()
 	column.add_child(top)
-	var top_row := HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 16)
-	top.add_child(top_row)
-	var names := Ui.column(4)
-	top_row.add_child(names)
-	_title = Ui.label("TRAVEL_SITE_LAND_TITLE" if _mode == MODE_LAND else "TRAVEL_SITE_DRIVE_TITLE",
-		AppTheme.VARIATION_HEADING)
-	_title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_title)
-	_subtitle = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	names.add_child(_subtitle)
-	var close := Ui.secondary_button("COMMON_CLOSE")
-	close.size_flags_horizontal = Control.SIZE_SHRINK_END
-	close.pressed.connect(func() -> void: closed.emit())
-	top_row.add_child(close)
+	_header = LayerHeader.new()
+	_header.set_title(tr("TRAVEL_SITE_LAND_TITLE") if _mode == MODE_LAND else tr("TRAVEL_SITE_DRIVE_TITLE"))
+	_header.back_pressed.connect(func() -> void: closed.emit())
+	top.add_child(_header)
 
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -177,7 +164,7 @@ func _build_overlay() -> void:
 
 func _on_ready_to_show() -> void:
 	_loading.visible = false
-	_subtitle.text = _model.body_name
+	_header.set_subtitle(_model.body_name)
 	if _fleet != null:
 		_model.sync_with_fleet(_fleet.fleet, Services.clock.now_ms())
 		_view.set_fleet(_fleet.fleet)

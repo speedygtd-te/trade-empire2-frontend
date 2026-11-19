@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Build: a hammer -->
+  <rect x="21" y="18" width="7" height="26" rx="2" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M8 8 L34 8 L40 13 L40 19 L8 19 Z" fill="#24345e" stroke="#e3b341" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M14 13 L30 13" stroke="#e3b341" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
