@@ -20,11 +20,27 @@ def gantry(model, top: float) -> None:
     model.box((0.02, 0.0, top + 0.50), (0.60, 0.05, 0.04), "blue_dark")
 
 
-def build():
-    model = kit.Builder("te_factory")
+def hall(model) -> float:
+    """The factory's open hall with its gantry crane, shared with the plants built on it (arms
+    plant, drive works, housing factory). Returns the height of the floor's top."""
     top = parts.room(model, height=0.34)
     parts.stripes(model, (-0.42, -0.43), 21, z=0.0, width=0.02)
     gantry(model, top)
+    return top
+
+
+def hoist(model, x: float, top: float, hook: float) -> None:
+    """A trolley on the gantry's bridge at *x* with a cable down to a hook block at height
+    *hook*, and an amber warning light on the trolley."""
+    model.box((x, 0.0, top + 0.47), (0.07, 0.08, 0.04), "yellow")
+    parts.lamp(model, (x, -0.045, top + 0.47), (0.02, 0.012, 0.02), parts.STATUS)
+    model.beam((x, 0.0, top + 0.45), (x, 0.0, hook + 0.02), 0.006, "steel_dark")
+    model.box((x, 0.0, hook + 0.01), (0.04, 0.03, 0.03), "yellow")
+
+
+def build():
+    model = kit.Builder("te_factory")
+    top = hall(model)
     # Hanging machine: a drum turned towards the camera.
     model.beam((0.18, 0.0, top + 0.48), (0.18, 0.0, top + 0.34), 0.008, "steel_dark")
     model.cylinder((0.18, 0.06, top + 0.20), (0.18, -0.08, top + 0.20), 0.13, "blue")
