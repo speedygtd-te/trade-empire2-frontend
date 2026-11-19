@@ -10,6 +10,10 @@ var email: String = ""
 var session_expires_at_ms: int = 0
 ## Body of the home colony; "" when the account has no colony.
 var home_body_id: String = ""
+## The player's enterprise; "" without one. A string id like every id of the contract.
+var enterprise_id: String = ""
+## The player's effective rights in it (union of the roles); empty without one.
+var enterprise_flags: PackedStringArray = []
 
 
 static func from_me(data: Dictionary) -> Account:
@@ -19,4 +23,11 @@ static func from_me(data: Dictionary) -> Account:
 	account.email = Wire.as_string(data.get("email"))
 	account.session_expires_at_ms = Wire.as_int(data.get("sessionExpiresAt"))
 	account.home_body_id = Wire.as_string(data.get("homeBodyId"))
+	account.apply_enterprise(data)
 	return account
+
+
+## Takes over the enterprise fields of a `/v2/me` answer (absent: no enterprise).
+func apply_enterprise(data: Dictionary) -> void:
+	enterprise_id = Wire.as_string(data.get("enterpriseId"))
+	enterprise_flags = Enterprise.strings(data.get("enterpriseFlags"))
