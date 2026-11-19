@@ -1,36 +1,46 @@
 class_name ResourceIcon
 extends RefCounted
-## The icons of the resources (Iron, Iron Plate, Robot T3 …): pictures of their 3D models
-## (scripts/3d/models/resources.py), rendered by smoke/resource_icons.tscn into FOLDER as
-## <key in lower case>.png. A resource without a picture (a new one from the server) has none:
-## texture() is null and the screens show the name alone.
+## The icons of the resources (Iron, Iron Plate, Robot T3 …) and of the store items that build
+## modules and hulls (Pump, Standard Hull …): pictures of their 3D models, rendered by
+## smoke/resource_icons.tscn as <key in lower case>.png — resources (scripts/3d/models/resources.py)
+## into FOLDER, module and hull items (the models the colony shows) into ITEM_FOLDER. A key
+## without a picture (a new one from the server) has none: texture() is null and the screens show
+## the name alone.
 
 const FOLDER := "res://game/ui/resource_icons/"
+const ITEM_FOLDER := "res://game/ui/item_icons/"
+## Where texture() looks, in this order.
+const FOLDERS: Array[String] = [FOLDER, ITEM_FOLDER]
 ## The size of an icon in a list row, in canvas pixels (the pictures are 128 px).
 const ROW_SIZE := 44
+## The room between an icon and the name right of it, in canvas pixels.
+const ROW_GAP := 16
 
 static var _cache: Dictionary[String, Texture2D] = {}
 static var _blank: Texture2D
 
 
-## The file of the icon of *key*; "" for a key that is no resource key (only A–Z, 0–9 and _).
-static func path(key: String) -> String:
+## The file of the icon of *key* in *folder*; "" for a key that is no resource key (only A–Z,
+## 0–9 and _).
+static func path(key: String, folder: String = FOLDER) -> String:
 	if key.is_empty():
 		return ""
 	for character: String in key:
 		if not (character >= "A" and character <= "Z" or character >= "0" and character <= "9" or character == "_"):
 			return ""
-	return FOLDER + key.to_lower() + ".png"
+	return folder + key.to_lower() + ".png"
 
 
-## The icon of the resource *key*, or null when there is none.
+## The icon of the resource or item *key*, or null when there is none.
 static func texture(key: String) -> Texture2D:
 	if _cache.has(key):
 		return _cache[key]
-	var file := path(key)
 	var found: Texture2D = null
-	if not file.is_empty() and ResourceLoader.exists(file):
-		found = load(file) as Texture2D
+	for folder: String in FOLDERS:
+		var file := path(key, folder)
+		if not file.is_empty() and ResourceLoader.exists(file):
+			found = load(file) as Texture2D
+			break
 	_cache[key] = found
 	return found
 
