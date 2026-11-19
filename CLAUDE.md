@@ -75,6 +75,8 @@ verschärft, wenn es nötig wird.
 | Android-Release-APK zum Testen (Live-Server, eigener Schlüssel in `.local/`) | `powershell -File tools\android-release.ps1` → `build\android\trade-empire.apk` (Schlüssel aufheben: Updates brauchen denselben) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
+| Ressourcen-Modelle bauen (eins je Ressource, Quelle der Icons) | `powershell -File tools\build-models.ps1 -Only resources [-Types iron,robot_t3]` → `game\world\models\resources\` (trägt `.gdignore`: nicht importiert, nicht im APK; für eine spätere 3D-Detailansicht entfernen) |
+| Ressourcen-Icons rendern (+ Kontaktbogen) | `godot --path . --resolution 720x1280 res://smoke/resource_icons.tscn [-- --only=iron,water]` → `game/ui/resource_icons/<key>.png` (128 px, Import verlustbehaftet mit Mipmaps) und `build/resource_icons/sheet_44.png`, `sheet_128.png`; Nachschlagen im Spiel: `ResourceIcon`, Zeilen über `Ui.resource_icon` / `Ui.add_resource_icon` |
 | Requisiten (Bäume, Steine …) ansehen und messen | `F:\Tools\Godot\godot.exe --path . --resolution 720x1280 res://smoke/prop_view.tscn -- --out=build/props` (Entwicklerkonto; Modelle: `build-models.ps1 -Only props`) |
 | 3D-Modelle aus Spielsicht ansehen | `powershell -File tools\preview-models.ps1 <ordner> build\model-preview -NoFit` (Übersicht: `all_45.png`) |
 | Bodenfarben aus den V1-Kacheln | `godot --headless -s tools/biome_colors.gd` → `game/world/biome_colors.gd` |
