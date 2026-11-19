@@ -688,6 +688,15 @@ func set_blueprint(cell: Vector3i, blueprint: String) -> ApiResult:
 	return result
 
 
+## Sends many `setBlueprint` ops (BlueprintGroups.ops) as one bestEffort batch: a refused module
+## does not hold back the others; `data.results` says per op what happened (BlueprintGroups.outcome).
+func set_blueprints(ops: Array[Dictionary]) -> ApiResult:
+	var result := await send_ops(ops, "bestEffort")
+	if result.is_ok():
+		reload_production()
+	return result
+
+
 ## How much a module works now (0..1), for its moving parts (ModuleMotion). Before the first
 ## rate solution (and for a guest never selected) every finished, switched-on module counts as
 ## working.
@@ -787,13 +796,14 @@ func site() -> LevelRules.Site:
 	return result
 
 
-## Sends a build batch (atomic) to the body; ops on a guest go the same way. Returns the result;
-## on success the home structure (store, guest list) and every changed guest reload.
-func send_ops(ops: Array[Dictionary]) -> ApiResult:
+## Sends a build batch to the body; ops on a guest go the same way. `mode` "atomic" (all or
+## nothing) or "bestEffort" (each op on its own; per-op results in `data.results`). Returns the
+## result; on success the home structure (store, guest list) and every changed guest reload.
+func send_ops(ops: Array[Dictionary], mode: String = "atomic") -> ApiResult:
 	if is_guest():
-		return await host.send_ops(ops)
+		return await host.send_ops(ops, mode)
 	var result := await Services.api.post_json("/v2/bodies/%s/ops" % body_id.uri_encode(), {
-		"mode": "atomic",
+		"mode": mode,
 		"ops": ops,
 	})
 	if result.is_ok():

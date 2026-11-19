@@ -996,6 +996,29 @@ DETAILS_IDLE_LOCATION,{count} idle: cannot work at this spot
 DETAILS_IDLE_OTHER,{count} idle
 DETAILS_NO_STAFF,No module here needs staff.
 DETAILS_STAFF_LINE,Staff {assigned} of {needed} · {modules} module(s)
+DETAILS_TAB_BLUEPRINTS,Blueprints
+DETAILS_BLUEPRINTS_INTRO,Modules that run on blueprints. Tap a type to see its blueprints and change them for many modules at once.
+DETAILS_BLUEPRINTS_EMPTY,No modules here run on blueprints.
+DETAILS_BLUEPRINTS_MISSING,{count} without a blueprint – standing still
+DETAILS_BLUEPRINTS_IN_USE,{count} blueprints in use
+DETAILS_BLUEPRINTS_ALL_ON,All on {name}
+DETAILS_BLUEPRINTS_NONE,None
+DETAILS_BLUEPRINTS_NO_BLUEPRINT,no blueprint
+DETAILS_BLUEPRINTS_UNKNOWN,Unknown blueprint
+DETAILS_BLUEPRINTS_BUILDING,{count} under construction – they get it too
+DETAILS_BLUEPRINTS_LOCATION,{count} cannot work here
+DETAILS_BLUEPRINTS_CHANGE,Change to …
+DETAILS_BLUEPRINTS_PICK,"Change {count} × {type} running {blueprint} to:"
+DETAILS_BLUEPRINTS_PICK_NONE,Choose a blueprint for {count} × {type} without one:
+DETAILS_BLUEPRINTS_RANGE,{low}–{high}
+DETAILS_BLUEPRINTS_YIELD_ALL,At all {spots} spots: {yield} each at full staff and power
+DETAILS_BLUEPRINTS_YIELD_SOME,"At {working} of {spots} spots: {yield} each at full staff and power; the other {idle} would stand still"
+DETAILS_BLUEPRINTS_YIELD_NONE,Nothing to extract at any of these {spots} spots – they would stand still.
+DETAILS_BLUEPRINTS_YIELD_LOADING,Yields at these spots: the ground is still loading …
+DETAILS_BLUEPRINTS_RESULT_SET,{count} set to {name}.
+DETAILS_BLUEPRINTS_RESULT_PARTLY,"{count} set to {name}, {refused} refused: {reasons}"
+DETAILS_BLUEPRINTS_RESULT_REFUSED,"None set, {refused} refused: {reasons}"
+DETAILS_BLUEPRINTS_UNCHANGED,Nothing to change – they already run it.
 PLACES_TITLE,Your places
 PLACES_EMPTY,None of your structures stands on a surface right now.
 PLACES_ROW,{body} · {count} structure(s)

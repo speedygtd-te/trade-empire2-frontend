@@ -555,6 +555,7 @@ func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
 		return
 	details.show_tab(StructureDetails.Tab.WORKERS)
 	await _capture("details_workers")
+	await _capture_blueprints(colony, details)
 	details.show_tab(StructureDetails.Tab.LOG)
 	await get_tree().create_timer(2.0).timeout
 	await _capture("details_log")
@@ -564,6 +565,56 @@ func _capture_details(shell: MainShell, colony: ColonyScreen) -> void:
 		shell.handle_back()
 		await get_tree().process_frame
 	print("BACK  details closed: %s, structure still open: %s" % [colony.details() == null, colony._opened])
+
+
+## The Blueprints tab against the server: closed rows, the mines opened, the recipe list of the
+## mines' group; then the group's blueprint is cleared through the tab (a "None" group in amber,
+## the tab's badge, the result line), the recipe list of the "None" group, and the old blueprint
+## set again the same way — the account is as before.
+func _capture_blueprints(colony: ColonyScreen, details: StructureDetails) -> void:
+	details.show_tab(StructureDetails.Tab.BLUEPRINTS)
+	var panel := details.blueprints_panel()
+	await _capture("details_blueprints")
+	var model := colony._model
+	var mine: StructureLayout.Module = null
+	for placed: StructureLayout.Module in model.layout.modules():
+		if placed.module_type == "MINE" and not placed.blueprint.is_empty():
+			mine = placed
+			break
+	if mine == null:
+		print("BLUEPRINTS  no mine with a blueprint")
+		return
+	var before := mine.blueprint
+	panel.set_open("MINE", true)
+	await _capture("details_blueprints_open")
+	panel.open_picker("MINE", before)
+	await _ground_ready(colony, model.layout.to_absolute(mine.origin))
+	panel.open_picker("MINE", before)
+	await _capture("details_blueprints_picker")
+	print("BLUEPRINTS  picker for MINE/%s, Back closes it: %s" % [before, details.handle_back() and not panel.is_picking()])
+	var mine_id := mine.module_id
+	panel._on_chosen("")
+	await _until(func() -> bool: return model.layout.module(mine_id).blueprint.is_empty() and not panel._busy, 10000)
+	await get_tree().create_timer(1.5).timeout
+	await _capture("details_blueprints_none")
+	print("BLUEPRINTS  cleared: %s | badge %s" % [panel.status_text(), details.nav().has_badge(StructureDetails.Tab.BLUEPRINTS)])
+	panel.open_picker("MINE", "")
+	await _capture("details_blueprints_picker_none")
+	panel._on_chosen(before)
+	await _until(func() -> bool: return model.layout.module(mine_id).blueprint == before and not panel._busy, 10000)
+	await get_tree().create_timer(1.5).timeout
+	await _capture("details_blueprints_result")
+	print("BLUEPRINTS  set again: %s | badge %s" % [panel.status_text(), details.nav().has_badge(StructureDetails.Tab.BLUEPRINTS)])
+	# The yield line over many spots, with made-up numbers (the starter has one mine only).
+	var span := BlueprintGroups.YieldSpan.new()
+	span.resource = "IRON"
+	span.spots = 6
+	span.working = 4
+	span.low_richness = 21
+	span.high_richness = 48
+	span.low_rate = 21000000
+	span.high_rate = 48000000
+	print("SAMPLE  yield over 6 spots: %s" % panel._span_text(span))
 
 
 ## The research tab. With a real lab in the structure it aims the lab at the first research

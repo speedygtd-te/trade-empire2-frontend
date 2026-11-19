@@ -2,19 +2,21 @@ class_name StructureDetails
 extends Control
 ## The details of one structure over the whole screen, the navigation included: what it
 ## produces (energy, life support, what runs, what stands still, what goes to tax), its staff
-## per module type, its log and its research — each a tab of its own bar at the bottom. The "×"
-## in the head or Back closes it (Back first closes what is open inside a tab).
+## per module type, the blueprints its modules run (BlueprintsPanel; a badge when some have
+## none), its log and its research — each a tab of its own bar at the bottom. The "×" in the
+## head or Back closes it (Back first closes what is open inside a tab).
 
 signal closed
 
-enum Tab { PRODUCTION, WORKERS, LOG, RESEARCH }
+enum Tab { PRODUCTION, WORKERS, BLUEPRINTS, LOG, RESEARCH }
 
 const TAB_KEYS: Array[String] = [
-	"DETAILS_TAB_PRODUCTION", "DETAILS_TAB_WORKERS", "DETAILS_TAB_LOG", "DETAILS_TAB_RESEARCH",
+	"DETAILS_TAB_PRODUCTION", "DETAILS_TAB_WORKERS", "DETAILS_TAB_BLUEPRINTS", "DETAILS_TAB_LOG",
+	"DETAILS_TAB_RESEARCH",
 ]
 const TAB_ICONS: Array[String] = [
 	"res://game/ui/icons/production.svg", "res://game/ui/icons/workers.svg",
-	"res://game/ui/icons/log.svg", "res://game/ui/icons/research.svg",
+	"res://game/ui/icons/blueprints.svg", "res://game/ui/icons/log.svg", "res://game/ui/icons/research.svg",
 ]
 ## How often running research and the countdowns are refreshed (seconds).
 const REFRESH_SECONDS := 1.0
@@ -37,6 +39,7 @@ var _workers_list: VBoxContainer
 var _workers_summary: Label
 var _workers_status: Label
 var _workforce_panel: WorkforcePanel
+var _blueprints: BlueprintsPanel
 var _log: LogPanel
 var _research: ResearchPanel
 
@@ -111,6 +114,12 @@ func _ready() -> void:
 	_workers_page.add_child(_workforce_panel)
 	_pages.append(_workers_page)
 
+	_blueprints = BlueprintsPanel.new()
+	_blueprints.setup(_structure, _home)
+	_blueprints.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pages.add_child(_blueprints)
+	_pages.append(_blueprints)
+
 	_log = LogPanel.new()
 	_log.setup(_structure)
 	_log.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -133,6 +142,7 @@ func _ready() -> void:
 	_structure.inventory_changed.connect(_on_production_changed)
 	_structure.layout_changed.connect(_on_production_changed)
 	show_tab(_tab)
+	_update_badge()
 	_structure.reload_production()
 
 
@@ -150,6 +160,8 @@ func _process(delta: float) -> void:
 ## Back closes what is open inside a tab; false when nothing was (the stack closes the screen).
 func handle_back() -> bool:
 	if _tab == Tab.RESEARCH and _research.handle_back():
+		return true
+	if _tab == Tab.BLUEPRINTS and _blueprints.handle_back():
 		return true
 	if _workforce_panel.visible:
 		_close_workforce()
@@ -173,6 +185,8 @@ func show_tab(tab: Tab) -> void:
 			_show_production()
 		Tab.WORKERS:
 			_close_workforce()
+		Tab.BLUEPRINTS:
+			_blueprints.reload()
 		Tab.LOG:
 			_log.reload()
 		Tab.RESEARCH:
@@ -188,6 +202,14 @@ func workforce_panel() -> WorkforcePanel:
 	return _workforce_panel
 
 
+func blueprints_panel() -> BlueprintsPanel:
+	return _blueprints
+
+
+func nav() -> BottomNav:
+	return _nav
+
+
 func _page_scroll() -> ScrollContainer:
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -196,10 +218,21 @@ func _page_scroll() -> ScrollContainer:
 
 
 func _on_production_changed() -> void:
+	_update_badge()
 	if _tab == Tab.PRODUCTION:
 		_show_production()
 	elif _tab == Tab.WORKERS and not _workforce_panel.visible:
 		_show_workers()
+	elif _tab == Tab.BLUEPRINTS:
+		_blueprints.reload()
+
+
+## The Blueprints tab carries a badge while some module that runs on blueprints has none.
+func _update_badge() -> void:
+	if Services.definitions == null:
+		return
+	_nav.set_badge(Tab.BLUEPRINTS, BlueprintGroups.any_without(BlueprintGroups.rows(_structure.layout.modules(),
+		Services.definitions, _structure.idle_reasons)))
 
 
 # --- production -----------------------------------------------------------------------------

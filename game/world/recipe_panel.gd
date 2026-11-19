@@ -28,9 +28,10 @@ func _ready() -> void:
 ## Fills the list for a module type; `current` is the recipe set now, `usable` the keys the
 ## player may use (basis or researched), `atmosphere` the gases of this body's air (share 0..1),
 ## `yields` what each extracting recipe would yield at the module's place (recipe key →
-## ExtractionYield.Estimate; empty while the ground is unknown).
+## ExtractionYield.Estimate; empty while the ground is unknown). `notes` (recipe key → text)
+## replaces what a recipe needs from its spot, e.g. the yields over many spots at once.
 func show_recipes(module_type: String, current: String, usable: Dictionary, atmosphere: Dictionary = {},
-		yields: Dictionary = {}) -> void:
+		yields: Dictionary = {}, notes: Dictionary = {}) -> void:
 	for child: Node in _list.get_children():
 		child.queue_free()
 	var definitions := Services.definitions
@@ -46,6 +47,8 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 			needs = tr("RECIPE_YIELD_HERE").format({"yield": yield_text(here)})
 		elif here != null:
 			needs += "\n" + tr("RECIPE_YIELD_NONE")
+		if notes.has(recipe.key):
+			needs = Wire.as_string(notes.get(recipe.key))
 		if not needs.is_empty():
 			text += "\n" + needs
 		if not allowed:

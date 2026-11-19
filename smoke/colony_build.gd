@@ -121,6 +121,7 @@ func _run() -> void:
 
 	await _check_shape(layout)
 	await _check_recipes(layout)
+	await _check_blueprint_batch(layout)
 	await _check_discard_and_log()
 	await _check_workforce()
 
@@ -187,6 +188,116 @@ func _check_recipes(layout: StructureLayout) -> void:
 	_check(back.is_ok(), "set the old recipe again -> ok (error: %s)" % _code(back))
 	await _wait_until(func() -> bool: return layout.module(mine.module_id).blueprint == before, 8000)
 	_check(layout.module(mine.module_id).blueprint == before, "layout shows the old recipe again (%s)" % before)
+
+
+## The Blueprints tab's batch: two new mines (under construction, without a blueprint) join the
+## "None" group of the mines; one bestEffort batch (BlueprintGroups.ops) sets a blueprint on the
+## whole group, plus one op on a cell without a hull that must be refused on its own. The layout
+## must show the blueprint on both; then everything goes back (mines and hulls removed, any older
+## mine of the group without a blueprint again), so the account is as before.
+func _check_blueprint_batch(layout: StructureLayout) -> void:
+	var spots := _free_neighbours(layout, 2)
+	if spots.size() < 2:
+		print("SKIP  blueprint batch (no two free cells next to the colony)")
+		return
+	var hull_item := Services.definitions.hull(HULL).item
+	var mine_item := Services.definitions.module("MINE").item
+	var hulls_before := _units(hull_item)
+	var mines_before := _units(mine_item)
+	var build: Array[Dictionary] = []
+	for local: Vector3i in spots:
+		var cell := layout.to_absolute(local)
+		build.append({"op": "placeHull", "hullType": HULL, "x": cell.x, "y": cell.y, "z": cell.z})
+	for local: Vector3i in spots:
+		var cell := layout.to_absolute(local)
+		build.append({"op": "placeModule", "moduleType": "MINE", "x": cell.x, "y": cell.y, "z": cell.z, "rotation": 0})
+	var built := await _model.send_ops(build)
+	_check(built.is_ok(), "blueprints: two hulls with a mine each -> ok (error: %s)" % _code(built))
+	if not built.is_ok():
+		return
+	var both_there := func() -> bool:
+		return layout.module_at(spots[0]) != null and layout.module_at(spots[1]) != null
+	await _wait_until(both_there, 8000)
+	var new_ids: Array[int] = []
+	for local: Vector3i in spots:
+		var placed := layout.module_at(local)
+		if placed != null:
+			new_ids.append(placed.module_id)
+	_check(new_ids.size() == 2, "blueprints: layout shows both new mines")
+
+	var rows := BlueprintGroups.rows(layout.modules(), Services.definitions, _model.idle_reasons)
+	var mines: BlueprintGroups.TypeRow = null
+	for row: BlueprintGroups.TypeRow in rows:
+		if row.module_type == "MINE":
+			mines = row
+	var none := mines.group("") if mines != null else null
+	var in_group: Array[int] = []
+	if none != null:
+		for placed: StructureLayout.Module in none.modules:
+			in_group.append(placed.module_id)
+	_check(none != null and new_ids.size() == 2 and in_group.has(new_ids[0]) and in_group.has(new_ids[1]) and none.building >= 2,
+		"blueprints: the new mines are in the None group, under construction (%d in it, %d building)" % [
+			in_group.size(), none.building if none != null else 0])
+	if none != null and new_ids.size() == 2:
+		var target := "IRON_EXTRACTION" if _model.usable_blueprints.has("IRON_EXTRACTION") else ""
+		for recipe: GameDefinitions.BlueprintDef in Services.definitions.blueprints_for("MINE"):
+			if target.is_empty() and _model.usable_blueprints.has(recipe.key):
+				target = recipe.key
+		var ops := BlueprintGroups.ops(none, target, layout)
+		# One op on a cell outside the colony: bestEffort refuses it alone.
+		var outside := layout.to_absolute(Vector3i(-40, -40, 0))
+		ops.append({"op": "setBlueprint", "x": outside.x, "y": outside.y, "z": outside.z, "blueprint": target})
+		var sent := await _model.set_blueprints(ops)
+		_check(sent.is_ok(), "blueprints: bestEffort batch of %d -> ok (error: %s)" % [ops.size(), _code(sent)])
+		var outcome := BlueprintGroups.outcome(sent.data.get("results") if sent.is_ok() else null)
+		_check(outcome.applied == ops.size() - 1 and outcome.refused == 1,
+			"blueprints: %d set, %d refused (%s)" % [outcome.applied, outcome.refused, ", ".join(outcome.codes())])
+		var both_set := func() -> bool:
+			for id: int in new_ids:
+				var placed := layout.module(id)
+				if placed == null or placed.blueprint != target:
+					return false
+			return true
+		await _wait_until(both_set, 8000)
+		var set_ok: bool = both_set.call()
+		_check(set_ok, "blueprints: layout shows %s on both new mines" % target)
+		# Older mines of the group lose the blueprint again.
+		var older := BlueprintGroups.Group.new()
+		for id: int in in_group:
+			if not new_ids.has(id) and layout.module(id) != null:
+				older.modules.append(layout.module(id))
+		if not older.modules.is_empty():
+			var back := await _model.set_blueprints(BlueprintGroups.ops(older, "", layout))
+			_check(back.is_ok() and BlueprintGroups.outcome(back.data.get("results")).refused == 0,
+				"blueprints: %d older mine(s) without a blueprint again" % older.modules.size())
+	var removal: Array[Dictionary] = []
+	for local: Vector3i in spots:
+		var cell := layout.to_absolute(local)
+		removal.append({"op": "removeModule", "x": cell.x, "y": cell.y, "z": cell.z})
+	for local: Vector3i in spots:
+		var cell := layout.to_absolute(local)
+		removal.append({"op": "removeHull", "x": cell.x, "y": cell.y, "z": cell.z})
+	var removed := await _model.send_ops(removal)
+	_check(removed.is_ok(), "blueprints: mines and hulls removed -> ok (error: %s)" % _code(removed))
+	await _wait_until(func() -> bool: return layout.hull_at(spots[0]).is_empty() and layout.hull_at(spots[1]).is_empty(), 8000)
+	await _wait_until(func() -> bool: return _units(hull_item) == hulls_before and _units(mine_item) == mines_before, 8000)
+	_check(_units(hull_item) == hulls_before and _units(mine_item) == mines_before,
+		"blueprints: store as before (hulls %d, mines %d)" % [_units(hull_item), _units(mine_item)])
+
+
+## Up to `count` distinct free cells next to the colony's ground-level hulls (local).
+func _free_neighbours(layout: StructureLayout, count: int) -> Array[Vector3i]:
+	var result: Array[Vector3i] = []
+	for cell: Vector3i in layout.hull_cells():
+		if cell.z != 0:
+			continue
+		for step: Vector3i in [Vector3i(1, 0, 0), Vector3i(0, -1, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0)]:
+			var next: Vector3i = cell + step
+			if layout.hull_at(next).is_empty() and not result.has(next):
+				result.append(next)
+				if result.size() == count:
+					return result
+	return result
 
 
 ## Discards one unit of iron (the starter colony mines it) and reads the log afterwards.
