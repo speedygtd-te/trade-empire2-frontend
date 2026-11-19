@@ -54,6 +54,13 @@ func _run() -> void:
 	_colony._open_structure(ColonyScreen.Mode.VIEW)
 	_colony._set_level(1)
 	await _capture("level_selector")
+	# Bearings: on the ground level the outline of the storey above; on level 2 the outline of
+	# level 1 and dashed lines where its hull type changes.
+	_colony._set_level(0)
+	await _capture("level_ground_bearings")
+	_colony._set_level(2)
+	_look_at(layout.to_absolute(level_two[0]))
+	await _capture("level_two_bearings")
 
 	# Level 2 in the build tab: a hull next to the second storey, previewed.
 	_colony._set_mode(ColonyScreen.Mode.BUILD)

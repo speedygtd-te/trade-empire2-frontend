@@ -333,7 +333,7 @@ func _apply_cutaway(was_cutaway: bool) -> void:
 	_props.visible = not below
 	_perimeter.visible = not below
 	_travel.visible = not below
-	_underground.show_level(_outline_level())
+	_underground.show_level(level, _shows_bearings())
 	if below:
 		_apply_lamp_light()
 	elif was_cutaway:
@@ -343,10 +343,10 @@ func _apply_cutaway(was_cutaway: bool) -> void:
 			callv("set_sun", _sun_args)
 
 
-## The level whose footprint outline is drawn (UndergroundLayer): the active level of the open
-## structure while its levels are cut, above or below the ground; 0 for none.
-func _outline_level() -> int:
-	return level if level_cut and opened else 0
+## Whether the outlines of the neighbouring levels are drawn on the active one (UndergroundLayer):
+## while the open structure's levels are cut, on any level.
+func _shows_bearings() -> bool:
+	return level_cut and opened
 
 
 ## Lamp light instead of the sun: below the ground neither sun nor sky reach.
@@ -420,7 +420,7 @@ func open_structure(structure_id: int) -> void:
 	if was_cutaway != cutaway():
 		_apply_cutaway(was_cutaway)
 	else:
-		_underground.show_level(_outline_level())
+		_underground.show_level(level, _shows_bearings())
 	_rebuild_structure()
 
 
