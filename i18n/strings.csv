@@ -57,6 +57,77 @@ COLONY_FREE_GROUND,Free ground.
 COLONY_CELL_HULL,{hull} without module.
 COLONY_CELL_MODULE,{module} on {hull}.
 COLONY_CELL_MODULE_BUILDING,"{module} on {hull} – under construction, ready in {duration}."
+COLONY_GROUND_TERRAIN,Terrain: {biome}
+COLONY_GROUND_DEPOSITS,Deposits: {deposits}
+COLONY_GROUND_NO_DEPOSITS,No deposits in the ground here.
+COLONY_GROUND_TRACES,{count} more below {limit} %
+COLONY_GROUND_LOADING,Reading the ground…
+COLONY_GROUND_FAILED,The ground could not be read. Trying again…
+COLONY_DEPOSIT,{resource} {richness} %
+COLONY_AIR,Air: {gases}
+COLONY_AIR_NONE,No air here to collect from.
+COLONY_GAS,{gas} {share} %
+COLONY_YIELD_HERE,Here at full staff and power: {yields}
+COLONY_YIELD_TILE,{resource} {richness} % → {rate}
+COLONY_YIELD_GAS,{resource} ({share} % of the air) → {rate}
+COLONY_YIELD_NOTHING,Nothing to extract here for this module.
+COLONY_YIELD_NOW,"Here: {yield} at full staff and power, now {rate}"
+COLONY_YIELD_NOW_SHARED,"Here: {yield} at full staff and power, now {rate} from all {modules} on this recipe"
+COLONY_BIOME_OCEAN,Ocean
+COLONY_BIOME_BEACH,Beach
+COLONY_BIOME_PLAINS,Plains
+COLONY_BIOME_FOREST,Forest
+COLONY_BIOME_MOUNTAIN,Mountain
+COLONY_BIOME_SNOW_PEAK,Snow peak
+COLONY_BIOME_SWAMP,Swamp
+COLONY_BIOME_DESERT_PATCH,Desert
+COLONY_BIOME_SAND_DUNES,Sand dunes
+COLONY_BIOME_ROCKY_DESERT,Rocky desert
+COLONY_BIOME_MESA,Mesa
+COLONY_BIOME_SALT_FLAT,Salt flat
+COLONY_BIOME_OASIS,Oasis
+COLONY_BIOME_CANYON,Canyon
+COLONY_BIOME_DEEP_OCEAN,Deep ocean
+COLONY_BIOME_SHALLOW_WATER,Shallow water
+COLONY_BIOME_REEF,Reef
+COLONY_BIOME_ISLAND,Island
+COLONY_BIOME_KELP_FOREST,Kelp forest
+COLONY_BIOME_VOLCANIC_VENT,Volcanic vent
+COLONY_BIOME_GLACIER,Glacier
+COLONY_BIOME_FROZEN_LAKE,Frozen lake
+COLONY_BIOME_TUNDRA,Tundra
+COLONY_BIOME_ICE_SHELF,Ice shelf
+COLONY_BIOME_PERMAFROST,Permafrost
+COLONY_BIOME_CREVASSE,Crevasse
+COLONY_BIOME_LAVA_FLOW,Lava flow
+COLONY_BIOME_BASALT_PLAIN,Basalt plain
+COLONY_BIOME_ASH_FIELD,Ash field
+COLONY_BIOME_CALDERA,Caldera
+COLONY_BIOME_OBSIDIAN_RIDGE,Obsidian ridge
+COLONY_BIOME_FUMAROLE,Fumarole
+COLONY_BIOME_REGOLITH,Regolith
+COLONY_BIOME_CRATER,Crater
+COLONY_BIOME_DUST_PLAIN,Dust plain
+COLONY_BIOME_ROCKY_OUTCROP,Rocky outcrop
+COLONY_BIOME_ACID_LAKE,Acid lake
+COLONY_BIOME_TOXIC_MARSH,Toxic marsh
+COLONY_BIOME_CORRODED_PLAIN,Corroded plain
+COLONY_BIOME_CHEMICAL_VENT,Chemical vent
+COLONY_BIOME_CRYSTAL_FIELD,Crystal field
+COLONY_BIOME_METALLIC_SURFACE,Metallic surface
+COLONY_BIOME_IMPACT_CRATER,Impact crater
+COLONY_BIOME_SILICATE_PLAIN,Silicate plain
+COLONY_BIOME_CARBON_CRUST,Carbon crust
+COLONY_BIOME_FRACTURED_ZONE,Fractured zone
+COLONY_BIOME_BOULDER_FIELD,Boulder field
+COLONY_BIOME_DUST_BASIN,Dust basin
+COLONY_BIOME_VOID_EDGE,Void edge
+COLONY_BIOME_ROCK_LAYER,Rock layer
+COLONY_BIOME_MINERAL_VEIN,Mineral vein
+COLONY_BIOME_CAVE_FLOOR,Cave floor
+COLONY_BIOME_MAGMA_POCKET,Magma pocket
+COLONY_BIOME_DEEP_STONE,Deep stone
+COLONY_BIOME_ICE_CAVERN,Ice cavern
 COLONY_ITEM_COUNT,{name} ×{count}
 COLONY_NOTHING_TO_BUILD,Nothing to build in the store.
 COLONY_BUILD_HERE,Build here
@@ -173,6 +244,8 @@ COLONY_STRUCTURE_BUILDING,Under construction: {count}
 RECIPE_NEEDS_GAS,"Needs {gas} in the air – here {share}."
 RECIPE_NEEDS_DEPOSIT,Needs {resource} in the ground.
 RECIPE_ORBIT_ONLY,Works only in orbit.
+RECIPE_YIELD_HERE,Here: {yield} at full staff and power
+RECIPE_YIELD_NONE,"Here: nothing to extract, it would stand still."
 RESEARCH_LOADING,Loading research…
 RESEARCH_SUMMARY,Researched {done} of {total} technologies.
 RESEARCH_LABS_HEADING,Labs here

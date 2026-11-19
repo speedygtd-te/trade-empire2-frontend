@@ -13,6 +13,8 @@ extends Control
 ## the galaxy (`--only=galaxy` does the same).
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
+## No cell found (_free_hull).
+const NO_CELL := Vector3i(-9999, -9999, -9999)
 
 var _out_dir := "user://screenshots"
 
@@ -135,11 +137,43 @@ func _run() -> void:
 	for placed: StructureLayout.Module in with_module:
 		if placed.module_type == "MINE":
 			colony._select(layout.to_absolute(placed.origin))
+			await _ground_ready(colony, layout.to_absolute(placed.origin))
 			await _capture("colony_mine")
+			print("INSPECT  MINE: %s | %s" % [colony._info.text.replace("\n", " / "), colony._ground.text.replace("\n", " / ")])
 			colony._open_recipes(placed)
 			await _capture("colony_recipes")
 			colony._close_recipes()
 			break
+	# The other extracting modules and the ground: a pump, a collector (with the air), free
+	# ground next to the structure, a hull without module and a cell one level below the ground.
+	for kind: String in ["PUMP", "COLLECTOR"]:
+		for placed: StructureLayout.Module in with_module:
+			if placed.module_type == kind:
+				var at := layout.to_absolute(placed.origin)
+				colony._select(at)
+				await _ground_ready(colony, at)
+				await _capture("colony_inspect_" + kind.to_lower())
+				print("INSPECT  %s: %s | %s" % [kind, colony._info.text.replace("\n", " / "), colony._ground.text.replace("\n", " / ")])
+				break
+	var ground_cell := layout.to_absolute(_free_neighbour(layout))
+	colony._select(ground_cell)
+	await _ground_ready(colony, ground_cell)
+	await _capture("colony_inspect_ground")
+	print("INSPECT  ground: %s | %s" % [colony._info.text, colony._ground.text.replace("\n", " / ")])
+	var free_hull := _free_hull(layout)
+	if free_hull != NO_CELL:
+		colony._select(layout.to_absolute(free_hull))
+		await _ground_ready(colony, layout.to_absolute(free_hull))
+		await _capture("colony_inspect_hull")
+	if colony._uses_levels() and colony._level_range().x < 0:
+		colony._set_level(-1)
+		var below := layout.to_absolute(Vector3i(1, 1, -1))
+		colony._select(below)
+		await _ground_ready(colony, below)
+		await _capture("colony_inspect_underground")
+		print("INSPECT  level -1: %s | %s" % [colony._info.text, colony._ground.text.replace("\n", " / ")])
+		colony._set_level(0)
+	colony._select(null)
 
 	colony._set_mode(ColonyScreen.Mode.BUILD)
 	await _capture("colony_build_palette")
@@ -149,6 +183,17 @@ func _run() -> void:
 	var free_cell := _free_neighbour(layout)
 	colony._select(layout.to_absolute(free_cell))
 	await _capture("colony_build_preview")
+	# An extracting module says what it would yield on the chosen field.
+	if free_hull != NO_CELL:
+		colony._choose_tool("module:MINE")
+		colony._select(layout.to_absolute(free_hull))
+		await _ground_ready(colony, layout.to_absolute(free_hull))
+		await _capture("colony_build_yield_mine")
+		print("BUILD  mine here: %s" % colony._info.text.replace("\n", " / "))
+		colony._choose_tool("module:COLLECTOR")
+		colony._select(layout.to_absolute(free_hull))
+		await _capture("colony_build_yield_collector")
+		print("BUILD  collector here: %s" % colony._info.text.replace("\n", " / "))
 	colony._choose_tool("module:SMELTER")
 	colony._select(layout.to_absolute(Vector3i(0, 0, 0)))
 	await _capture("colony_build_blocked")
@@ -629,6 +674,19 @@ func _galaxy_load_test(galaxy: GalaxyScreen) -> void:
 	view._update_field(view.visible_radius())
 	print("GALAXY  stand-in stars at 3000 ly from scratch: %d in %d ms" % [view._field.multimesh.instance_count, Time.get_ticks_msec() - started])
 	view.look_at_point(view.centre(), GalaxyCamera.HOME_RADIUS)
+
+
+## A hull of the ground level without a module (local); NO_CELL when every hull carries one.
+func _free_hull(layout: StructureLayout) -> Vector3i:
+	for cell: Vector3i in layout.hull_cells():
+		if cell.z == 0 and layout.module_at(cell) == null and layout.hull_at(cell) == "STARTER":
+			return cell
+	return NO_CELL
+
+
+## Waits until the ground (with its deposits) under an absolute cell is loaded.
+func _ground_ready(colony: ColonyScreen, cell: Vector3i) -> void:
+	await _until(func() -> bool: return colony._model.ground_cell(cell) != null, 8000)
 
 
 ## A free cell next to the structure, for the build preview.

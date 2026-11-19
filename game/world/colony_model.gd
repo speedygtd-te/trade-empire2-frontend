@@ -18,6 +18,8 @@ signal production_changed
 signal surface_loaded(request: SurfaceBlocks.Request, patch: SurfacePatch)
 ## A patch of an underground level (z < 0) arrived (cutaway view).
 signal level_surface_loaded(z: int, request: SurfaceBlocks.Request)
+## The deposits of some cells arrived (ground_cell).
+signal deposits_loaded
 ## Loading the colony failed; `error` says why.
 signal load_failed(error: ApiError)
 ## Everything needed to draw the colony is there.
@@ -31,6 +33,8 @@ signal research_completed(tech: String)
 
 ## How many surface blocks around the camera are kept loaded.
 const SURFACE_RADIUS := 2
+## Deposits are loaded only where the player looks, in small blocks (a cell carries a dozen).
+const DEPOSIT_BLOCK := 4
 
 var structure_id := 0
 var structure_name := ""
@@ -80,6 +84,12 @@ var research: ResearchState = null
 var research_error: ApiError = null
 ## Module id → why an active module produces nothing ("NO_BLUEPRINT", "LOCATION").
 var idle_reasons: Dictionary = {}
+## The recipe buckets of the last rate solution (what each module type and recipe yields now).
+var buckets: Array[ExtractionYield.Bucket] = []
+## Cells with their deposits, per level of ground (z ≤ 0): z → SurfaceBlocks (DEPOSIT_BLOCK).
+var deposit_levels: Dictionary = {}
+## Whether the last load of deposits failed (the card says so until one arrives).
+var deposits_failed := false
 ## Energy and life support of the last rate solution, micro-units per hour: [production, consumption].
 var power: Array[int] = [0, 0]
 var life_support: Array[int] = [0, 0]
@@ -212,6 +222,7 @@ func _load_body() -> ApiError:
 	deep_threshold = Wire.as_int(body.data.get("deepThreshold"))
 	surface = SurfaceBlocks.new(size_x)
 	level_surfaces.clear()
+	deposit_levels.clear()
 	var environment := Wire.as_dict(body.data.get("environment"))
 	var air: Variant = environment.get("atmosphereDensity")
 	if typeof(air) == TYPE_FLOAT:
@@ -281,6 +292,7 @@ func _make_sibling(id: int) -> ColonyModel:
 	other.max_z = max_z
 	other.deep_threshold = deep_threshold
 	other.level_surfaces = level_surfaces
+	other.deposit_levels = deposit_levels
 	other.star_kelvin = star_kelvin
 	other.star_luminosity = star_luminosity
 	other.star_distance_au = star_distance_au
@@ -584,8 +596,9 @@ func reload_production() -> void:
 		var row := Wire.as_dict(entry)
 		idle_reasons[Wire.as_int(row.get("moduleId"))] = Wire.as_string(row.get("reason"))
 	var micro := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
-	var buckets: Array = answer.data.get("buckets") if typeof(answer.data.get("buckets")) == TYPE_ARRAY else []
-	_activity_by_type = ModuleMotion.activity_by_type(buckets, micro)
+	var bucket_rows: Array = answer.data.get("buckets") if typeof(answer.data.get("buckets")) == TYPE_ARRAY else []
+	buckets = ExtractionYield.buckets_from_wire(bucket_rows)
+	_activity_by_type = ModuleMotion.activity_by_type(bucket_rows, micro)
 	_power_scale = clampf(Wire.as_int(power_data.get("scale"), micro) / float(maxi(micro, 1)), 0.0, 1.0)
 	_production_known = true
 	workforce.apply_groups(answer.data.get("workforce"))
@@ -721,6 +734,41 @@ func level_surface(z: int) -> SurfaceBlocks:
 	if not level_surfaces.has(z):
 		level_surfaces[z] = SurfaceBlocks.new(size_x)
 	return level_surfaces[z] as SurfaceBlocks
+
+
+## The ground under an absolute cell with its deposits and biome, at the cell's level (a cell
+## above the ground stands on the surface: ExtractionYield.ground_level). Null while it loads
+## (asked for here; deposits_loaded follows) or on a body without a grid.
+func ground_cell(cell: Vector3i) -> SurfacePatch.Cell:
+	if not has_grid or body_id.is_empty():
+		return null
+	var z := ExtractionYield.ground_level(cell.z)
+	if not deposit_levels.has(z):
+		deposit_levels[z] = SurfaceBlocks.new(size_x, DEPOSIT_BLOCK)
+	var blocks := deposit_levels[z] as SurfaceBlocks
+	var found := blocks.cell(cell.x, cell.y)
+	if found == null:
+		for request: SurfaceBlocks.Request in blocks.missing_around(cell.x, cell.y, 0):
+			_load_deposits(request, z, blocks)
+	return found
+
+
+## Loads the cells of a small rectangle of one level with their deposits.
+func _load_deposits(request: SurfaceBlocks.Request, z: int, blocks: SurfaceBlocks) -> void:
+	var path := "/v2/bodies/%s/surface?x0=%d&y0=%d&x1=%d&y1=%d&includeDeposits=true" % [
+		body_id.uri_encode(), request.x0, request.y0, request.x1, request.y1]
+	if z != 0:
+		path += "&z=%d" % z
+	var answer := await Services.api.get_ndjson(path)
+	var patch := SurfacePatch.from_stream(answer.stream) if answer.is_ok() else null
+	if patch == null or not patch.complete:
+		# Asked for again with the next look at the cell (the inspect card refreshes every second).
+		blocks.forget(request)
+		deposits_failed = true
+		return
+	deposits_failed = false
+	blocks.store(request, patch)
+	deposits_loaded.emit()
 
 
 ## What the level rules need to know about this body (LevelRules.Site); the biome of the ground
