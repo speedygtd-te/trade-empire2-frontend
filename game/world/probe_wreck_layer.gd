@@ -8,6 +8,7 @@ extends Node3D
 
 ## The wreck model (a prop); the first path that exists is used, else a small placeholder.
 const MODEL_PATHS: PackedStringArray = [
+	"res://game/world/models/props/probe_wreck_0.glb",
 	"res://game/world/models/props/probe_wreck.glb",
 	"res://game/world/models/probe_wreck.glb",
 ]
@@ -48,9 +49,11 @@ func redraw() -> void:
 			continue
 		var wreck := _wreck()
 		wreck.position = WorldGrid.to_scene(Vector3i(cell.x, cell.y, 0), origin, size_x)
-		# Each lies its own way.
-		wreck.rotation.y = float(GroundTiles.cell_hash(cell.x, cell.y) % 360) * PI / 180.0
+		# Each lies its own way: a quarter turn by its cell.
+		wreck.rotation.y = float(GroundTiles.cell_hash(cell.x, cell.y) % 4) * PI * 0.5
 		add_child(wreck)
+		# Its beacon and band glow like the lamps of the colony, brighter at night.
+		_view._collect_lamps(wreck)
 
 
 ## The impact sites near the view by cell (x wrapped): the loaded surface's and the own landed probes.
