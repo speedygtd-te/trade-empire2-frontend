@@ -30,6 +30,8 @@ signal guests_changed
 signal research_changed
 ## A research of the player is done: the tech key.
 signal research_completed(tech: String)
+## The telescopes of this structure (level, range, upgrade) arrived or failed to load.
+signal telescopes_changed
 
 ## How many surface blocks around the camera are kept loaded.
 const SURFACE_RADIUS := 2
@@ -124,7 +126,14 @@ var neighbour_of: ColonyModel = null
 ## or flying to land on it or to dock on a structure here (sync_with_fleet): id → ColonyModel
 ## (layout only; ColonyView places them along their trip).
 var travellers: Dictionary = {}
+## The telescopes of this structure (`GET /v2/structures/{id}/telescopes`): module id →
+## Sight.Telescope. Loaded when the layout holds a telescope; `telescopes_error` after a failure.
+var telescopes: Dictionary = {}
+var telescopes_loaded := false
+var telescopes_error: ApiError = null
 
+var _telescopes_loading := false
+var _telescopes_again := false
 var _layout_loading := false
 var _layout_again := false
 var _inventory_loading := false
@@ -880,6 +889,8 @@ func _load_layout(full: bool) -> ApiError:
 			if not is_guest():
 				_sync_guests()
 			layout_changed.emit()
+			if has_telescopes():
+				reload_telescopes()
 		else:
 			failure = ApiError.new()
 			failure.code = ApiResult.CODE_MALFORMED_RESPONSE
@@ -929,6 +940,7 @@ func _add_guest(id: int) -> ColonyModel:
 	guest.layout_changed.connect(layout_changed.emit)
 	guest.inventory_changed.connect(inventory_changed.emit)
 	guest.production_changed.connect(production_changed.emit)
+	guest.telescopes_changed.connect(telescopes_changed.emit)
 	guest.reload_layout()
 	return guest
 
@@ -1004,12 +1016,19 @@ func _on_event(event: SseEvent) -> void:
 			layout_changed.emit()
 			reload_production()
 			reload_labs()
+			if has_telescopes():
+				reload_telescopes()
 		"structure.ratesChanged":
 			if inventory != null and typeof(data.get("changed")) == TYPE_ARRAY:
 				var changed: Array = data.get("changed")
 				inventory.apply_rates(changed)
 				inventory_changed.emit()
 			reload_production()
+			# Power decides whether a telescope sees (`effective`).
+			if has_telescopes():
+				reload_telescopes()
+		"telescope.upgradeStarted", "telescope.upgraded":
+			reload_telescopes()
 
 
 func _on_resync(_rev: int) -> void:
@@ -1017,6 +1036,59 @@ func _on_resync(_rev: int) -> void:
 		reload_layout()
 		reload_inventory()
 		reload_research()
+		if has_telescopes():
+			reload_telescopes()
+
+
+# --- telescopes (sight, draft.25) ------------------------------------------------------------
+
+## Whether a telescope module stands in this structure (also one being built).
+func has_telescopes() -> bool:
+	for placed: StructureLayout.Module in layout.modules():
+		if Sight.is_telescope(placed.module_type):
+			return true
+	return false
+
+
+## Loads level, range, running upgrade and the next level of this structure's telescopes. A load
+## asked for while one runs follows it; a failure keeps what was loaded and sets
+## `telescopes_error`.
+func reload_telescopes() -> void:
+	if structure_id == 0 or is_queued_for_deletion():
+		return
+	if _telescopes_loading:
+		_telescopes_again = true
+		return
+	_telescopes_loading = true
+	var answer := await Services.api.get_json("/v2/structures/%d/telescopes" % structure_id)
+	_telescopes_loading = false
+	if is_queued_for_deletion():
+		return
+	if answer.is_ok():
+		telescopes = Sight.by_module(Sight.telescopes_from_wire(answer.data))
+		telescopes_loaded = true
+		telescopes_error = null
+	else:
+		telescopes_error = answer.error
+	telescopes_changed.emit()
+	if _telescopes_again:
+		_telescopes_again = false
+		reload_telescopes()
+
+
+## The telescope of a module; null while not loaded (or not a telescope).
+func telescope(module_id: int) -> Sight.Telescope:
+	return telescopes.get(module_id) as Sight.Telescope
+
+
+## Starts upgrading the telescope covering an absolute cell (`upgradeTelescope`, paid from this
+## structure's store). On success the telescopes reload; the result's `level`/`completesAt` say
+## when it is done.
+func upgrade_telescope(cell: Vector3i) -> ApiResult:
+	var result := await send_ops([{"op": "upgradeTelescope", "x": cell.x, "y": cell.y, "z": cell.z}])
+	if result.is_ok():
+		reload_telescopes()
+	return result
 
 
 # --- storage modes and the cargo area (routes, draft.20) -----------------------------------------

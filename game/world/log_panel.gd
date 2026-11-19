@@ -177,11 +177,12 @@ func describe(entry: StructureLog.Entry) -> String:
 		"routeFuelPaid":
 			return tr("LOG_ROUTE_FUEL_PAID")
 		"telescopeObserved":
-			return tr("LOG_TELESCOPE_OBSERVED")
+			# The radius comes in micro light years.
+			return tr("LOG_TELESCOPE_OBSERVED").format({"ly": Sight.ly_text(Wire.as_int(fields.get("radius")) / 1000000.0)})
 		"telescopeUpgradeStarted":
-			return tr("LOG_TELESCOPE_UPGRADE_STARTED")
+			return tr("LOG_TELESCOPE_UPGRADE_STARTED").format({"level": Wire.as_int(fields.get("to"))})
 		"telescopeUpgraded":
-			return tr("LOG_TELESCOPE_UPGRADED")
+			return tr("LOG_TELESCOPE_UPGRADED").format({"level": Wire.as_int(fields.get("level"))})
 	return ""
 
 

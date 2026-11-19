@@ -15,6 +15,7 @@ extends Control
 ## bottom: Inspect, Build, Inventory. Inspect: a tap on a field puts a card over it with what is
 ## there, its ground (terrain, deposits at that level, the air for collectors), what an extracting
 ## module yields there (ExtractionYield) and what can be done (recipe, staff, extend a shaft,
+## upgrade a telescope — level, range, countdown and cost from `/v2/structures/{id}/telescopes` —,
 ## two-step removal); a tap beside it
 ## or on the same field again clears it. Build: the palette at the bottom; building is two taps —
 ## choose the field (an extracting module says what it would yield there), then confirm.
@@ -136,6 +137,12 @@ var _ground: Label
 ## The staffing of the inspected module: "Staff" and "28 of 28" coloured by how full it is.
 var _staff_row: HBoxContainer
 var _staff_value: Label
+## A telescope in Inspect: its level and range (emerald while it sees, amber otherwise, with the
+## running upgrade), and below, muted, the next level with its cost or why it cannot be upgraded.
+var _scope: Label
+var _scope_next: Label
+## Why the telescope cannot be upgraded now (red when the store lacks the cost).
+var _scope_block: Label
 var _status: Label
 var _primary: Button
 var _secondary: Button
@@ -261,6 +268,7 @@ func _ready() -> void:
 	_model.inventory_changed.connect(_on_inventory_changed)
 	_model.production_changed.connect(_on_production_changed)
 	_model.deposits_loaded.connect(_refresh)
+	_model.telescopes_changed.connect(_refresh)
 	_model.ready_to_show.connect(_on_ready_to_show)
 	_model.load_failed.connect(_on_load_failed)
 	Services.events.event_received.connect(_on_travel_event)
@@ -624,6 +632,15 @@ func _build_overlay() -> void:
 	_staff_value = Ui.dynamic_label()
 	_staff_value.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_staff_row.add_child(_staff_value)
+	_scope = Ui.dynamic_label()
+	_scope.visible = false
+	_rows.add_child(_scope)
+	_scope_next = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_scope_next.visible = false
+	_rows.add_child(_scope_next)
+	_scope_block = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_scope_block.visible = false
+	_rows.add_child(_scope_block)
 	_ground = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_ground.visible = false
 	_rows.add_child(_ground)
@@ -899,7 +916,7 @@ func _move_details(on_card: bool) -> void:
 	var target: Control = _inspect.content() if on_card else _rows
 	if _info.get_parent() == target:
 		return
-	for node: Control in [_info, _path_note, _staff_row, _ground, _status, _actions]:
+	for node: Control in [_info, _path_note, _staff_row, _scope, _scope_next, _scope_block, _ground, _status, _actions]:
 		node.reparent(target, false)
 
 
@@ -1454,6 +1471,9 @@ func _select(cell: Variant) -> void:
 	_status.text = ""
 	if cell == null:
 		_view.select_cell(null)
+	elif _focus.telescopes_error != null:
+		# A telescope that failed to load is asked for again with the next tap.
+		_focus.reload_telescopes()
 	# The field's environment decides which hulls fit (under water on the ground level).
 	if _mode == Mode.BUILD and _uses_levels() and _level == 0:
 		_fill_palette()
@@ -1548,6 +1568,9 @@ func _refresh() -> void:
 	_staff.visible = false
 	_jump.visible = false
 	_ground.visible = false
+	_scope.visible = false
+	_scope_next.visible = false
+	_scope_block.visible = false
 	_path_note.visible = false
 	_path_check = null
 	_update_levels()
@@ -1675,6 +1698,110 @@ func _refresh_view() -> void:
 		var group := StructureDetails.group_of(_focus, placed.module_type)
 		_show_staff(group.assigned(), group.needed())
 		_staff.visible = true
+	if Sight.is_telescope(placed.module_type):
+		_refresh_telescope(placed)
+
+
+## A telescope: "Level 2 · sees 14 ly" (emerald while it sees, amber when it does not, and why),
+## a running upgrade with its countdown, the next level with range, duration and cost, and
+## Upgrade — disabled with the reason at the highest level, while it is built, while an upgrade
+## runs or when its structure's store lacks the cost. The server checks again.
+func _refresh_telescope(placed: StructureLayout.Module) -> void:
+	var scope := _focus.telescope(placed.module_id)
+	# Deposits under a telescope say nothing; the card keeps room for the upgrade.
+	_ground.visible = false
+	_scope.visible = true
+	_secondary.visible = false
+	if scope == null:
+		if _focus.telescopes_error != null:
+			_scope.text = tr("SIGHT_TELESCOPE_FAILED").format({"reason": ErrorText.describe(_focus.telescopes_error, self)})
+			_scope.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
+		else:
+			_scope.text = tr("SIGHT_LOADING")
+			_scope.add_theme_color_override("font_color", AppTheme.COLOR_MUTED)
+			if not _focus.telescopes_loaded:
+				_focus.reload_telescopes()
+		return
+	var now := Services.clock.now_ms()
+	var lines := PackedStringArray([tr("SIGHT_LEVEL").format({"level": scope.level, "ly": Sight.ly_text(scope.range_ly)})])
+	var color := AppTheme.COLOR_OK if scope.effective else AppTheme.COLOR_PENDING
+	if placed.is_building():
+		color = AppTheme.COLOR_MUTED
+	elif not scope.effective:
+		lines.append(tr("SIGHT_NOT_EFFECTIVE"))
+	if scope.is_upgrading():
+		var left := scope.completes_at - now
+		lines.append(tr("SIGHT_UPGRADING").format({"level": scope.upgrade_to, "duration": TimeFormat.duration(left)})
+			if left > 0 else tr("SIGHT_UPGRADING_DUE").format({"level": scope.upgrade_to}))
+		color = AppTheme.COLOR_PENDING
+	_scope.text = "\n".join(lines)
+	_scope.add_theme_color_override("font_color", color)
+
+	# The cost is paid from the store of the telescope's own structure (its self use).
+	var stock := {}
+	var store := _focus.inventory
+	for cost: Sight.Cost in scope.next_cost:
+		var flow: FlowValue = store.flow(cost.resource) if store != null else null
+		stock[cost.resource] = flow.amount_at(now) if flow != null else 0
+	var block := scope.upgrade_block(placed.is_building(), stock, store != null)
+	var next := ""
+	if scope.has_next() and not scope.is_upgrading():
+		next = tr("SIGHT_NEXT").format({"level": scope.next_level, "ly": Sight.ly_text(scope.next_range_ly),
+			"duration": TimeFormat.duration(scope.next_duration_ms), "cost": _cost_text(scope.next_cost)})
+	var reason := ""
+	match block:
+		Sight.Block.MAX_LEVEL:
+			next = tr("SIGHT_MAX_LEVEL")
+		Sight.Block.BUILDING:
+			reason = tr("SIGHT_UPGRADE_WHILE_BUILDING")
+		Sight.Block.STOCK:
+			var names := PackedStringArray()
+			for key: String in scope.lacking(stock):
+				names.append(_resource_name(key))
+			reason = tr("SIGHT_UPGRADE_LACKS").format({"items": ", ".join(names)})
+	_scope_next.text = next
+	_scope_next.visible = not next.is_empty()
+	_scope_block.text = reason
+	_scope_block.visible = not reason.is_empty()
+	# Building has its own countdown on the card already: that reason stays muted.
+	_scope_block.add_theme_color_override("font_color",
+		AppTheme.COLOR_DANGER if block == Sight.Block.STOCK else AppTheme.COLOR_MUTED)
+	_secondary.visible = scope.has_next() and not scope.is_upgrading()
+	_secondary.text = tr("SIGHT_UPGRADE")
+	_secondary.disabled = _busy or block != Sight.Block.UPGRADE_OK
+
+
+## "1 600 Electronics, 960 Glass" — whole units (rounded up) of an upgrade's cost.
+func _cost_text(costs: Array[Sight.Cost]) -> String:
+	var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+	var parts := PackedStringArray()
+	for cost: Sight.Cost in costs:
+		parts.append("%s %s" % [AmountFormat.units(ceili(float(cost.amount) / scale)), _resource_name(cost.resource)])
+	return ", ".join(parts)
+
+
+## Starts the next level of the inspected telescope (`upgradeTelescope`); says when it is done.
+func _upgrade_telescope(placed: StructureLayout.Module) -> void:
+	if _busy:
+		return
+	var structure := _focus
+	_busy = true
+	_status.remove_theme_color_override("font_color")
+	_status.text = tr("COLONY_SENDING")
+	_refresh()
+	var result := await structure.upgrade_telescope(structure.layout.to_absolute(placed.origin))
+	_busy = false
+	if result.is_ok():
+		var results: Array = result.data.get("results") if typeof(result.data.get("results")) == TYPE_ARRAY else []
+		var outcome: Dictionary = Wire.as_dict(results[0]) if not results.is_empty() else {}
+		var left := Wire.as_int(outcome.get("completesAt")) - Services.clock.now_ms()
+		_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
+		_status.text = tr("SIGHT_UPGRADE_STARTED").format({"level": Wire.as_int(outcome.get("level")),
+			"duration": TimeFormat.duration(maxi(left, 0))})
+	else:
+		_status.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
+		_status.text = ErrorText.describe(result.error, self)
+	_refresh()
 
 
 ## "Staff 28 of 28": red below STAFF_LOW of the need, amber below full, emerald when full.
@@ -2079,7 +2206,9 @@ func _on_secondary() -> void:
 		return
 	if _mode == Mode.VIEW and _cell != null:
 		var placed := _focus.layout.module_at(_focus.layout.to_local(_target() as Vector3i))
-		if _focus.layout.is_shaft(placed):
+		if placed != null and Sight.is_telescope(placed.module_type):
+			_upgrade_telescope(placed)
+		elif _focus.layout.is_shaft(placed):
 			_extend_shaft()
 		elif placed != null:
 			_open_recipes(placed)

@@ -13,6 +13,12 @@ extends Control
 ## camera, so a pan moves a transform instead of rebuilding thousands of points. Their size is set
 ## in pixels when the buffer is built and rebuilt when the zoom has moved far enough.
 ## On top, drawn each frame: home, own systems, the selected one, and a scale bar.
+##
+## Sight (draft.25): over the stars a veil (sight_veil.gdshader) darkens undiscovered space a
+## little and lets the player's sight spheres glow at their rim — telescope spheres cyan, home and
+## the systems of own structures faintly. Far out a sphere keeps a minimum size, so it stays a mark;
+## the veil fades there, so the galaxy's shape stays. Telescope spheres get a thin ring and their
+## range written on it. The veil takes no input: taps go to the systems as before.
 
 ## A system was tapped; "" for a tap beside every system.
 signal system_tapped(system_id: String)
@@ -36,6 +42,16 @@ const LABEL_FONT_SIZE := 22
 const CULL_EXTENT := 1.0e6
 ## Floats per instance: a 2D transform (8) and a colour (4).
 const STRIDE := 12
+## Sight spheres the veil takes at most (sight_veil.gdshader MAX_CIRCLES), the smallest radius
+## (px) a sphere is drawn with, and from which radius a telescope sphere carries its range.
+const SIGHT_CIRCLES := 48
+## (Larger than the home ring, so far out a telescope sphere shows as a cyan halo around it.)
+const SIGHT_MIN_PX := 24.0
+const SIGHT_LABEL_PX := 70.0
+## How strongly undiscovered space is veiled: close up, and over the whole galaxy.
+const VEIL_NEAR := 0.45
+const VEIL_FAR := 0.12
+const SIGHT_SHADER := preload("res://game/map/sight_veil.gdshader")
 
 var shape: GalaxyShape = null
 ## Systems marked on the map, also when no sphere is loaded: id → Entry (home, own systems).
@@ -45,6 +61,8 @@ var home_id := ""
 var selected: GalaxySystems.Entry = null
 ## Own flights between systems: a line from start to end and a marker where they are now.
 var trips: Array[TravelMotion] = []
+## What the player has discovered; null while unknown (then nothing is veiled).
+var sight: Sight = null
 
 var _centre := Vector2.ZERO
 var _units := 100.0
@@ -55,6 +73,10 @@ var _layer: Node2D
 var _field: MultiMeshInstance2D
 var _stars: MultiMeshInstance2D
 var _overlay: Control
+var _veil: ColorRect
+var _veil_material: ShaderMaterial
+## The sight circles as last given to the veil (view px: x, y, radius, kind).
+var _circles: Array[Vector4] = []
 var _entries: Array[GalaxySystems.Entry] = []
 ## The real stars' buffer as built (sizes for `_stars_units`).
 var _star_buffer := PackedFloat32Array()
@@ -82,6 +104,18 @@ func _ready() -> void:
 	_layer.add_child(_field)
 	_stars = _points_node(dot, CanvasItemMaterial.BLEND_MODE_MIX)
 	_layer.add_child(_stars)
+	_veil = ColorRect.new()
+	_veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_veil.color = Color.WHITE
+	_veil_material = ShaderMaterial.new()
+	_veil_material.shader = SIGHT_SHADER
+	_veil_material.set_shader_parameter("veil_color", AppTheme.COLOR_BACKGROUND)
+	_veil_material.set_shader_parameter("telescope_color", AppTheme.COLOR_ACCENT)
+	_veil_material.set_shader_parameter("other_color", AppTheme.COLOR_TEXT)
+	_veil.material = _veil_material
+	_veil.visible = false
+	add_child(_veil)
 	_overlay = Control.new()
 	_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -116,6 +150,12 @@ func set_systems(entries: Array[GalaxySystems.Entry], per_area: float) -> void:
 	_entries = entries
 	_per_area = per_area
 	_build_stars()
+	_refresh()
+
+
+## What the player has discovered (null: unknown, nothing veiled).
+func set_sight(value: Sight) -> void:
+	sight = value
 	_refresh()
 
 
@@ -237,8 +277,33 @@ func _refresh() -> void:
 		_size_stars()
 	if far > 0.0:
 		_update_field(seen)
+	_update_veil(seen)
 	queue_redraw()
 	_overlay.queue_redraw()
+
+
+## The sight spheres on screen for the veil, and how strongly it veils at this zoom.
+func _update_veil(seen: float) -> void:
+	_circles.clear()
+	if sight == null or shape == null:
+		_veil.visible = false
+		return
+	var all: Array[Vector4] = []
+	for observation: Sight.Observation in sight.observations:
+		var at := to_view(Vector2(observation.centre.x, observation.centre.y) / shape.ly_per_unit)
+		all.append(Vector4(at.x, at.y, Sight.radius_px(observation.radius_ly, shape.ly_per_unit, _units),
+			1.0 if observation.is_telescope() else 0.0))
+	_circles = Sight.pick_circles(all, Rect2(Vector2.ZERO, size), 40.0, SIGHT_CIRCLES, SIGHT_MIN_PX)
+	var data := PackedVector4Array()
+	for circle: Vector4 in _circles:
+		data.append(circle)
+	data.resize(SIGHT_CIRCLES)
+	_veil.visible = true
+	_veil_material.set_shader_parameter("circles", data)
+	_veil_material.set_shader_parameter("count", _circles.size())
+	_veil_material.set_shader_parameter("rect_size", size)
+	var whole := GalaxyCamera.visible_radius(_area().size, GalaxyCamera.fit_units_per_px(_area().size, _extent()))
+	_veil_material.set_shader_parameter("veil", Sight.veil_share(seen, GalaxyCamera.SYSTEMS_FROM, whole, VEIL_NEAR, VEIL_FAR))
 
 
 # --- layers ---------------------------------------------------------------------------------
@@ -380,6 +445,7 @@ func _draw_overlay() -> void:
 	if shape == null:
 		return
 	var near := GalaxyCamera.shows_systems(visible_radius())
+	_draw_sight()
 	for id: String in marks.keys():
 		if id == home_id:
 			continue
@@ -406,6 +472,27 @@ func _draw_overlay() -> void:
 		_label(at + Vector2(0.0, -28.0 - LABEL_FONT_SIZE - 4.0), selected.name, AppTheme.COLOR_ACCENT)
 	_draw_trips()
 	_draw_scale_bar()
+
+
+## A thin cyan ring along each telescope sphere the veil shows, with its range at the top once it is
+## large enough to carry the text.
+func _draw_sight() -> void:
+	for circle: Vector4 in _circles:
+		if circle.w < 0.5:
+			continue
+		var centre := Vector2(circle.x, circle.y)
+		var segments := clampi(roundi(circle.z / 4.0), 32, 512)
+		_overlay.draw_arc(centre, circle.z, 0.0, TAU, segments, Color(AppTheme.COLOR_ACCENT, 0.55), 2.0, true)
+		# While a system is selected its name is what counts there.
+		if circle.z < SIGHT_LABEL_PX or selected != null:
+			continue
+		# Just outside the ring at its top, so it covers none of the discovered stars; only where the
+		# bars leave room for it.
+		var spot := centre + Vector2(0.0, -circle.z - LABEL_FONT_SIZE - 10.0)
+		if not _area().grow(-8.0).has_point(spot):
+			continue
+		var ly := circle.z * _units * shape.ly_per_unit
+		_label(spot, tr("SIGHT_RING_LABEL").format({"ly": Sight.ly_text(ly)}), AppTheme.COLOR_ACCENT)
 
 
 ## Flights between systems: a dashed line from start to end, a cyan diamond where they are now.

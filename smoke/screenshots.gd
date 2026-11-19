@@ -133,6 +133,10 @@ func _run() -> void:
 		await _capture_shapes(colony)
 		await _finish(shell, session, had_session)
 		return
+	if OS.get_cmdline_user_args().has("--only=telescope"):
+		await _capture_telescope(colony)
+		await _finish(shell, session, had_session)
+		return
 
 	var layout := colony._model.layout
 	var with_module := layout.modules()
@@ -160,6 +164,7 @@ func _run() -> void:
 				await _capture("colony_inspect_" + kind.to_lower())
 				print("INSPECT  %s: %s | %s" % [kind, colony._info.text.replace("\n", " / "), colony._ground.text.replace("\n", " / ")])
 				break
+	await _capture_telescope(colony)
 	var ground_cell := layout.to_absolute(_free_neighbour(layout))
 	colony._select(ground_cell)
 	await _ground_ready(colony, ground_cell)
@@ -905,6 +910,14 @@ func _capture_galaxy(shell: MainShell, map: MapScreen) -> void:
 		print("GALAXY  last sphere: radius %.1f, covered %.1f, truncated %s, rows %d" % [
 			galaxy._last.radius, galaxy._last.covered, galaxy._last.truncated, galaxy._last.rows])
 	print("GALAXY  stand-in stars %d, real stars %d" % [view._field.multimesh.instance_count, view._stars.multimesh.instance_count])
+	await _until(func() -> bool: return not galaxy._sight_loading, 8000)
+	if galaxy._sight != null:
+		for observation: Sight.Observation in galaxy._sight.observations:
+			print("SIGHT  sphere %s r=%.1f ly at (%.1f, %.1f, %.1f)" % [observation.source, observation.radius_ly,
+				observation.centre.x, observation.centre.y, observation.centre.z])
+		print("SIGHT  %d circles on screen; line: %s" % [view._circles.size(), galaxy._sight_line.text])
+	else:
+		print("SIGHT  not loaded: ", galaxy._sight_error.code if galaxy._sight_error != null else "-")
 	await _galaxy_load_test(galaxy)
 	# Sample only: the stars failed to load (made up, nothing sent).
 	galaxy._load_error = ApiError.transport("sample")
@@ -1002,6 +1015,62 @@ func _galaxy_load_test(galaxy: GalaxyScreen) -> void:
 	view._update_field(view.visible_radius())
 	print("GALAXY  stand-in stars at 3000 ly from scratch: %d in %d ms" % [view._field.multimesh.instance_count, Time.get_ticks_msec() - started])
 	view.look_at_point(view.centre(), GalaxyCamera.HOME_RADIUS)
+
+
+## A telescope in Inspect (when the account has one): level, range and the next level from the
+## server; Upgrade sent for real (the server starts it or refuses, e.g. INSUFFICIENT_STOCK on a
+## fresh account); then, made up and never sent, an affordable next level and a running upgrade.
+func _capture_telescope(colony: ColonyScreen) -> void:
+	var layout := colony._model.layout
+	var scope_module: StructureLayout.Module = null
+	for placed: StructureLayout.Module in layout.modules():
+		if Sight.is_telescope(placed.module_type):
+			scope_module = placed
+			break
+	if scope_module == null:
+		print("TELESCOPE  none in this structure (place one to see the inspect card)")
+		return
+	var at := layout.to_absolute(scope_module.origin)
+	colony._select(at)
+	await _until(func() -> bool: return colony._model.telescope(scope_module.module_id) != null, 8000)
+	await _capture("colony_inspect_telescope")
+	print("TELESCOPE  %s | %s | button '%s' disabled %s" % [colony._scope.text.replace("\n", " / "),
+		colony._scope_next.text.replace("\n", " / "), colony._secondary.text, colony._secondary.disabled])
+	var scope := colony._model.telescope(scope_module.module_id)
+	if scope == null:
+		return
+	# For real: the server starts the upgrade or says why not.
+	if not scope.is_upgrading() and scope.has_next():
+		await colony._upgrade_telescope(scope_module)
+		await get_tree().create_timer(1.5).timeout
+		await _capture("colony_inspect_telescope_sent")
+		print("TELESCOPE  upgrade sent: %s | %s" % [colony._status.text, colony._scope.text.replace("\n", " / ")])
+		scope = colony._model.telescope(scope_module.module_id)
+	if scope.is_upgrading():
+		print("TELESCOPE  upgrading to %d, completes at %d (now %d)" % [scope.upgrade_to, scope.completes_at, Services.clock.now_ms()])
+		return
+	# Samples only (made up, nothing sent): a store that holds the cost, then a running upgrade.
+	var saved_cost := scope.next_cost
+	var cheap: Array[Sight.Cost] = []
+	for cost: Sight.Cost in saved_cost:
+		var small := Sight.Cost.new()
+		small.resource = cost.resource
+		small.amount = 1000000
+		cheap.append(small)
+	scope.next_cost = cheap
+	colony._status.text = ""
+	colony._refresh()
+	await _capture("colony_inspect_telescope_ready_sample")
+	print("SAMPLE  telescope affordable: button disabled %s" % colony._secondary.disabled)
+	scope.next_cost = saved_cost
+	scope.upgrade_to = scope.level + 1
+	scope.completes_at = Services.clock.now_ms() + scope.next_duration_ms
+	colony._refresh()
+	await _capture("colony_inspect_telescope_upgrading_sample")
+	print("SAMPLE  telescope upgrading: %s" % colony._scope.text.replace("\n", " / "))
+	scope.upgrade_to = 0
+	colony._model.reload_telescopes()
+	colony._select(null)
 
 
 ## A hull of the ground level without a module (local); NO_CELL when every hull carries one.

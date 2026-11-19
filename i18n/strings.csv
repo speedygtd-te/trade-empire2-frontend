@@ -505,9 +505,27 @@ LOG_ROUTE_PAUSED,"The route was paused."
 LOG_ROUTE_DELETED,"The route was ended."
 LOG_ROUTE_TRANSFER,"Goods were moved by a route."
 LOG_ROUTE_FUEL_PAID,"Paid fuel for a transporter of a route."
-LOG_TELESCOPE_OBSERVED,"The telescope discovered new star systems."
-LOG_TELESCOPE_UPGRADE_STARTED,"Upgrading a telescope."
-LOG_TELESCOPE_UPGRADED,"A telescope was upgraded."
+LOG_TELESCOPE_OBSERVED,"A telescope discovered the star systems within {ly} ly."
+LOG_TELESCOPE_UPGRADE_STARTED,"Telescope upgrade to level {level} started."
+LOG_TELESCOPE_UPGRADED,"A telescope reached level {level}."
+SIGHT_RING_LABEL,Telescope · {ly} ly
+SIGHT_FAILED,Telescope range unknown. {reason}
+SIGHT_LINE_ONE,"Cyan ring: your telescope sees {ly} ly around it."
+SIGHT_LINE,"Cyan rings: your telescopes see up to {ly} ly."
+SIGHT_LINE_SOME_IDLE,({count} not working)
+SIGHT_LINE_IDLE,"Your telescopes discover nothing right now: they need full power and a structure at rest."
+SIGHT_LEVEL,Level {level} · sees {ly} ly
+SIGHT_NOT_EFFECTIVE,Not seeing now: needs full power and a structure at rest.
+SIGHT_UPGRADING,"Upgrading to level {level} · ready in {duration}"
+SIGHT_UPGRADING_DUE,"Upgrading to level {level} · finishing…"
+SIGHT_NEXT,"Level {level} · {ly} ly · takes {duration} · {cost}"
+SIGHT_UPGRADE,Upgrade
+SIGHT_MAX_LEVEL,Highest level reached.
+SIGHT_UPGRADE_LACKS,Not enough in store: {items}
+SIGHT_UPGRADE_WHILE_BUILDING,Can be upgraded once it is built.
+SIGHT_UPGRADE_STARTED,"Upgrade started: level {level} in {duration}."
+SIGHT_LOADING,Loading the telescope…
+SIGHT_TELESCOPE_FAILED,The telescope could not be loaded. {reason}
 LOG_INTENT_FALLBACK,"Without cargo space nothing can be captured; the structure now destroys its targets instead."
 ERROR_NO_CARGO_SPACE,"Capturing needs cargo space: set a storage module to cargo first."
 GALAXY_SUBTITLE_SPIRAL,"Spiral galaxy · {arms} arms · {across} ly across"
