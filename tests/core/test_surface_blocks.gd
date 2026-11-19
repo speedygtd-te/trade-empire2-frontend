@@ -57,6 +57,21 @@ func test_requests_never_cross_the_seam() -> void:
 	assert_int(requests[1].x1).is_equal(31)
 
 
+func test_smaller_blocks_ask_for_less() -> void:
+	var blocks := SurfaceBlocks.new(64, 4)
+
+	assert_int(blocks.block_size).is_equal(4)
+	assert_that(blocks.block_of(5, -1)).is_equal(Vector2i(1, -1))
+	var requests := blocks.missing_around(5, 2, 0)
+	assert_int(requests.size()).is_equal(1)
+	assert_int(requests[0].x0).is_equal(4)
+	assert_int(requests[0].x1).is_equal(7)
+	assert_int(requests[0].y0).is_equal(0)
+	assert_int(requests[0].y1).is_equal(3)
+	# Wrapped: x = -1 is the last block before the seam (x 60..63).
+	assert_that(blocks.block_of(-1, 0)).is_equal(Vector2i(15, 0))
+
+
 func test_stored_patch_answers_cells_including_wrapped_ones() -> void:
 	var blocks := SurfaceBlocks.new(64)
 	var requests := blocks.missing_around(60, 0, 0)
