@@ -1059,3 +1059,5 @@ COLONY_SHAPE_BUILD,Build {count} hulls
 COLONY_SHAPE_BUILD_ONE,Build 1 hull
 COLONY_SHAPE_DONE,{count} hulls placed.
 COLONY_SHAPE_DONE_ONE,1 hull placed.
+LEVEL_SHAFT_SPOTS,Red fields: no free hull of this structure directly above.
+LEVEL_SHAFT_SPOTS_NONE,"No field fits yet: build a hull directly above first, then place it below."

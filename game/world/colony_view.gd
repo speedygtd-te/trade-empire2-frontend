@@ -664,7 +664,8 @@ func show_preview(cells: Array[Vector3i], ok: bool, scene_key: String = "", rota
 ## Shows a hull shape being marked: `good` cells (the new hulls) cyan, `bad` cells (skipped or
 ## blocked) red; cells left out of both are not marked. Empty lists hide it. Each colour is one
 ## mesh, so a large shape stays cheap while it follows the finger.
-func show_shape(good: Array[Vector3i], bad: Array[Vector3i]) -> void:
+## `on_hulls`: the cells carry hulls already (they lie on the floor plates, not the ground).
+func show_shape(good: Array[Vector3i], bad: Array[Vector3i], on_hulls: bool = false) -> void:
 	for child: Node in _shape.get_children():
 		child.queue_free()
 	for part: Array in [[good, COLOR_OK], [bad, COLOR_BAD]]:
@@ -682,7 +683,7 @@ func show_shape(good: Array[Vector3i], bad: Array[Vector3i]) -> void:
 		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, material)
 		for cell: Vector3i in cells:
 			# As in show_preview: on the ground or the rock, or on the floor plate below.
-			var floor_lift := 0.006 if cell.z <= origin.z else HULL_FLOOR_HEIGHT + 0.006
+			var floor_lift := 0.006 if cell.z <= origin.z and not on_hulls else HULL_FLOOR_HEIGHT + 0.006
 			var centre := WorldGrid.to_scene(cell, origin, model.size_x) + Vector3(0.0, floor_lift, 0.0)
 			for corner: Vector3 in [Vector3(-0.46, 0, -0.46), Vector3(0.46, 0, -0.46), Vector3(0.46, 0, 0.46),
 					Vector3(-0.46, 0, -0.46), Vector3(0.46, 0, 0.46), Vector3(-0.46, 0, 0.46)]:

@@ -202,6 +202,10 @@ func _run() -> void:
 	colony._choose_tool("module:SMELTER")
 	colony._select(layout.to_absolute(Vector3i(0, 0, 0)))
 	await _capture("colony_build_blocked")
+	# A staircase: every free hull of the level cyan or red (no hull above on a flat colony).
+	colony._choose_tool("module:STAIRCASE")
+	colony._select(null)
+	await _capture("colony_shaft_spots")
 	await _capture_shapes(colony)
 
 	colony._set_mode(ColonyScreen.Mode.STORE)

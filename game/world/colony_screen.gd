@@ -207,6 +207,8 @@ var _shape_before: Array = []
 var _shape_plan: HullShapes.Plan = null
 ## Whether shape cells and the badge are on screen.
 var _shape_shown := false
+## With a staircase or elevator chosen: why fields are red ("" when none is).
+var _shaft_hint := ""
 ## The count at the shape's end cell.
 var _shape_badge: ShapeBadge
 ## Absolute cells the server refused because of a structure this client cannot see (another
@@ -1177,6 +1179,32 @@ func _plan_shape() -> HullShapes.Plan:
 		Services.definitions, _model.site())
 
 
+## With a staircase or elevator chosen: every free hull of the active level marked, cyan where it
+## can stand, red where it cannot (no own hull above, a module above, a slot that does not fit).
+func _show_shaft_spots() -> void:
+	var module_def := Services.definitions.module(_tool.get_slice(":", 1)) if _tool.begins_with("module:") else null
+	if module_def == null or not module_def.vertical_access or not _uses_levels():
+		return
+	var layout := _focus.layout
+	var good: Array[Vector3i] = []
+	var bad: Array[Vector3i] = []
+	for local: Vector3i in layout.hull_cells():
+		var cell := layout.to_absolute(local)
+		if cell.z != _level or layout.module_at(local) != null:
+			continue
+		var verdict := BuildRules.check_place_module(layout, Services.definitions, module_def.key, local, 0)
+		if verdict == BuildRules.Verdict.OK:
+			good.append(cell)
+		else:
+			bad.append(cell)
+	_shape_shown = true
+	_view.show_shape(good, bad, true)
+	if good.is_empty() and not bad.is_empty():
+		_shaft_hint = tr("LEVEL_SHAFT_SPOTS_NONE")
+	elif not bad.is_empty():
+		_shaft_hint = tr("LEVEL_SHAFT_SPOTS")
+
+
 func _hide_shape() -> void:
 	if not _shape_shown:
 		return
@@ -1705,9 +1733,14 @@ func _refresh_build() -> void:
 	if _shape_active():
 		_refresh_shape()
 		return
+	_shaft_hint = ""
+	_show_shaft_spots()
 	var tool_name := _tool_name()
 	if _cell == null:
 		_info.text = tr("COLONY_HINT_PLACE").format({"name": tool_name}) + supply_line
+		if not _shaft_hint.is_empty():
+			_info.text += "
+" + _shaft_hint
 		_primary.disabled = true
 		_view.show_preview([], false)
 		return
