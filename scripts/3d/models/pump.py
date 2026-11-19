@@ -24,6 +24,8 @@ VALVE = (0.27, -0.14)
 # The riser pipe ends here; the pump rod above it strokes up and down.
 ROD_BOTTOM = 0.46
 ROD_TOP = 0.74
+# The antenna on the platform, with a red light on its tip (all within MAX_HEIGHT).
+ANTENNA_TOP = 0.94
 
 
 def build():
@@ -40,7 +42,18 @@ def build():
     parts.control_box(model, (-0.27, -0.27))
     parts.stripes(model, (-0.08, -0.35), 10)
     parts.fence(model, (0.35, -0.34), (0.35, 0.0))
+    _floodlights(model)
     return model.finish()
+
+
+def _floodlights(model) -> None:
+    """Two floodlights on the tower below its platform, to the front and to the right."""
+    x, y = TOWER
+    z = FRAME_TOP + 0.20
+    model.beam((x, y - 0.09, z), (x, y - 0.13, z), 0.012, "steel_dark")
+    parts.floodlight(model, (x, y - 0.14, z), "-y")
+    model.beam((x + 0.09, y, z + 0.06), (x + 0.13, y, z + 0.06), 0.012, "steel_dark")
+    parts.floodlight(model, (x + 0.14, y, z + 0.06), "+x")
 
 
 def _head(model) -> None:
@@ -49,8 +62,12 @@ def _head(model) -> None:
     model.box((x, y, MAST_TOP + 0.015), (0.24, 0.24, 0.03), "steel_dark")
     model.cylinder((x, y, MAST_TOP + 0.03), (x, y, MAST_TOP + 0.09), 0.05, "rust")
     model.box((x, y, MAST_TOP + 0.10), (0.05, 0.05, 0.02), "steel_dark")
-    model.beam((x + 0.09, y + 0.09, MAST_TOP + 0.03), (x + 0.09, y + 0.09, 0.97), 0.008,
+    model.beam((x + 0.09, y + 0.09, MAST_TOP + 0.03), (x + 0.09, y + 0.09, ANTENNA_TOP), 0.008,
                "steel_light")
+    parts.tip_light(model, (x + 0.09, y + 0.09), ANTENNA_TOP, radius=0.014)
+    # Amber lights on the platform's corners (the antenna takes the back right one).
+    for corner in ((x + 0.11, y - 0.11), (x - 0.11, y - 0.11), (x - 0.11, y + 0.11)):
+        parts.lamp(model, (*corner, MAST_TOP + 0.039), (0.022, 0.022, 0.018), parts.STATUS)
 
 
 def _piping(model, top: float) -> None:

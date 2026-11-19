@@ -47,6 +47,8 @@ def control_box(model, position, z: float = SLAB_TOP) -> None:
     model.box((x, y, z + 0.075), (0.10, 0.07, 0.01), "yellow")
     model.plate((x, y - 0.03 - _HAIR, z + 0.038), (0.06, 0.04), "-y", "yellow")
     model.plate((x, y - 0.03 - 2 * _HAIR, z + 0.038), (0.04, 0.012), "-y", "dark")
+    # A status light on the lid.
+    model.box((x + 0.03, y - 0.015, z + 0.086), (0.018, 0.018, 0.012), "glow_green")
 
 
 def fence(model, start, end, z: float = SLAB_TOP, height: float = 0.10, posts: int = 3,
@@ -159,6 +161,91 @@ def room(model, floor: str = "floor", wall: str = "blue", cap: str = "blue_dark"
     model.plate((0.05, half - thickness - _HAIR, top - 0.03), (half * 2.0 - thickness - 0.1, 0.014), "-y", trim)
     model.plate((-half + thickness + _HAIR, -0.04, top - 0.03), (half * 2.0 - 0.1, 0.014), "+x", trim)
     return floor_top
+
+
+# --- Lamps --------------------------------------------------------------------------------------
+# Everything here glows (kit.GLOWS): the game turns it up at dusk, at night and without air. Warm
+# white (glow_lamp) is the rule; red marks the tip of anything tall, amber a warning or a status.
+# A lamp is a few faces only: hulls are drawn by the hundred.
+
+LAMP = "glow_lamp"
+WARNING = "glow_red"
+STATUS = "glow_orange"
+
+
+def lamp(model, center, size=(0.03, 0.03, 0.03), color: str = LAMP) -> None:
+    """A small glowing box (a bulb, a marker light)."""
+    model.box(center, size, color)
+
+
+def tip_light(model, position, z: float, color: str = WARNING, radius: float = 0.018) -> None:
+    """A warning light on top of something tall: a short dark socket and a glowing cap whose
+    bottom is at *z*."""
+    x, y = position
+    model.cylinder((x, y, z), (x, y, z + 0.012), radius * 1.15, "steel_dark", segments=6)
+    model.cylinder((x, y, z + 0.012), (x, y, z + 0.012 + radius * 1.6), radius, color, segments=6)
+
+
+def floodlight(model, center, facing: str, size=(0.07, 0.04), depth: float = 0.035,
+               housing: str = "steel_dark") -> None:
+    """A lamp housing with its glowing lens looking along *facing* (+x, -x, +y, -y or -z);
+    *center* is the middle of the housing, *size* the lens (across, up)."""
+    across, up = size
+    if facing in ("+x", "-x"):
+        box = (depth, across, up)
+    elif facing in ("+y", "-y"):
+        box = (across, depth, up)
+    else:
+        box = (across, up, depth)
+    model.box(center, box, housing)
+    out = _OUTWARD.get(facing, (0, 0, -1))
+    lens = tuple(center[axis] + out[axis] * (box[axis] / 2.0 + _HAIR) for axis in range(3))
+    model.plate(lens, (across * 0.84, up * 0.7), facing, LAMP)
+
+
+def lamp_post(model, position, z: float, height: float = 0.30, facing: str = "-y",
+              color: str = "steel_dark") -> None:
+    """A thin post standing at *position* on *z*, with a floodlight at its top looking along
+    *facing* and down."""
+    x, y = position
+    top = z + height
+    model.beam((x, y, z), (x, y, top), 0.014, color)
+    out = _OUTWARD[facing]
+    head = (x + out[0] * 0.02, y + out[1] * 0.02, top - 0.01)
+    model.box(head, (0.05, 0.05, 0.022), color)
+    model.plate((head[0], head[1], head[2] - 0.011 - _HAIR), (0.04, 0.04), "-z", LAMP)
+    model.plate(_lifted((head[0] + out[0] * 0.025, head[1] + out[1] * 0.025, head[2]), facing),
+                (0.04, 0.016), facing, LAMP)
+
+
+def edge_lamps(model, half: float, z: float, count: int = 3, size=(0.045, 0.016),
+               color: str = LAMP, margin: float = 0.12, top: bool = True, face: bool = True) -> None:
+    """Small lamps along the four top edges of a square block of half size *half* (centred on
+    the model) whose top is at height *z*: each a plate on the outward *face* just below the edge
+    and, with *top*, one lying on the top just inside it, so it shows from the side and from
+    above. *count* per edge, evenly spread, *margin* from either corner. The same on every side:
+    a model turned by a quarter looks the same. *size* is (along the edge, across it). *half* may
+    also be (x, y) for a rectangle."""
+    along_size, deep = size
+    half_x, half_y = (half, half) if isinstance(half, (int, float)) else half
+    out_by = 3.0 * _HAIR  # in front of stripes and strips that already lie on the face
+    for side in ("+x", "-x", "+y", "-y"):
+        out = _OUTWARD[side]
+        span = 2.0 * ((half_y if side in ("+x", "-x") else half_x) - margin)
+        for index in range(count):
+            along = -span / 2.0 + span * (index + 0.5) / count
+            if side in ("+x", "-x"):
+                point = (out[0] * (half_x + out_by), along, z - deep / 2.0)
+                lying = (out[0] * (half_x - deep / 2.0), along, z + out_by)
+                flat = (deep, along_size)
+            else:
+                point = (along, out[1] * (half_y + out_by), z - deep / 2.0)
+                lying = (along, out[1] * (half_y - deep / 2.0), z + out_by)
+                flat = (along_size, deep)
+            if face:
+                model.plate(point, (along_size, deep), side, color)
+            if top:
+                model.plate(lying, flat, "+z", color)
 
 
 def lattice_mast(model, center, bottom: float, top: float, half_bottom: float, half_top: float,
