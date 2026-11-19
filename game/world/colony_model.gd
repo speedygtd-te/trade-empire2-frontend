@@ -138,12 +138,19 @@ func load_structure(preferred: int) -> void:
 		chosen = by_id.get(Wire.as_int(anchor.get("hostId")), {})
 	if chosen.is_empty():
 		asked_guest = 0
+		# The home colony: a base on the home body before a vehicle parked there, the largest one
+		# first; otherwise any structure on a surface.
+		var best_rank := -1
 		for entry: Variant in items:
 			var summary := Wire.as_dict(entry)
 			var anchor := Wire.as_dict(summary.get("anchor"))
 			if Wire.as_string(anchor.get("type")) != "surface":
 				continue
-			if chosen.is_empty() or Wire.as_string(anchor.get("bodyId")) == account.home_body_id:
+			var rank := 0
+			if Wire.as_string(anchor.get("bodyId")) == account.home_body_id:
+				rank = 2 if Wire.as_string(summary.get("kind")) == "base" else 1
+			if rank > best_rank or (rank == best_rank and Wire.as_int(summary.get("totalHulls")) > Wire.as_int(chosen.get("totalHulls"))):
+				best_rank = rank
 				chosen = summary
 	if chosen.is_empty():
 		var none := ApiError.new()

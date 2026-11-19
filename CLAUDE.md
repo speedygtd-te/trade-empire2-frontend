@@ -48,6 +48,8 @@ verschärft, wenn es nötig wird.
 | Nur Spieldaten prüfen (ohne Konto) | `powershell -File tools\smoke.ps1 -DefinitionsOnly` |
 | Bauen gegen das Backend (Entwicklerkonto) | `powershell -File tools\colony-smoke.ps1` (setzt Hülle, Modul, Rezept und räumt wieder auf) |
 | Docks und Gäste gegen das Backend | `powershell -File tools\colony-smoke.ps1 -Scene dock_build` (gründet, erweitert, räumt auf) |
+| Fahrten gegen das Backend (eigenes Konto `travel`) | `powershell -File tools\colony-smoke.ps1 -Scene travel_flow` (baut Fahrzeug und Schiff, falls sie fehlen; Orbit + Andocken, Fahrt mit Wegpunkt + Andocken; dauert ~10 min) |
+| Fahrt-Bildschirme ansehen (Konto `travel`, startet nichts) | `godot --path . --resolution 720x1280 res://smoke/travel_view.tscn -- --out=build/travel` |
 | Alle Module in eine Kolonie setzen (eigenes Showcase-Konto) | `node tools/showcase.cjs` (`--dry-run` zeigt nur den Plan; braucht den Test-Grant; einmal je frischem Konto) |
 | Showcase-Kolonie ansehen | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase` |
 | Masten, Radar und Lichtkegel um die Basis ansehen | `godot --path . --resolution 720x1280 res://smoke/perimeter_view.tscn -- --out=build/perimeter` (Modelle: `tools\build-models.ps1 -Only perimeter`) |

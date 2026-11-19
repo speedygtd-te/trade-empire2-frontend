@@ -325,8 +325,10 @@ func travel_layer() -> TravelLayer:
 func _trip_entry(structure: ColonyModel) -> Fleet.Entry:
 	if fleet == null:
 		return null
-	var owner := structure.host if structure.host != null else structure
-	return fleet.find(owner.structure_id)
+	var own := fleet.find(structure.structure_id)
+	if structure.host == null or (own != null and own.motion != null):
+		return own
+	return fleet.find(structure.host.structure_id)
 
 
 ## How a structure takes part in a trip at `now`.
@@ -405,11 +407,16 @@ func _trip_shift(structure: ColonyModel, now: int) -> Vector3:
 			var here := TravelTrack.ground_point(motion, now)
 			var whole := floori(here.x)
 			var dx := WorldGrid.wrapped_delta(end.x, whole, model.size_x) + (here.x - whole)
-			return Vector3(dx, 0.0, -(here.y - end.y))
+			# On the ground all the way (its lowest level at z = 0), also towards a dock.
+			var levels := structure.layout.levels()
+			var ground := -levels[0] if not levels.is_empty() else 0
+			return Vector3(dx, float(ground - end.z), -(here.y - end.y))
 		Trip.LANDING:
 			var span := maxf(motion.arrival_at - motion.cruise_end_at, 1.0)
 			var left := clampf(float(motion.arrival_at - now) / span, 0.0, 1.0)
-			return Vector3(0.0, LANDING_HEIGHT * left * left, 0.0)
+			# Onto a dock it ends standing on the pads, as a guest is drawn.
+			var drop := GUEST_DROP if motion.target_type() == "dock" else 0.0
+			return Vector3(0.0, LANDING_HEIGHT * left * left - drop, 0.0)
 	return Vector3.ZERO
 
 
@@ -439,6 +446,9 @@ func _reserved_cells(now: int) -> Array[Vector3i]:
 		if mover == null or site == null:
 			continue
 		var at: Vector3i = site
+		if motion.target_type() == "dock":
+			# The marks lie on the dock pads below.
+			at.z -= 1
 		var cells := TravelPlan.mover_cells(mover.layout, mover.guest_layouts())
 		var lowest := 0
 		for index: int in cells.size():
@@ -542,8 +552,9 @@ func _rebuild_structure() -> void:
 	var now := Services.clock.now_ms()
 	for structure: ColonyModel in _structures():
 		var trip := trip_of(structure, now)
-		if (trip == Trip.DRIVING or trip == Trip.LANDING) and structure.host == null:
-			_place_on_site(structure, _trip_entry(structure))
+		var entry := _trip_entry(structure)
+		if (trip == Trip.DRIVING or trip == Trip.LANDING) and entry != null and entry.structure_id == structure.structure_id:
+			_place_on_site(structure, entry)
 		if trip != Trip.RESTING:
 			_travelling[structure.structure_id] = structure
 		_build_structure(structure)

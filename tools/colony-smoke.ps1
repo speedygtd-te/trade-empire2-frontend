@@ -1,24 +1,29 @@
 # End-to-end check of building against the server (smoke/colony_build.tscn): places a hull and
 # a module next to the colony of the development account and removes both again. With
 # -Scene dock_build (smoke/dock_build.tscn): places docks, founds and extends a guest on them,
-# checks the dock rules and takes everything down again.
+# checks the dock rules and takes everything down again. With -Scene travel_flow
+# (smoke/travel_flow.tscn, its own account .local/travel-account.json): builds a vehicle and a
+# ship if missing, drives with a waypoint and back onto the docks, flies into orbit and docks
+# again — real minutes, so the timeout defaults to 25 minutes there.
 #
-#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build] [-TimeoutSeconds 120]
+#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build|travel_flow] [-TimeoutSeconds 120]
 #
 # Needs the development account (node tools/dev-account.cjs creates it). Runs without window.
 # Exit code: 0 = green, 1 = a check failed, 2 = no account, 3 = stopped after the timeout.
 param(
-    [ValidateSet('colony_build', 'dock_build')][string]$Scene = 'colony_build',
-    [int]$TimeoutSeconds = 120
+    [ValidateSet('colony_build', 'dock_build', 'travel_flow')][string]$Scene = 'colony_build',
+    [int]$TimeoutSeconds = 0
 )
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = 'F:\Tools\Godot\godot_console.exe' }
-if (-not (Test-Path -LiteralPath (Join-Path $root '.local\dev-account.json'))) {
+$accountName = if ($Scene -eq 'travel_flow') { 'travel' } else { 'dev' }
+if ($TimeoutSeconds -le 0) { $TimeoutSeconds = if ($Scene -eq 'travel_flow') { 1500 } else { 120 } }
+if (-not (Test-Path -LiteralPath (Join-Path $root ".local\$accountName-account.json"))) {
     Push-Location -LiteralPath $root
-    node tools/dev-account.cjs | Out-Null
+    node tools/dev-account.cjs --account $accountName /v2/me | Out-Null
     Pop-Location
 }
 $log = Join-Path $env:TEMP 'te-colony-smoke.log'
@@ -39,7 +44,7 @@ try {
     foreach ($file in @($log, $errLog)) {
         if (Test-Path -LiteralPath $file) {
             Get-Content -LiteralPath $file | ForEach-Object { ([string]$_) -replace '[0-9a-f]{64}', '<token>' } |
-                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|docks|server)|ERROR|SCRIPT' }
+                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|docks|server|TRAVEL)|ERROR|SCRIPT' }
         }
     }
     if (-not $finished) { Write-Output "stopped after $TimeoutSeconds s"; exit 3 }
