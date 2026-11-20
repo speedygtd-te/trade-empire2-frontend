@@ -81,6 +81,9 @@ var star_distance_au := 1.0
 ## luminosity and temperature).
 var star_radius := 0.0
 var atmosphere_density := 1.0
+## Surface temperature of the body (°C, `Environment.temperature`): hot air shimmers over hot
+## bodies (HeatShimmer).
+var surface_celsius := 15.0
 ## Gases of the air → share 0..1 (`Environment.atmosphere`); empty without air.
 var atmosphere: Dictionary = {}
 ## Where the sun stands over this body at a game time; null until the server sends orbit and
@@ -289,6 +292,9 @@ func _load_body() -> ApiError:
 	if typeof(air) == TYPE_FLOAT:
 		atmosphere_density = air
 	atmosphere = Wire.as_dict(environment.get("atmosphere"))
+	var celsius: Variant = environment.get("temperature")
+	if typeof(celsius) == TYPE_FLOAT:
+		surface_celsius = celsius
 	# A moon sees its star along its planet's orbit.
 	var parent := {}
 	var parent_id := Wire.as_string(body.data.get("parentBodyId"))
@@ -374,6 +380,7 @@ func _make_sibling(id: int) -> ColonyModel:
 	other.star_distance_au = star_distance_au
 	other.star_radius = star_radius
 	other.atmosphere_density = atmosphere_density
+	other.surface_celsius = surface_celsius
 	other.atmosphere = atmosphere
 	other.sun = sun
 	other.surface = surface

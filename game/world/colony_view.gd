@@ -202,6 +202,10 @@ var _ground_queue: Array[Vector2i] = []
 var _moving := true
 var _to_sun := Vector3.UP
 var _sun_up := true
+## Strength of the direct sunlight 0..1 (set_sun), for the heat shimmer.
+var _daylight := 1.0
+## The detail tier applied last (apply_detail).
+var _tier := DetailGovernor.DEFAULT_TIER
 ## The player's fleet (set by the screen); without it every structure rests.
 var fleet: Fleet = null
 ## Ghost, drive line and reserved cells (TravelLayer).
@@ -2059,6 +2063,7 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 	# crisp. A constant blur is all the Compatibility renderer offers (no PCSS).
 	_sun.shadow_blur = SkyLight.shadow_blur(star_size, density)
 	var strength := maxf(light.sun.r, maxf(light.sun.g, light.sun.b))
+	_daylight = clampf(strength, 0.0, 1.0)
 	_sun.visible = strength > 0.001
 	if _sun.visible:
 		_sun.light_color = Color(light.sun.r / strength, light.sun.g / strength, light.sun.b / strength)
@@ -2092,8 +2097,19 @@ func set_sun(elevation: float, azimuth: float, star_kelvin: float = 5800.0, dens
 		_apply_lamp_light()
 
 
+## Strength of the direct sunlight 0..1 from the last set_sun (0 at night).
+func daylight() -> float:
+	return _daylight
+
+
+## The detail tier applied last.
+func applied_tier() -> DetailGovernor.Tier:
+	return _tier
+
+
 ## Applies a detail tier: shadows, edge smoothing and render resolution (DetailGovernor).
 func apply_detail(tier: DetailGovernor.Tier) -> void:
+	_tier = tier
 	var viewport := get_viewport()
 	_sun.shadow_enabled = tier != DetailGovernor.Tier.SLOW
 	# Soft biome borders cost up to four texture reads per ground pixel.
