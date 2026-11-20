@@ -25,6 +25,8 @@ class Lab:
 	## ASSISTING: the lab it helps (`assists`); 0 otherwise.
 	var assists_structure_id: int = 0
 	var assists_module_id: int = 0
+	## ASSISTING the enterprise's research (draft.41 `assistsEnterprise`): its id; "" otherwise.
+	var assists_enterprise_id: String = ""
 	## Progress in micro-seconds of effective research; null while nothing runs.
 	var progress: FlowValue = null
 	var goal: int = 0
@@ -60,6 +62,8 @@ class Lab:
 		var assists := Wire.as_dict(data.get("assists"))
 		lab.assists_structure_id = Wire.as_int(assists.get("structureId"))
 		lab.assists_module_id = Wire.as_int(assists.get("moduleId"))
+		var enterprise := Wire.as_dict(data.get("assistsEnterprise"))
+		lab.assists_enterprise_id = Wire.as_string(enterprise.get("enterpriseId"))
 		var progress := Wire.as_dict(data.get("progress"))
 		if not progress.is_empty():
 			lab.progress = FlowValue.from_wire(progress)

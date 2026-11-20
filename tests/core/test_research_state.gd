@@ -88,6 +88,10 @@ func test_reads_an_assisting_lab() -> void:
 	assert_int(lab.assists_module_id).is_equal(4)
 	var alone := ResearchState.Lab.from_wire({"moduleId": 1.0, "status": "RESEARCHING"})
 	assert_int(alone.assists_module_id).is_equal(0)
+	assert_str(alone.assists_enterprise_id).is_empty()
+	var member := ResearchState.Lab.from_wire({"moduleId": 2.0, "status": "ASSISTING",
+		"assistsEnterprise": {"enterpriseId": "e-9", "supplyPpb": 1000000000.0}})
+	assert_str(member.assists_enterprise_id).is_equal("e-9")
 
 
 func test_lab_without_progress_has_none() -> void:

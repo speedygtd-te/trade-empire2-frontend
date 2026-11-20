@@ -8,6 +8,8 @@ extends RefCounted
 ## crew); otherwise it pauses. Cancelling refunds nothing. Amounts are micro-units.
 
 const MS_PER_HOUR := 3600000
+## Research speed ×1 in millionths (`running.speed`, draft.41).
+const SPEED_NORMAL := 1000000
 const TIERS: Array[int] = [1, 2, 3, 4]
 
 ## What a tech is for the enterprise now.
@@ -43,6 +45,10 @@ class Running:
 	## The lab works (time runs); false: paused.
 	var running := false
 	var completes_at := 0
+	## Research speed in millionths (draft.41: member labs help, up to ×1.8); SPEED_NORMAL = ×1.
+	var speed := SPEED_NORMAL
+	## Member labs helping right now (draft.41).
+	var assisting_labs := 0
 
 
 var enterprise_id := ""
@@ -65,6 +71,8 @@ static func from_wire(data: Dictionary) -> EnterpriseResearch:
 		view.running.remaining_ms = Wire.as_int(run.get("remainingMs"))
 		view.running.running = run.get("running") == true
 		view.running.completes_at = Wire.as_int(run.get("completesAt"))
+		view.running.speed = maxi(Wire.as_int(run.get("speed"), SPEED_NORMAL), 1)
+		view.running.assisting_labs = Wire.as_int(run.get("assistingLabs"))
 	for value: Variant in _list(data.get("techs")):
 		var row := Wire.as_dict(value)
 		var tech := Tech.new()
@@ -161,13 +169,24 @@ func name_of(key: String) -> String:
 	return found.name if found != null else ""
 
 
-## Time left of the running research at game time `now` (it only shrinks while the lab works).
+## Research time left of the running research at game time `now` (it only shrinks while the lab
+## works, faster while member labs help: `speed`).
 func remaining_at(now: int) -> int:
 	if running == null:
 		return 0
 	if not running.running:
 		return maxi(running.remaining_ms, 0)
-	return maxi(running.remaining_ms - maxi(now - at, 0), 0)
+	@warning_ignore("integer_division")
+	var done := maxi(now - at, 0) * running.speed / SPEED_NORMAL
+	return maxi(running.remaining_ms - done, 0)
+
+
+## Game time until the running research completes at the current speed; 0 when nothing runs.
+func time_left_at(now: int) -> int:
+	if running == null:
+		return 0
+	@warning_ignore("integer_division")
+	return remaining_at(now) * SPEED_NORMAL / maxi(running.speed, 1)
 
 
 ## How far the running research is (0..1) at `now`.

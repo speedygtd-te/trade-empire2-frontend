@@ -64,6 +64,19 @@ func test_running_counts_down_only_while_the_lab_works() -> void:
 	assert_str(running.start_blocker("ET_ADVANCED_HABITATION", true, true)).is_equal("busy")
 
 
+func test_member_labs_speed_up_the_research() -> void:
+	var helped := _tree({"tech": "ET_ADVANCED_HABITATION", "startedAt": 0.0, "remainingMs": 6000.0, "running": true,
+		"speed": 1500000.0, "assistingLabs": 5.0})
+
+	assert_int(helped.running.assisting_labs).is_equal(5)
+	# The answer is at 1000: 2000 ms later at ×1.5, 3000 ms of research are done.
+	assert_int(helped.remaining_at(3000)).is_equal(3000)
+	assert_int(helped.time_left_at(3000)).is_equal(2000)
+	var normal := _tree({"tech": "ET_ADVANCED_HABITATION", "startedAt": 0.0, "remainingMs": 6000.0, "running": true})
+	assert_int(normal.running.speed).is_equal(EnterpriseResearch.SPEED_NORMAL)
+	assert_int(normal.time_left_at(0)).is_equal(6000)
+
+
 func test_shortfall_against_the_inventory() -> void:
 	var stock := EnterpriseTaxes.Stock.from_wire({"at": 0.0, "items": [
 		{"resource": "GLASS", "value": 100.0, "ratePerHour": 0.0}]})

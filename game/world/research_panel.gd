@@ -404,7 +404,10 @@ func _status_text(lab: ResearchState.Lab) -> String:
 	if not STATUSES.has(lab.status):
 		return tr("RESEARCH_STATUS_UNKNOWN")
 	var scale := _scale()
-	var text := tr("RESEARCH_STATUS_" + lab.status).format({
+	var key := "RESEARCH_STATUS_" + lab.status
+	if lab.status == "ASSISTING" and not lab.assists_enterprise_id.is_empty():
+		key = "RESEARCH_STATUS_ASSISTING_ENTERPRISE"
+	var text := tr(key).format({
 		"resource": _resource_name(lab.shortfall_resource),
 		"rate": _rate(lab.shortfall_rate, scale),
 		"required": _rate(lab.shortfall_required, scale),

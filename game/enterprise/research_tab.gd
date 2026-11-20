@@ -115,6 +115,11 @@ func _show_running(research: EnterpriseResearch) -> void:
 	if not running.running:
 		var paused := text_label(box, tr("ENTERPRISE_RESEARCH_PAUSED"))
 		paused.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	elif running.assisting_labs > 0:
+		# Member labs with a research network node help (draft.41): faster by up to ×1.8.
+		var helped := text_label(box, tr("ENTERPRISE_RESEARCH_ASSISTED").format({"count": running.assisting_labs,
+			"speed": "%.2f" % (running.speed / float(EnterpriseResearch.SPEED_NORMAL))}))
+		helped.add_theme_color_override("font_color", AppTheme.COLOR_OK)
 	if holds(Enterprise.FLAG_TREASURY):
 		var cancel := action_button(box, tr("ENTERPRISE_RESEARCH_CANCEL_CONFIRM") if armed == "cancel" else tr("ENTERPRISE_RESEARCH_CANCEL"), true)
 		cancel.disabled = busy
@@ -130,7 +135,7 @@ func _update_running() -> void:
 	if research == null or research.running == null or _running_line == null or not is_instance_valid(_running_line):
 		return
 	var now := Services.clock.now_ms()
-	var left := TimeFormat.duration(research.remaining_at(now))
+	var left := TimeFormat.duration(research.time_left_at(now))
 	_running_line.text = tr("ENTERPRISE_RESEARCH_LEFT").format({"duration": left}) if research.running.running \
 		else tr("ENTERPRISE_RESEARCH_LEFT_PAUSED").format({"duration": left})
 	if _running_bar != null and is_instance_valid(_running_bar):

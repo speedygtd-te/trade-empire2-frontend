@@ -271,6 +271,7 @@ RESEARCH_STATUS_NO_SLOTS,Idle: no inputs set.
 RESEARCH_STATUS_NO_TECH,"Idle: no research fits these inputs, this lab or its workers."
 RESEARCH_STATUS_RESEARCHING,Researching.
 RESEARCH_STATUS_ASSISTING,Helps a networked lab with its research (their rates add up).
+RESEARCH_STATUS_ASSISTING_ENTERPRISE,"Helps your enterprise's research ({percent} % supplied, +10 % speed when full)."
 RESEARCH_STATUS_PAUSED_LOW_INPUT,"Paused: {resource} gets {rate}, needs at least {required}. Nothing is used."
 RESEARCH_STATUS_STARVED,"Short of supply ({percent} %): an input, energy or workers run short."
 RESEARCH_HINT_FIELD,Half done. Field: {field}.
@@ -1359,6 +1360,7 @@ ENTERPRISE_RESEARCH_RUNNING,Researching {tech}
 ENTERPRISE_RESEARCH_LEFT,{duration} left
 ENTERPRISE_RESEARCH_LEFT_PAUSED,{duration} left (paused)
 ENTERPRISE_RESEARCH_PAUSED,"Paused: the Enterprise Lab does not work (power or crew missing)."
+ENTERPRISE_RESEARCH_ASSISTED,"{count} member labs help: ×{speed} speed."
 ENTERPRISE_RESEARCH_CANCEL,Cancel research
 ENTERPRISE_RESEARCH_CANCEL_CONFIRM,Tap again to cancel
 ENTERPRISE_RESEARCH_CANCEL_WARNING,The cost is not refunded.
