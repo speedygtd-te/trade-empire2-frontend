@@ -80,6 +80,16 @@ func test_reads_hint_shortfall_and_missing_projection() -> void:
 	assert_int(lab.remaining_ms(99999)).is_equal(-1)
 
 
+func test_reads_an_assisting_lab() -> void:
+	var lab := ResearchState.Lab.from_wire({"structureId": 7.0, "moduleId": 12.0, "status": "ASSISTING",
+		"assists": {"structureId": 3.0, "moduleId": 4.0}})
+	assert_str(lab.status).is_equal("ASSISTING")
+	assert_int(lab.assists_structure_id).is_equal(3)
+	assert_int(lab.assists_module_id).is_equal(4)
+	var alone := ResearchState.Lab.from_wire({"moduleId": 1.0, "status": "RESEARCHING"})
+	assert_int(alone.assists_module_id).is_equal(0)
+
+
 func test_lab_without_progress_has_none() -> void:
 	var lab := _state.lab(40)
 

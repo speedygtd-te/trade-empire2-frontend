@@ -13,7 +13,7 @@ const LIST_HEIGHT := 380
 ## Multiples of the minimum slot rate on offer: more input researches faster.
 const RATE_FACTORS: Array[int] = [1, 2, 4]
 ## Lab states and research fields with a text each (RESEARCH_STATUS_*, RESEARCH_CATEGORY_*).
-const STATUSES: PackedStringArray = ["INACTIVE", "NO_SLOTS", "NO_TECH", "RESEARCHING", "PAUSED_LOW_INPUT", "STARVED"]
+const STATUSES: PackedStringArray = ["INACTIVE", "NO_SLOTS", "NO_TECH", "RESEARCHING", "ASSISTING", "PAUSED_LOW_INPUT", "STARVED"]
 const CATEGORIES: PackedStringArray = [
 	"ENERGY", "EXTRACTION", "HABITATION", "MANUFACTURING", "PRODUCTION", "SATISFACTION", "SECURITY", "TRANSPORTATION",
 ]
@@ -423,7 +423,7 @@ func _status_text(lab: ResearchState.Lab) -> String:
 
 static func _status_color(status: String) -> Color:
 	match status:
-		"RESEARCHING":
+		"RESEARCHING", "ASSISTING":
 			return AppTheme.COLOR_OK
 		"PAUSED_LOW_INPUT", "STARVED", "NO_TECH", "INACTIVE":
 			return AppTheme.COLOR_PENDING

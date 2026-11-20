@@ -270,6 +270,7 @@ RESEARCH_STATUS_INACTIVE,Under construction. Inputs can be set already.
 RESEARCH_STATUS_NO_SLOTS,Idle: no inputs set.
 RESEARCH_STATUS_NO_TECH,"Idle: no research fits these inputs, this lab or its workers."
 RESEARCH_STATUS_RESEARCHING,Researching.
+RESEARCH_STATUS_ASSISTING,Helps a networked lab with its research (their rates add up).
 RESEARCH_STATUS_PAUSED_LOW_INPUT,"Paused: {resource} gets {rate}, needs at least {required}. Nothing is used."
 RESEARCH_STATUS_STARVED,"Short of supply ({percent} %): an input, energy or workers run short."
 RESEARCH_HINT_FIELD,Half done. Field: {field}.

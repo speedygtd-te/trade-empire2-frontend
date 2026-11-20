@@ -19,8 +19,12 @@ class Lab:
 	var slot_count: int = 0
 	## One entry per slot: [resource, micro-units per hour], or [] for an empty slot.
 	var slots: Array[Array] = []
-	## INACTIVE, NO_SLOTS, NO_TECH, RESEARCHING, PAUSED_LOW_INPUT or STARVED.
+	## INACTIVE, NO_SLOTS, NO_TECH, RESEARCHING, ASSISTING (draft.40: helps a networked lab),
+	## PAUSED_LOW_INPUT or STARVED.
 	var status: String = ""
+	## ASSISTING: the lab it helps (`assists`); 0 otherwise.
+	var assists_structure_id: int = 0
+	var assists_module_id: int = 0
 	## Progress in micro-seconds of effective research; null while nothing runs.
 	var progress: FlowValue = null
 	var goal: int = 0
@@ -53,6 +57,9 @@ class Lab:
 		while lab.slots.size() < lab.slot_count:
 			lab.slots.append([])
 		lab.status = Wire.as_string(data.get("status"))
+		var assists := Wire.as_dict(data.get("assists"))
+		lab.assists_structure_id = Wire.as_int(assists.get("structureId"))
+		lab.assists_module_id = Wire.as_int(assists.get("moduleId"))
 		var progress := Wire.as_dict(data.get("progress"))
 		if not progress.is_empty():
 			lab.progress = FlowValue.from_wire(progress)
