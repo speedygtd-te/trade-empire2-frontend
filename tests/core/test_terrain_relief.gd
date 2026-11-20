@@ -54,8 +54,9 @@ func test_water_lies_flat_at_the_sea_level_and_the_shore_blends() -> void:
 	relief.clear()
 	assert_float(relief.corner(3, 5)).is_equal_approx(300.0, 0.001)
 	assert_float(relief.corner(6, 5)).is_equal_approx(300.0, 0.001)
-	# The shore corner: two water cells at 300, two land cells at 310.
-	assert_float(relief.corner(8, 5)).is_equal_approx(305.0, 0.001)
+	# The shore corner (two water cells, two land cells at 310) lies at the sea level: the water
+	# stays flat up to the bank.
+	assert_float(relief.corner(8, 5)).is_equal_approx(300.0, 0.001)
 	assert_float(relief.corner(12, 5)).is_equal_approx(345.0, 0.001)
 	# A structure on the water stands at the sea level.
 	assert_float(relief.base_of([Vector2i(2, 2), Vector2i(3, 2)])).is_equal_approx(300.0, 0.001)

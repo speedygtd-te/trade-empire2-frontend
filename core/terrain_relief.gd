@@ -507,9 +507,13 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 				sum += value
 				count += 1
 			var natural := sum / count if count > 0 else _fog(x0 - 1 + i, y0 - 1 + j)
-			var open_water := count > 0 and wet[row + i] + wet[row + i + 1] + wet[row + span + i] \
-				+ wet[row + span + i + 1] == count
-			if padded and not open_water:
+			# A corner touching water lies at the sea level, so the water surface stays flat up to
+			# the shore (no rise towards the land); the bank climbs from there. Never shaped by a pad,
+			# or a structure reaching into the sea would raise a hill of water.
+			var touches_water := wet[row + i] + wet[row + i + 1] + wet[row + span + i] + wet[row + span + i + 1] > 0
+			if touches_water:
+				natural = water_level
+			if padded and not touches_water:
 				var found_pad: Variant = _pad_corners.get(Vector2i(WorldGrid.wrap_x(x0 - 1 + i, size_x), y0 - 1 + j))
 				if found_pad != null:
 					var pad: Vector2 = found_pad
