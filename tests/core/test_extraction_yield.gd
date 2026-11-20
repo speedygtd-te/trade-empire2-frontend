@@ -53,6 +53,29 @@ func test_tile_richness_adds_the_depth_bonus_below_the_ground() -> void:
 	assert_int(ExtractionYield.tile_richness(cell, "WATER", -5)).is_equal(0)
 
 
+func test_tile_richness_under_deep_water_counts_from_the_sea_floor() -> void:
+	var cell := {"IRON": 50}
+	# A column four levels deep (z = 0 … −3): no bonus inside it, from the floor at −4 on.
+	assert_int(ExtractionYield.tile_richness(cell, "IRON", -3, 4)).is_equal(50)
+	assert_int(ExtractionYield.tile_richness(cell, "IRON", -4, 4)).is_equal(52)
+	assert_int(ExtractionYield.tile_richness(cell, "IRON", -6, 4)).is_equal(56)
+	# One level of water (draft.38) or land: from the ground as before.
+	assert_int(ExtractionYield.tile_richness(cell, "IRON", -3, 1)).is_equal(56)
+	assert_int(ExtractionYield.tile_richness(cell, "IRON", -3, 0)).is_equal(56)
+
+
+func test_estimate_takes_the_water_depth_of_each_cell() -> void:
+	var cells: Array[Dictionary] = [{"IRON": 50}, {"IRON": 50}]
+	var recipe := _definitions.blueprint("IRON_EXTRACTION")
+	var module_def := _definitions.module("MINE")
+	var dry := ExtractionYield.estimate(recipe, module_def, -4, cells, {}, 1.0)
+	var depths: Array[int] = [4, 0]
+	var wet := ExtractionYield.estimate(recipe, module_def, -4, cells, {}, 1.0, depths)
+	assert_int(dry.richness).is_equal(58)
+	# (52 + 58) / 2.
+	assert_int(wet.richness).is_equal(55)
+
+
 func test_average_rounds_down() -> void:
 	assert_int(ExtractionYield.average([40, 41, 42, 44])).is_equal(41)
 	assert_int(ExtractionYield.average([7])).is_equal(7)

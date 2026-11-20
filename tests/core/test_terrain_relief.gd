@@ -4,7 +4,8 @@ const B := SurfaceBlocks.BLOCK
 
 
 ## Loads one block into `surface`: elevation(x, y) per cell, fog where hidden(x, y) is true.
-func _load(surface: SurfaceBlocks, block: Vector2i, elevation: Callable, hidden: Callable = Callable()) -> void:
+func _load(surface: SurfaceBlocks, block: Vector2i, elevation: Callable, hidden: Callable = Callable(),
+		biome: Callable = Callable()) -> void:
 	var x0 := block.x * B
 	var y0 := block.y * B
 	var request := SurfaceBlocks.Request.new()
@@ -23,7 +24,8 @@ func _load(surface: SurfaceBlocks, block: Vector2i, elevation: Callable, hidden:
 				cells.append("null")
 			else:
 				var e: int = elevation.call(x, y)
-				cells.append('{"b":"PLAINS","v":0,"g":0,"e":%d,"m":0}' % e)
+				var key: String = biome.call(x, y) if biome.is_valid() else "PLAINS"
+				cells.append('{"b":"%s","v":0,"g":0,"e":%d,"m":0}' % [key, e])
 		lines.append('{"y":%d,"cells":[%s]}' % [y, ",".join(cells)])
 	lines.append('{"end":true,"rows":%d}' % B)
 	surface.store(request, SurfacePatch.from_stream(Ndjson.parse("\n".join(lines))))
@@ -38,6 +40,25 @@ func _surface(blocks: Array[Vector2i], elevation: Callable, hidden: Callable = C
 
 func _slope_x(x: int, _y: int) -> int:
 	return 100 + 10 * x
+
+
+func test_water_lies_flat_at_the_sea_level_and_the_shore_blends() -> void:
+	var surface := SurfaceBlocks.new()
+	# Ocean west of x = 8 over a sea floor that falls to the west; land rising east of it.
+	_load(surface, Vector2i(0, 0), func(x: int, _y: int) -> int: return 200 + 10 * x if x < 8 else 310 + 10 * (x - 8),
+		Callable(), func(x: int, _y: int) -> String: return "OCEAN" if x < 8 else "PLAINS")
+	var relief := TerrainRelief.new(surface)
+	# Without a sea level the water follows its floor.
+	assert_float(relief.corner(3, 5)).is_equal_approx(225.0, 0.001)
+	relief.water_level = WaterColumn.sea_level("EARTH_LIKE")
+	relief.clear()
+	assert_float(relief.corner(3, 5)).is_equal_approx(300.0, 0.001)
+	assert_float(relief.corner(6, 5)).is_equal_approx(300.0, 0.001)
+	# The shore corner: two water cells at 300, two land cells at 310.
+	assert_float(relief.corner(8, 5)).is_equal_approx(305.0, 0.001)
+	assert_float(relief.corner(12, 5)).is_equal_approx(345.0, 0.001)
+	# A structure on the water stands at the sea level.
+	assert_float(relief.base_of([Vector2i(2, 2), Vector2i(3, 2)])).is_equal_approx(300.0, 0.001)
 
 
 func test_a_corner_is_the_mean_of_the_known_cells_around_it() -> void:

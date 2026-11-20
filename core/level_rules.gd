@@ -4,6 +4,12 @@ extends RefCounted
 ## there, the overhang rule above the ground, the levels the player can switch between and the
 ## production factor a module gets from its level.
 ##
+## Deep water (draft.39): a water tile has a water column over several levels; every level of it
+## carries the surface's water biome (`GET /v2/bodies/{id}/surface?z=…`) and is UNDERWATER, the sea
+## floor below is UNDERGROUND / DEEP_UNDERGROUND (threshold still counted from level 0). Up to
+## draft.38 a level below the ground never carries a water biome, so the same rules give the old
+## answer there.
+##
 ## Sources: contract `Grid.minZ/maxZ`, `Body.deepThreshold`, `DefHull.environments`,
 ## `DefModule.zLevel`; fixed in the server and not in the contract: the hull types allowed on a
 ## surface, the height limits of STARTER and GLASS_CARBON, the overhang rule and the shaft height.
@@ -15,7 +21,8 @@ const DEEP_UNDERGROUND := "DEEP_UNDERGROUND"
 const UNDERWATER := "UNDERWATER"
 const ASTEROID := "ASTEROID"
 
-## Biomes of the ground level that put a cell under water (z = 0 only).
+## Water biomes (te-gen `is_underwater_biome`): a cell carrying one at level 0 or below is under
+## water.
 const WATER_BIOMES: PackedStringArray = [
 	"OCEAN", "DEEP_OCEAN", "SHALLOW_WATER", "REEF", "KELP_FOREST", "ACID_LAKE", "FROZEN_LAKE", "VOLCANIC_VENT",
 ]
@@ -54,33 +61,55 @@ class Site:
 	var deep_threshold := 0
 	## `Body.type` (EARTH_LIKE, ASTEROID_M …).
 	var body_type := ""
-	## (x, y) of an absolute cell → biome key of the ground level there; "" while unknown. An
-	## invalid callable counts as unknown everywhere.
+	## (x, y, z) of an absolute cell → biome key at that level (the surface query of level z);
+	## "" while unknown. An invalid callable counts as unknown everywhere.
 	var biome_at := Callable()
 
-	## The biome of the ground level at an absolute column; "" when unknown.
-	func biome(x: int, y: int) -> String:
+	## The biome at an absolute cell (level 0: the ground level); "" when unknown.
+	func biome(x: int, y: int, z: int = 0) -> String:
 		if not biome_at.is_valid():
 			return ""
-		return Wire.as_string(biome_at.call(x, y))
+		return Wire.as_string(biome_at.call(x, y, z))
 
 
-## Environment of a cell at level `z`: under the ground by depth, under water on a water biome of
-## the ground level, otherwise the body's default (SURFACE, or ASTEROID on asteroids).
-static func environment_at(z: int, ground_biome: String, deep_threshold: int, body_type: String) -> String:
+## Whether a biome is water (ocean, lake, reef …).
+static func is_water_biome(biome: String) -> bool:
+	return WATER_BIOMES.has(biome)
+
+
+## Environment of a cell at level `z` from the biome at that level (`biome`, "" when unknown):
+## under water on a water biome at or below the ground level (the water column, before the depth
+## rule), under the ground by depth, otherwise the body's default (SURFACE, or ASTEROID).
+static func environment_at(z: int, biome: String, deep_threshold: int, body_type: String) -> String:
+	if z <= 0 and is_water_biome(biome):
+		return UNDERWATER
 	if z < 0 and z <= deep_threshold:
 		return DEEP_UNDERGROUND
 	if z < 0:
 		return UNDERGROUND
-	if z == 0 and WATER_BIOMES.has(ground_biome):
-		return UNDERWATER
 	return ASTEROID if ASTEROID_BODIES.has(body_type) else SURFACE
 
 
-## Environment of an absolute cell on a site.
+## Environment of an absolute cell on a site, from the biome at its level.
 static func environment_of(site: Site, cell: Vector3i) -> String:
-	var biome := site.biome(cell.x, cell.y) if cell.z == 0 else ""
+	var biome := site.biome(cell.x, cell.y, cell.z) if cell.z <= 0 else ""
 	return environment_at(cell.z, biome, site.deep_threshold, site.body_type)
+
+
+## The environment most cells of level `z` have in the square of `radius` cells around `centre`
+## (absolute column): what the level is about where the player looks. Ties go to the centre's.
+static func level_environment(site: Site, centre: Vector2i, z: int, radius: int) -> String:
+	var own := environment_of(site, Vector3i(centre.x, centre.y, z))
+	var counts := {}
+	for dy: int in range(-radius, radius + 1):
+		for dx: int in range(-radius, radius + 1):
+			var found := environment_of(site, Vector3i(centre.x + dx, centre.y + dy, z))
+			counts[found] = Wire.as_int(counts.get(found)) + 1
+	var best := own
+	for key: String in counts.keys():
+		if Wire.as_int(counts[key]) > Wire.as_int(counts[best]):
+			best = key
+	return best
 
 
 ## Whether a hull type's own height limit allows level `z`.
@@ -126,8 +155,11 @@ static func overhang_ok(layouts: Array[StructureLayout], cell: Vector3i) -> bool
 
 
 ## The levels the player can switch between: every level with a hull of the structure, one more
-## above and below, and always the ground level, within the grid. `levels` are absolute.
-static func level_range(levels: Array[int], site: Site) -> Vector2i:
+## above and below, and always the ground level, within the grid. `levels` are absolute. Where one
+## of `columns` (absolute x, y; where the player looks) is known to be water at the lowest level,
+## the range reaches one further down, so the player can follow a water column level by level to
+## its sea floor (up to 60 levels deep) without building every level first.
+static func level_range(levels: Array[int], site: Site, columns: Array[Vector2i] = []) -> Vector2i:
 	var low := 0
 	var high := 0
 	for z: int in levels:
@@ -135,10 +167,23 @@ static func level_range(levels: Array[int], site: Site) -> Vector2i:
 		high = maxi(high, z)
 	low -= 1
 	high += 1
+	if site != null:
+		while site.has_grid and low > site.min_z and _water_in(site, columns, low):
+			low -= 1
 	if site != null and site.has_grid:
 		low = maxi(low, site.min_z)
 		high = mini(high, site.max_z)
 	return Vector2i(low, maxi(low, high))
+
+
+## Whether any of `columns` is known to carry a water biome at level `z` (z ≤ 0).
+static func _water_in(site: Site, columns: Array[Vector2i], z: int) -> bool:
+	if z > 0:
+		return false
+	for column: Vector2i in columns:
+		if is_water_biome(site.biome(column.x, column.y, z)):
+			return true
+	return false
 
 
 ## Production factor of a module at level `z` (1 = neutral): it grows per level up (preferHigh)

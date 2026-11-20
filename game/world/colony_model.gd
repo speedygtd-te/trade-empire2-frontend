@@ -839,8 +839,8 @@ func _load_deposits(request: SurfaceBlocks.Request, z: int, blocks: SurfaceBlock
 	deposits_loaded.emit()
 
 
-## What the level rules need to know about this body (LevelRules.Site); the biome of the ground
-## level comes from the loaded surface.
+## What the level rules need to know about this body (LevelRules.Site); the biome of a cell comes
+## from the loaded surface of its level (draft.39: water columns reach below the ground).
 func site() -> LevelRules.Site:
 	var result := LevelRules.Site.new()
 	result.has_grid = has_grid
@@ -848,11 +848,35 @@ func site() -> LevelRules.Site:
 	result.max_z = max_z
 	result.deep_threshold = deep_threshold
 	result.body_type = body_type
-	var blocks := surface
-	result.biome_at = func(x: int, y: int) -> String:
-		var cell := blocks.cell(x, y)
-		return cell.biome if cell != null else ""
+	result.biome_at = biome_at
 	return result
+
+
+## The biome of an absolute cell at level `z` (≤ 0) as loaded: the level's surface, else the
+## deposits loaded for it; "" while unknown or above the ground.
+func biome_at(x: int, y: int, z: int) -> String:
+	if z > 0:
+		return ""
+	var found := surface.cell(x, y) if z == 0 else null
+	if found == null and level_surfaces.has(z):
+		found = (level_surfaces[z] as SurfaceBlocks).cell(x, y)
+	if found == null and deposit_levels.has(z):
+		found = (deposit_levels[z] as SurfaceBlocks).cell(x, y)
+	return found.biome if found != null else ""
+
+
+## The depth (levels) of the water column at an absolute column as far as the loaded levels tell
+## (WaterColumn.known_depth): 0 on land, −1 while unknown.
+func water_depth(x: int, y: int) -> int:
+	var biomes := {}
+	var levels: Array = [0]
+	levels.append_array(level_surfaces.keys())
+	levels.append_array(deposit_levels.keys())
+	for z: int in levels:
+		var biome := biome_at(x, y, z)
+		if not biome.is_empty():
+			biomes[z] = biome
+	return WaterColumn.known_depth(biomes)
 
 
 ## Sends a build batch to the body; ops on a guest go the same way. `mode` "atomic" (all or

@@ -42,6 +42,15 @@ func test_elevations_are_read_by_position_and_minus_one_outside() -> void:
 	assert_int(fog.elevation(1, 0)).is_equal(12)
 
 
+func test_water_cells_are_known_by_position() -> void:
+	var patch := SurfacePatch.from_stream(Ndjson.parse(STREAM))
+
+	assert_bool(patch.is_water(0, 5)).is_true()
+	assert_bool(patch.is_water(-1, 5)).is_false()
+	assert_bool(patch.is_water(-1, 4)).is_false()
+	assert_bool(patch.is_water(1, 5)).is_false()
+
+
 func test_without_deposits_the_cells_have_none() -> void:
 	var patch := SurfacePatch.from_stream(Ndjson.parse(STREAM))
 

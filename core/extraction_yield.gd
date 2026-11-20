@@ -96,13 +96,16 @@ static func ground_level(z: int) -> int:
 
 
 ## Richness of `resource` in a cell's deposits (as the stream sends them) at level `z`: below the
-## ground each level adds DEPTH_BONUS_PER_LEVEL, at most 100; 0 when the cell has none.
-static func tile_richness(deposits: Dictionary, resource: String, z: int) -> int:
+## ground each level adds DEPTH_BONUS_PER_LEVEL, at most 100; 0 when the cell has none. Under deep
+## water (draft.39) the bonus counts from the sea floor: `water_depth` is the column's depth in
+## levels as far as known (WaterColumn.known_depth; < 0 unknown, 0 land), none inside the column.
+static func tile_richness(deposits: Dictionary, resource: String, z: int, water_depth: int = -1) -> int:
 	var value := Wire.as_int(deposits.get(resource))
 	if value <= 0:
 		return 0
-	if z < 0:
-		return mini(100, value + absi(z) * DEPTH_BONUS_PER_LEVEL)
+	var levels := WaterColumn.bonus_levels(z, water_depth)
+	if levels > 0:
+		return mini(100, value + levels * DEPTH_BONUS_PER_LEVEL)
 	return value
 
 
@@ -154,10 +157,11 @@ static func rate(base: int, richness: int, module_def: GameDefinitions.ModuleDef
 
 ## The yield of an extracting recipe at a place: `deposits` holds one deposit dictionary per cell
 ## of the footprint (SurfacePatch.Cell.deposits), `z` is the module's level, `atmosphere` the
-## body's gases (share 0..1) and `density` its air density. Null for a recipe that extracts
-## nothing.
+## body's gases (share 0..1) and `density` its air density; `water_depths` (optional, one per cell
+## of `deposits`) the known water depth of each cell's column (tile_richness). Null for a recipe
+## that extracts nothing.
 static func estimate(recipe: GameDefinitions.BlueprintDef, module_def: GameDefinitions.ModuleDef, z: int,
-		deposits: Array[Dictionary], atmosphere: Dictionary, density: float) -> Estimate:
+		deposits: Array[Dictionary], atmosphere: Dictionary, density: float, water_depths: Array[int] = []) -> Estimate:
 	if not is_extraction(recipe):
 		return null
 	var result := Estimate.new()
@@ -178,8 +182,9 @@ static func estimate(recipe: GameDefinitions.BlueprintDef, module_def: GameDefin
 		result.richness = 0 if recipe.orbit_only else gas_richness(result.gas_share, density)
 	else:
 		var values: Array[int] = []
-		for cell: Dictionary in deposits:
-			values.append(tile_richness(cell, recipe.required_tile_resource, z))
+		for index: int in deposits.size():
+			var depth := water_depths[index] if index < water_depths.size() else -1
+			values.append(tile_richness(deposits[index], recipe.required_tile_resource, z, depth))
 		result.richness = average(values)
 	result.rate = rate(base, result.richness, module_def, z) if result.works() else 0
 	return result
@@ -188,13 +193,13 @@ static func estimate(recipe: GameDefinitions.BlueprintDef, module_def: GameDefin
 ## The yields of every extracting recipe of a module type at a place, best first; with `usable`
 ## (recipe key → true) only those the player may run. See estimate().
 static func estimates(definitions: GameDefinitions, module_type: String, z: int, deposits: Array[Dictionary],
-		atmosphere: Dictionary, density: float, usable: Dictionary = {}) -> Array[Estimate]:
+		atmosphere: Dictionary, density: float, usable: Dictionary = {}, water_depths: Array[int] = []) -> Array[Estimate]:
 	var result: Array[Estimate] = []
 	var module_def := definitions.module(module_type)
 	for recipe: GameDefinitions.BlueprintDef in definitions.blueprints_for(module_type):
 		if not usable.is_empty() and not usable.has(recipe.key):
 			continue
-		var found := estimate(recipe, module_def, z, deposits, atmosphere, density)
+		var found := estimate(recipe, module_def, z, deposits, atmosphere, density, water_depths)
 		if found != null:
 			result.append(found)
 	result.sort_custom(func(a: Estimate, b: Estimate) -> bool:
