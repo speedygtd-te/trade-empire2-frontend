@@ -499,7 +499,7 @@ func _fill_fleets() -> int:
 		var row := ListButton.new()
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var line := tr("FLEETS_SUBTITLE").format({"count": group.members.size()}) + " · " \
+		var line := tr("FLEETS_SHIP_COUNT").format({"count": group.members.size()}) + " · " \
 			+ FleetGroupDetail.status_text(_fleet, group, now, self)
 		row.text = "%s\n%s" % [tr("ROUTE_FLEET_NAME").format({"name": group.name}), line if reason.is_empty() else reason]
 		row.disabled = not reason.is_empty()
@@ -751,7 +751,7 @@ static func quote_text(quote: RoutePlan.Quote, draft: RoutePlan.Draft, fleet: Fl
 			var have: int = row[2]
 			var cargo: int = row[3]
 			@warning_ignore("integer_division")
-			var text: String = translator.tr("ROUTE_QUOTE_FUEL").format({"count": AmountFormat.units(ceili(need / float(scale))),
+			var text: String = translator.tr("ROUTE_QUOTE_FUEL_FLEET" if draft.is_fleet() else "ROUTE_QUOTE_FUEL").format({"count": AmountFormat.units(ceili(need / float(scale))),
 				"item": RouteList.item_name(key, translator), "have": AmountFormat.units(have / scale)})
 			if have < need and cargo > 0:
 				text += " " + translator.tr("ROUTE_QUOTE_FUEL_IN_CARGO")

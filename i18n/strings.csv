@@ -613,7 +613,7 @@ ROUTE_CARGO_HINT,Cargo is unloaded at the other station.
 ROUTE_SUPPLY_HINT,"Own supply (fuel, food) of the transporter: filled up to this amount, never unloaded."
 ROUTE_RULE_TWICE,Each item can be loaded only once as cargo and once as own supply per direction.
 ROUTE_FUEL_ALREADY,Fuel is already topped up in both directions.
-ROUTE_PICK_TRANSPORTER,Choose what runs the route (a fleet, a ship or a vehicle):
+ROUTE_PICK_TRANSPORTER,"Choose what runs the route (a fleet, a ship or a vehicle):"
 ROUTE_PICK_STATION,Choose station {letter}:
 ROUTE_PICK_BUSY,Already drives a route.
 ROUTE_PICK_MOVING,Under way.
@@ -1308,3 +1308,5 @@ FLEETS_ROUTE_OPEN,Show the route “{name}”
 FLEETS_ROUTE_LOCK,"It runs the route “{name}”. To change the fleet, delete the route (it ends at the next station), then form it anew."
 FLEETS_ON_ROUTE,Runs the route “{name}”
 FLEETS_ROUTE_LEG,next stop in {duration}
+FLEETS_SHIP_COUNT,{count} ship(s)
+ROUTE_QUOTE_FUEL_FLEET,Fuel: {count} {item} (all ships carry {have})
