@@ -286,8 +286,10 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if _model.structure_id != 0 and _rendering and not _model.detached:
-		# The top tier needs the player's permission (profile) besides the device.
-		if _detail.allow_ultra(_ultra_device and AppSettings.high_detail_models()):
+		# The top tier needs the player's permission (profile) besides the device, and the
+		# downloaded package of high-detail models (HdPackageService).
+		if _detail.allow_ultra(_ultra_device and AppSettings.high_detail_models()
+				and Services.hd_package.is_ready()):
 			_view.apply_detail(_detail.tier)
 		_detail.add_frame(delta * 1000.0, _frame_work_ms())
 		var now_ticks := Time.get_ticks_msec()

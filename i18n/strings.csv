@@ -1097,6 +1097,17 @@ PROFILE_PERFORMANCE_COPIED,"Copied: the last {seconds} s, ready to paste."
 PROFILE_HD_HINT,"High-detail models: rounder shapes and sharper surfaces up close. Used on their own when this device has power to spare; switch them off to save battery."
 PROFILE_HD_ON,Allow high-detail models
 PROFILE_HD_OFF,Turn off high-detail models
+PROFILE_HD_PACKAGE,High-detail package
+PROFILE_HD_PACKAGE_READY,Ready
+PROFILE_HD_PACKAGE_UNSUPPORTED,Not used on this device
+PROFILE_HD_PACKAGE_OFF,Not loaded (turned off)
+PROFILE_HD_PACKAGE_WAITING,Not loaded
+PROFILE_HD_PACKAGE_CHECKING,Checking…
+PROFILE_HD_PACKAGE_DOWNLOADING,Downloading {percent} %
+PROFILE_HD_PACKAGE_VERIFYING,Checking download…
+PROFILE_HD_PACKAGE_FAILED,Download failed
+PROFILE_HD_PACKAGE_NOT_OFFERED,Not available
+PROFILE_HD_PACKAGE_RETRY,Try download again
 PERF_BOX,"{fps} fps · {ms} ms (worst {worst})
 {draws} draws · {primitives} tris
 {memory} MB · detail {tier}"
