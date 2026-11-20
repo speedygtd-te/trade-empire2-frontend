@@ -29,7 +29,8 @@ class Logo:
 	extends RefCounted
 	## pending, ready, failed
 	var status := ""
-	## Full size (256 px), a server-relative path such as "/assets/…".
+	## Full size (256 px): an absolute CDN URL (draft.34), or a server-relative "/assets/…" path
+	## from an older server; used unchanged (ServerUrl.resolve).
 	var url := ""
 	## Size in px → path.
 	var urls: Dictionary = {}

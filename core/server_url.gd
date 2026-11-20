@@ -46,3 +46,13 @@ static func parse(text: String) -> ServerUrl:
 	if url.port != default_port:
 		url.base += ":%d" % url.port
 	return url
+
+
+## The address to fetch a file from: an absolute `http(s)://` URL unchanged (enterprise logos in
+## the CDN since draft.34), a server-relative path (`/assets/…`, the older form) after `base`.
+static func resolve(base: String, url: String) -> String:
+	if url.begins_with("https://") or url.begins_with("http://"):
+		return url
+	if url.begins_with("/"):
+		return base.trim_suffix("/") + url
+	return url

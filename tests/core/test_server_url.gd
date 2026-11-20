@@ -51,3 +51,12 @@ func test_rejects_invalid_ports() -> void:
 	assert_object(ServerUrl.parse("http://host:0")).is_null()
 	assert_object(ServerUrl.parse("http://host:70000")).is_null()
 	assert_object(ServerUrl.parse("http://:8080")).is_null()
+
+
+func test_resolves_absolute_and_server_relative_files() -> void:
+	var cdn := "https://assets.trade-empire.com/enterprise/ab12@half.webp"
+	assert_str(ServerUrl.resolve("https://trade-empire.net", cdn)).is_equal(cdn)
+	assert_str(ServerUrl.resolve("https://trade-empire.net", "/assets/enterprise/_default.webp")) \
+		.is_equal("https://trade-empire.net/assets/enterprise/_default.webp")
+	assert_str(ServerUrl.resolve("http://127.0.0.1:18080/", "/assets/a.webp")).is_equal("http://127.0.0.1:18080/assets/a.webp")
+	assert_str(ServerUrl.resolve("https://trade-empire.net", "")).is_equal("")
