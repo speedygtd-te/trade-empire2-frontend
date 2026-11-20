@@ -242,55 +242,55 @@ def habitat_t5():
 
 # --- Enterprise Warp Drive (1x1, outdoor) -------------------------------------------------------
 
+def _drive_pod(model, x: float, axis: float, top: float, part: str) -> None:
+    """One flat, faceted drive pod along y at *x* on its own low carbon mount: a chamfered white
+    body with a carbon band and light lines, a graphite tail, a big nozzle at its front (-y) with
+    a glowing cyan throat, a low angular fin; a chrome ring with four lit nodes turns round it
+    (moving part *part*). After Rudi's first sublight thruster, made flatter and angular."""
+    # The mount.
+    model.rounded_box((x, 0.06, top + (axis - top - 0.04) / 2.0), (0.10, 0.26, axis - top - 0.04), 0.02, CARBON)
+    model.rounded_box((x, 0.06, top + 0.012), (0.15, 0.32, 0.024), 0.03, SMOOTH)
+    parts.light_strip(model, (x - 0.051, -0.04, top + 0.06), (x - 0.051, 0.16, top + 0.06), 0.008)
+    parts.light_strip(model, (x + 0.051, -0.04, top + 0.06), (x + 0.051, 0.16, top + 0.06), 0.008)
+    # The body: local z runs to the front (-y), local y up.
+    with model.placed((x, 0.0, axis), tilt=math.pi / 2.0):
+        model.rounded_box((0.0, 0.0, 0.02), (0.20, 0.11, 0.48), 0.04, SMOOTH, segments=1)
+        model.rounded_box((0.0, 0.0, 0.08), (0.204, 0.114, 0.05), 0.04, CARBON, segments=1)
+        model.rounded_box((0.0, 0.0, -0.25), (0.15, 0.085, 0.06), 0.03, GRAPHITE, segments=1)
+        model.rounded_box((0.0, 0.0, -0.285), (0.09, 0.05, 0.012), 0.02, LIGHT, segments=1)
+        model.rounded_box((0.0, 0.0, 0.27), (0.18, 0.10, 0.02), 0.035, CHROME, segments=1)
+    side = 1.0 if x > 0.0 else -1.0
+    parts.light_strip(model, (x + side * 0.101, -0.20, axis), (x + side * 0.101, 0.16, axis), 0.010)
+    parts.light_strip(model, (x - side * 0.101, -0.20, axis), (x - side * 0.101, 0.16, axis), 0.010)
+    model.box((x, 0.08, axis + 0.07), (0.012, 0.18, 0.03), WHITE)
+    model.box((x, 0.08, axis + 0.0555), (0.06, 0.20, 0.004), CARBON)
+    # The nozzle: a graphite bell round a glowing throat (heights of the profile run to -y).
+    profile = [(0.0, 0.0, GRAPHITE), (0.078, 0.0, GRAPHITE), (0.085, 0.065, CHROME), (0.09, 0.08, GRAPHITE),
+               (0.072, 0.08, LIGHT), (0.046, 0.038, LAMP), (0.0, 0.022)]
+    with model.placed((x, -0.28, axis), tilt=math.pi / 2.0):
+        model.revolve((0.0, 0.0, 0.0), profile, GRAPHITE, segments=16, sharp=30.0)
+    # The turning ring.
+    ring_y = -0.13
+    with model.moving(part, (x, ring_y, axis), tilt=math.pi / 2.0):
+        with model.placed((x, ring_y, axis), tilt=math.pi / 2.0):
+            _ring(model, (0.0, 0.0, 0.0), 0.14, 0.012, CHROME, segments=24)
+            for index in range(4):
+                angle = index * math.pi / 2.0 + math.pi / 4.0
+                model.box((math.cos(angle) * 0.14, math.sin(angle) * 0.14, 0.0), (0.026, 0.026, 0.026), LIGHT,
+                          turn=angle)
+
+
 def warp_drive():
-    """A toroidal accelerator stack in a carbon frame over a white engine block: four field coils
-    round a glass column with a lit plasma core turn as one (moving part rotor); the block pushes
-    through a row of three heat-ringed thrust bells at its front. Taller and heavier than the
-    sublight thruster; deliberately no pods or glowing domes (Rudi 2026-11-20: our own design)."""
+    """Two flat, faceted drive pods side by side, each on its own low mount, parallel and not
+    joined (no pylons, no hull between them): big nozzles with glowing cyan throats to the
+    front, a turning ring round each (moving parts rotor_1, rotor_2). Rudi 2026-11-20: after the
+    first sublight thruster, flatter and angular, doubled; never a franchise drive section."""
     model = kit.Builder("te_enterprise_warp_drive", style=STYLE)
     top = parts.plinth(model, 0.42, height=0.05, radius=0.08)
-    # The engine block with its bells to the front.
-    model.rounded_box((0.0, 0.02, top + 0.09), (0.70, 0.60, 0.18), 0.07, WHITE)
-    model.rounded_box((0.0, 0.02, top + 0.02), (0.704, 0.604, 0.04), 0.07, CARBON)
-    block = top + 0.18
-    model.rounded_box((0.0, 0.02, block + 0.008), (0.62, 0.52, 0.016), 0.06, CARBON)
-    parts.light_strip(model, (0.351, -0.20, top + 0.12), (0.351, 0.22, top + 0.12), 0.010)
-    parts.display(model, (0.351, 0.10, top + 0.075), (0.16, 0.05), "+x", seed=141, depth=0.004)
-    for x in (-0.20, 0.0, 0.20):
-        model.cylinder((x, -0.26, top + 0.09), (x, -0.30, top + 0.09), 0.075, CHROME, segments=16)
-        parts.ent_nozzle(model, (x, -0.30, top + 0.09), (x, -0.42, top + 0.09), 0.045, 0.068)
-    # The frame: four posts with light lines, a carbon head ring, an emitter cap.
-    base, head = block + 0.016, block + 0.56
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            parts.corner_post(model, (sx * 0.27, 0.02 + sy * 0.22), base, head, radius=0.03, color=SMOOTH,
-                              outward=(sx * 0.707, sy * 0.707))
-    for sign in (-1, 1):
-        model.box((0.0, 0.02 + sign * 0.22, head + 0.015), (0.58, 0.05, 0.03), CARBON)
-        model.box((sign * 0.27, 0.02, head + 0.015), (0.05, 0.48, 0.03), CARBON)
-    model.cylinder((0.0, 0.02, head), (0.0, 0.02, head + 0.04), 0.13, SMOOTH, segments=20)
-    model.cylinder((0.0, 0.02, head + 0.04), (0.0, 0.02, head + 0.055), 0.08, CHROME, segments=16)
-    _ring(model, (0.0, 0.02, head + 0.04), 0.13, 0.006)
-    for sign in (-1, 1):
-        model.box((0.0, 0.02 + sign * 0.11, head + 0.02), (0.04, 0.12, 0.02), CARBON)
-    # The column with the plasma core.
-    model.cylinder((0.0, 0.02, base), (0.0, 0.02, base + 0.04), 0.12, SMOOTH, segments=20)
-    model.cylinder((0.0, 0.02, base + 0.04), (0.0, 0.02, head), 0.075, kit.PANE, segments=20)
-    model.cylinder((0.0, 0.02, base + 0.04), (0.0, 0.02, head), 0.03, LIGHT, segments=10)
-    for z in (0.14, 0.27, 0.40):
-        _sphere(model, (0.0, 0.02, base + z), 0.045, LAMP, rings=4, segments=10)
-    # The coil stack.
-    with model.moving("rotor", (0.0, 0.02, base)):
-        for index in range(4):
-            z = base + 0.10 + index * 0.115
-            _ring(model, (0.0, 0.02, z), 0.19, 0.03, WHITE if index % 2 else CHROME, segments=28)
-            _ring(model, (0.0, 0.02, z), 0.155, 0.008, LIGHT, segments=24)
-            for node in range(3):
-                angle = node * 2.0 * math.pi / 3.0 + index * 0.5
-                model.box((math.cos(angle) * 0.19, 0.02 + math.sin(angle) * 0.19, z), (0.05, 0.05, 0.07), CARBON,
-                          turn=angle)
-                model.box((math.cos(angle) * 0.215, 0.02 + math.sin(angle) * 0.215, z), (0.006, 0.03, 0.04), LIGHT,
-                          turn=angle)
+    axis = top + 0.17
+    for index, x in enumerate((-0.21, 0.21)):
+        _drive_pod(model, x, axis, top, "rotor_%d" % (index + 1))
+    parts.display(model, (0.0, 0.30, top + 0.0042), (0.16, 0.10), "+z", seed=141, depth=0.004)
     return model.finish()
 
 
