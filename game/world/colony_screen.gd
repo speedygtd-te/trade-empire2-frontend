@@ -1775,6 +1775,9 @@ func _refresh_view() -> void:
 			layout.to_absolute(placed.origin).z, placed.blueprint, true)
 		if not yield_line.is_empty():
 			_info.text += "\n" + yield_line
+		var focus_line := _focus_text(placed)
+		if not focus_line.is_empty():
+			_info.text += "\n" + focus_line
 		if placed.is_disabled():
 			_info.text += "\n" + tr("COLONY_MODULE_DISABLED")
 	# A module that needs staff or houses inhabitants but reaches no corridor (it keeps working).
@@ -1802,10 +1805,57 @@ func _refresh_view() -> void:
 		_staff.visible = true
 	if Sight.is_telescope(placed.module_type):
 		_refresh_telescope(placed)
+	elif MemberLinks.is_member_module(placed.module_type):
+		_refresh_member_module(placed)
 	elif Probes.is_launcher(placed.module_type):
 		_refresh_launcher(placed)
 	elif _switches_storage(placed):
 		_refresh_storage(placed)
+
+
+## What an extraction module gains from a Mining Optimizer (draft.39 `EXTRACTION_FOCUS`, a preview
+## at full staff): "+10 % from a Mining Optimizer nearby", or that one is near but inactive; ""
+## when none reaches it or the module does not react to the focus.
+func _focus_text(placed: StructureLayout.Module) -> String:
+	var definitions := Services.definitions
+	var module_def := definitions.module(placed.module_type) if definitions != null else null
+	if module_def == null or module_def.sensitivity(MemberLinks.EXTRACTION_FOCUS) <= 0:
+		return ""
+	var working := MemberLinks.focus(_focus.layout, definitions, _focus.idle_reasons).get(placed.module_id) as MemberLinks.Focus
+	if working != null:
+		return tr("MEMBER_FOCUS_BONUS").format({"percent": MemberLinks.percent_text(working.bonus_ppm)})
+	if MemberLinks.focus(_focus.layout, definitions, {}).has(placed.module_id):
+		return tr("MEMBER_FOCUS_WAITING")
+	return ""
+
+
+## A member module (draft.39): whether its enterprise link holds — the server reports it idle with
+## NO_ENTERPRISE otherwise; it still draws power — and what it does: the optimizer the extractors
+## it reaches, the uplink feeding the observation net, the node waiting for lab networking.
+func _refresh_member_module(placed: StructureLayout.Module) -> void:
+	_scope.visible = true
+	if placed.is_building():
+		_scope.visible = false
+		return
+	var off := Wire.as_string(_focus.idle_reasons.get(placed.module_id)) == MemberLinks.IDLE_NO_ENTERPRISE
+	var text := ""
+	match placed.module_type:
+		MemberLinks.OPTIMIZER:
+			if off:
+				text = tr("MEMBER_OPTIMIZER_OFF")
+			else:
+				var reached := MemberLinks.reached_by(MemberLinks.focus(_focus.layout, Services.definitions, _focus.idle_reasons), placed.module_id)
+				var best := 0
+				for entry: MemberLinks.Focus in reached:
+					best = maxi(best, entry.bonus_ppm)
+				text = tr("MEMBER_OPTIMIZER_NONE") if reached.is_empty() else \
+					tr("MEMBER_OPTIMIZER_ON").format({"count": reached.size(), "percent": MemberLinks.percent_text(best)})
+		MemberLinks.UPLINK:
+			text = tr("MEMBER_UPLINK_OFF") if off else tr("MEMBER_UPLINK_ON")
+		_:
+			text = tr("MEMBER_NODE_OFF") if off else tr("MEMBER_NODE_ON")
+	_scope.text = text
+	_scope.add_theme_color_override("font_color", AppTheme.COLOR_PENDING if off else AppTheme.COLOR_OK)
 
 
 ## Whether the inspect card offers switching this module between own supply and cargo hold (a
@@ -1945,6 +1995,8 @@ func _refresh_telescope(placed: StructureLayout.Module) -> void:
 		color = AppTheme.COLOR_MUTED
 	elif not scope.effective:
 		lines.append(tr("SIGHT_NOT_EFFECTIVE"))
+	if scope.is_platform():
+		lines.append(tr("SIGHT_PLATFORM_NET"))
 	if scope.is_upgrading():
 		var left := scope.completes_at - now
 		lines.append(tr("SIGHT_UPGRADING").format({"level": scope.upgrade_to, "duration": TimeFormat.duration(left)})
@@ -2072,6 +2124,8 @@ func _recipe_line(placed: StructureLayout.Module) -> String:
 	var module_def := Services.definitions.module(placed.module_type)
 	if module_def == null or not module_def.blueprint_driven:
 		return ""
+	if reason == MemberLinks.IDLE_NO_ENTERPRISE:
+		return tr("RECIPE_IDLE_NO_ENTERPRISE")
 	var recipe := Services.definitions.blueprint(placed.blueprint)
 	if placed.blueprint.is_empty() or recipe == null or reason == "NO_BLUEPRINT":
 		return tr("RECIPE_IDLE_NONE")

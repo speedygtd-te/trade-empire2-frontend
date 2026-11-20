@@ -386,14 +386,21 @@ static func exploration_text(reveal: RevealMap, size_x: int, size_y: int, transl
 	if reveal.areas.is_empty():
 		return translator.tr("PROBE_EXPLORED_NONE")
 	var share := reveal.explored_share(size_x, size_y)
+	var text := translator.tr("PROBE_EXPLORED_AREAS").format({"count": reveal.areas.size()})
 	if share >= SHARE_SHOWN:
-		return translator.tr("PROBE_EXPLORED_SHARE").format({"count": reveal.areas.size(),
+		text = translator.tr("PROBE_EXPLORED_SHARE").format({"count": reveal.areas.size(),
 			"percent": String.num(share * 100.0, 1 if share < 0.1 else 0)})
-	return translator.tr("PROBE_EXPLORED_AREAS").format({"count": reveal.areas.size()})
+	var shared := reveal.shared_count()
+	if shared > 0:
+		text += "\n" + translator.tr("PROBE_EXPLORED_SHARED").format({"count": shared})
+	return text
 
 
 ## "Mira's structure · 30 hulls · seen 2h 5m ago".
 static func sighting_text(sighting: RevealMap.Sighting, now: int, translator: Object) -> String:
 	var owner := sighting.owner_name if not sighting.owner_name.is_empty() else translator.tr("PROBE_UNKNOWN_OWNER")
-	return translator.tr("PROBE_SIGHTING").format({"owner": owner, "hulls": AmountFormat.units(sighting.hulls),
+	var text := translator.tr("PROBE_SIGHTING").format({"owner": owner, "hulls": AmountFormat.units(sighting.hulls),
 		"ago": TimeFormat.duration(maxi(now - sighting.seen_at, 0))})
+	if sighting.is_shared():
+		text += " " + translator.tr("PROBE_SIGHTING_SHARED")
+	return text

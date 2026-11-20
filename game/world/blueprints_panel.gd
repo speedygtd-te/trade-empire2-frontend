@@ -184,6 +184,8 @@ func _group_panel(group: BlueprintGroups.Group) -> Control:
 		notes.append(tr("DETAILS_BLUEPRINTS_BUILDING").format({"count": group.building}))
 	if group.location > 0:
 		notes.append(tr("DETAILS_BLUEPRINTS_LOCATION").format({"count": group.location}))
+	if group.no_enterprise > 0:
+		notes.append(tr("DETAILS_BLUEPRINTS_NO_ENTERPRISE").format({"count": group.no_enterprise}))
 	if not group.is_none():
 		var recipe := Services.definitions.blueprint(group.blueprint)
 		if recipe != null:
@@ -191,7 +193,7 @@ func _group_panel(group: BlueprintGroups.Group) -> Control:
 	if not notes.is_empty():
 		var note := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 		note.text = "\n".join(notes)
-		if group.location > 0:
+		if group.location > 0 or group.no_enterprise > 0:
 			note.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 		texts.add_child(note)
 	var change := Ui.secondary_button("DETAILS_BLUEPRINTS_CHANGE")

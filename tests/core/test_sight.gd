@@ -150,3 +150,17 @@ func test_veil_fades_out_towards_the_whole_galaxy() -> void:
 	assert_float(Sight.veil_share(100.0, 400.0, 40000.0, 0.5, 0.1)).is_equal(0.5)
 	assert_float(Sight.veil_share(40000.0, 400.0, 40000.0, 0.5, 0.1)).is_equal_approx(0.1, 0.0001)
 	assert_float(Sight.veil_share(4000.0, 400.0, 40000.0, 0.5, 0.1)).is_equal_approx(0.3, 0.0001)
+
+
+func test_the_observation_platform_is_a_telescope_of_kind_platform() -> void:
+	# draft.39: the enterprise's platform (27.5 ly) is upgraded like a space telescope.
+	var wire := telescope_wire()
+	wire["moduleType"] = "OBSERVATION_PLATFORM"
+	wire["kind"] = "platform"
+	wire["rangeLy"] = 27.5
+	var platform := Sight.telescope_from_wire(wire)
+
+	assert_bool(Sight.is_telescope("OBSERVATION_PLATFORM")).is_true()
+	assert_bool(platform.is_platform()).is_true()
+	assert_float(platform.range_ly).is_equal(27.5)
+	assert_bool(Sight.telescope_from_wire(telescope_wire()).is_platform()).is_false()

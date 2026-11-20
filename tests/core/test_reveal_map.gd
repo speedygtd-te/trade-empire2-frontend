@@ -120,3 +120,22 @@ func test_an_owner_id_sent_as_a_number_is_read_as_a_string() -> void:
 		{"structureId": 1, "ownerId": 4711, "ownerName": "A", "x": 0, "y": 0, "hulls": 1, "seenAt": 0, "probeId": 1}]})
 
 	assert_str(map.sightings[0].owner_id).is_equal("4711")
+
+
+func test_shared_areas_and_sightings_of_the_cartography_archive() -> void:
+	# draft.39: a member sees the areas and sightings of all members, marked with `sharedBy`.
+	var map := RevealMap.from_wire({"bodyId": "b", "fog": true,
+		"areas": [
+			{"x0": 1, "y0": 1, "radius": 10, "since": 1, "source": "home"},
+			{"x0": 50, "y0": 1, "radius": 10, "since": 2, "source": "probe", "sharedBy": "42"},
+			{"x0": 90, "y0": 1, "radius": 10, "since": 3, "source": "structure", "sharedBy": "enterprise"},
+		],
+		"sightings": [{"structureId": 5, "ownerId": "9", "ownerName": "X", "x": 50, "y": 1, "hulls": 4,
+			"seenAt": 2, "probeId": 3, "footprint": [], "sharedBy": "42"}]})
+
+	assert_bool(map.areas[0].is_shared()).is_false()
+	assert_str(map.areas[1].shared_by).is_equal("42")
+	assert_str(map.areas[2].shared_by).is_equal("enterprise")
+	assert_int(map.shared_count()).is_equal(2)
+	assert_bool(map.sightings[0].is_shared()).is_true()
+	assert_bool(RevealMap.from_wire(ANSWER).sightings[0].is_shared()).is_false()

@@ -1,7 +1,9 @@
 class_name RevealMap
 extends RefCounted
 ## What the player has explored of one body's surface (draft.31, `GET /v2/bodies/{id}/reveal`):
-## the explored areas and the foreign structures probes have seen there.
+## the explored areas and the foreign structures probes have seen there. While the enterprise's
+## Cartography Archive works, a member also gets those of all members and the enterprise, marked
+## with `sharedBy` (draft.39); they are gone after leaving.
 ##
 ## An area is a capsule: every cell within `radius` of the segment (x0, y0)–(x1, y1) is explored
 ## (a disc is a segment of length 0); x wraps around the body. The surface stream itself marks the
@@ -26,6 +28,12 @@ class Area:
 	## Game time (ms) since when it is explored.
 	var since := 0
 	var source := ""
+	## Shared by the enterprise's Cartography Archive (draft.39 `sharedBy`): the member's player id
+	## or "enterprise"; "" for an own area.
+	var shared_by := ""
+
+	func is_shared() -> bool:
+		return not shared_by.is_empty()
 
 	## The middle of the segment (x not wrapped).
 	func centre() -> Vector2i:
@@ -71,6 +79,11 @@ class Sighting:
 	## The ground plan seen from above (draft.32): runs Vector3i(dy, dx0, dx1) relative to the
 	## origin, cells x + dx0 … x + dx1 of row y + dy. Empty for older snapshots.
 	var footprint: Array[Vector3i] = []
+	## Shared by the enterprise's Cartography Archive (draft.39 `sharedBy`); "" for an own one.
+	var shared_by := ""
+
+	func is_shared() -> bool:
+		return not shared_by.is_empty()
 
 	## Edge of a square of about as many cells as the structure has hulls (at least 1): the
 	## stand-in shape while no footprint is known.
@@ -121,6 +134,7 @@ static func from_wire(data: Dictionary) -> RevealMap:
 		area.radius = maxi(Wire.as_int(entry.get("radius")), 0)
 		area.since = Wire.as_int(entry.get("since"))
 		area.source = Wire.as_string(entry.get("source"))
+		area.shared_by = _shared_by(entry.get("sharedBy"))
 		map.areas.append(area)
 	var seen: Array = data.get("sightings") if typeof(data.get("sightings")) == TYPE_ARRAY else []
 	for item: Variant in seen:
@@ -135,6 +149,7 @@ static func from_wire(data: Dictionary) -> RevealMap:
 		sighting.hulls = Wire.as_int(entry.get("hulls"))
 		sighting.seen_at = Wire.as_int(entry.get("seenAt"))
 		sighting.probe_id = Wire.as_int(entry.get("probeId"))
+		sighting.shared_by = _shared_by(entry.get("sharedBy"))
 		var runs: Array = entry.get("footprint") if typeof(entry.get("footprint")) == TYPE_ARRAY else []
 		for part: Variant in runs:
 			if typeof(part) == TYPE_ARRAY:
@@ -146,6 +161,24 @@ static func from_wire(data: Dictionary) -> RevealMap:
 						sighting.footprint.append(Vector3i(Wire.as_int(run[0]), dx0, dx1))
 		map.sightings.append(sighting)
 	return map
+
+
+## `sharedBy` as a string: a player id stays a string (a number is read too), "enterprise" as is.
+static func _shared_by(value: Variant) -> String:
+	if typeof(value) == TYPE_STRING:
+		return Wire.as_string(value)
+	if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+		return str(Wire.as_int(value))
+	return ""
+
+
+## How many areas the enterprise's archive shares (draft.39).
+func shared_count() -> int:
+	var count := 0
+	for area: Area in areas:
+		if area.is_shared():
+			count += 1
+	return count
 
 
 ## Squared distance of a point from the segment a–b.

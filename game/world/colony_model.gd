@@ -42,6 +42,9 @@ signal surface_reset
 const SURFACE_RADIUS := 2
 ## Deposits are loaded only where the player looks, in small blocks (a cell carries a dozen).
 const DEPOSIT_BLOCK := 4
+## Seconds to wait after a membership or enterprise research event before the member blueprints
+## are loaded again (the enterprise model updates the account first).
+const MEMBERSHIP_SETTLE_SECONDS := 2.0
 
 var structure_id := 0
 var structure_name := ""
@@ -98,8 +101,12 @@ var level_surfaces: Dictionary = {}
 var layout := StructureLayout.new()
 var inventory: Inventory = null
 var surface := SurfaceBlocks.new()
-## Recipe keys the player may use (basis or researched) → true.
+## Recipe keys the player may use (basis, researched, or unlocked for the members of the
+## player's enterprise) → true.
 var usable_blueprints: Dictionary = {}
+## The part of `usable_blueprints` the player's enterprise unlocks for its members (draft.39,
+## `memberUnlocks` of its researched techs) → true; empty outside an enterprise.
+var member_blueprints: Dictionary = {}
 ## The player's research and labs; null until loaded.
 var research: ResearchState = null
 ## Why research could not be loaded; null when it could.
@@ -373,6 +380,7 @@ func _make_sibling(id: int) -> ColonyModel:
 	other.in_orbit = in_orbit
 	# The same dictionary: a research reload of the home structure reaches the other one too.
 	other.usable_blueprints = usable_blueprints
+	other.member_blueprints = member_blueprints
 	return other
 
 
@@ -604,12 +612,31 @@ func reload_research() -> ApiError:
 		return answer.error
 	research_error = null
 	research = ResearchState.from_wire(answer.data)
+	var members := await _load_member_blueprints()
+	# Filled in place: a guest's model shares both dictionaries.
+	member_blueprints.clear()
+	member_blueprints.merge(members)
 	usable_blueprints.clear()
 	for key: String in research.blueprints.keys():
+		usable_blueprints[key] = true
+	for key: String in member_blueprints.keys():
 		usable_blueprints[key] = true
 	production_changed.emit()
 	research_changed.emit()
 	return null
+
+
+## The blueprints the player's enterprise unlocks for its members (draft.39): `/v2/research`
+## leaves them out, the enterprise's research names them. Empty outside an enterprise or when
+## it cannot be loaded (the recipe list then says they need the enterprise; the server decides).
+func _load_member_blueprints() -> Dictionary:
+	var account := Services.session.account
+	if account == null or account.enterprise_id.is_empty():
+		return {}
+	var answer := await Services.api.get_json("/v2/enterprises/%s/research" % account.enterprise_id.uri_encode())
+	if not answer.is_ok():
+		return {}
+	return EnterpriseResearch.from_wire(answer.data).member_blueprints()
 
 
 ## Loads the labs of this structure again (status, slots, progress). Returns why it failed.
@@ -1174,6 +1201,12 @@ func _on_event(event: SseEvent) -> void:
 			return
 		"research.interrupted":
 			reload_research()
+			return
+		"enterprise.research", "enterprise.memberJoined", "enterprise.memberLeft", "enterprise.dissolved":
+			# Member blueprints (draft.39) follow the enterprise's research and the membership;
+			# a moment later, once the enterprise model has updated the account.
+			if Wire.as_string(data.get("kind")) in ["", "completed"] and is_inside_tree():
+				get_tree().create_timer(MEMBERSHIP_SETTLE_SECONDS).timeout.connect(reload_research)
 			return
 		"lab.changed":
 			if research != null:
