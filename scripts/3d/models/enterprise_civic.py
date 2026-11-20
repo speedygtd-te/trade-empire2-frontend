@@ -445,9 +445,10 @@ def security_hq():
 # --- Enterprise Holodeck (1x1, counterpart of EXPERIENCE_ARENA) -------------------------------
 
 def holodeck():
-    """A holo room: a graphite floor and two graphite walls, all lined with a glowing cyan grid,
-    projector emitters in the upper corners, and a scene projected in the middle: wireframe
-    mountains, glowing trees and a turning wireframe moon."""
+    """A holo room of our own: a graphite floor and two graphite walls covered by a hex lattice of
+    emitter dots (bright round the scene, dim further out), an emitter ring under the ceiling, and
+    a scene projected in the middle: wireframe mountains, glowing trees and a turning wireframe
+    moon."""
     model = kit.Builder("te_enterprise_holodeck", style=STYLE)
     half = HALF_1
     floor_top = 0.06
@@ -467,26 +468,43 @@ def holodeck():
     model.box((WALL / 2.0, half - WALL / 2.0, top + 0.01), (2.0 * half - WALL, WALL + 0.01, 0.02), SMOOTH)
     model.box((-half + WALL / 2.0, -WALL / 2.0, top + 0.01), (WALL + 0.01, 2.0 * half - WALL, 0.02), SMOOTH)
     parts.corner_post(model, (-half + 0.04, half - 0.04), floor_top, top + 0.02, radius=0.04)
-    # The grid: floor, back wall, left wall.
-    step = 0.105
-    lines = [-half + WALL + step * k for k in range(1, 8)]
-    line = 0.005
-    for value in lines:
-        if value < half - 0.01:
-            model.plate((value, (-half + back) / 2.0, floor_top + 0.0006), (line, back + half), "+z", LIGHT)
-            model.plate((value, back - 0.0006, floor_top + height / 2.0), (line, height), "-y", LIGHT)
-    for value in [half - WALL - step * k for k in range(1, 8)]:
-        if value > -half + 0.01:
-            model.plate(((left + half) / 2.0, value, floor_top + 0.0012), (half - left, line), "+z", LIGHT)
-            model.plate((left + 0.0006, value, floor_top + height / 2.0), (line, height), "+x", LIGHT)
-    for k in range(1, 4):
-        z = floor_top + k * step
-        model.plate(((left + half) / 2.0, back - 0.0012, z), (half - left, line), "-y", LIGHT)
-        model.plate((left + 0.0012, (-half + back) / 2.0, z), (back + half, line), "+x", LIGHT)
-    # Projector emitters in the upper corners of the walls and above the open corner.
-    for x, y in ((left + 0.03, back - 0.03), (half - 0.06, back - 0.03), (left + 0.03, -half + 0.06)):
-        model.rounded_box((x, y, top - 0.035), (0.06, 0.06, 0.05), 0.02, SMOOTH)
-        parts.ent_sphere(model, (x + 0.012, y - 0.012, top - 0.06), 0.02, LAMP, rings=4, segments=10)
+    # The projection field: a hex lattice of emitter dots on floor and walls, bright round the
+    # scene in the middle, dim (screen teal) further out.
+    spacing = 0.05
+    dot = 0.011
+    centre = (0.02, 0.0, floor_top + 0.12)
+
+    def shade(point) -> str:
+        reach = math.dist(point, centre)
+        return LIGHT if reach < 0.26 else (SCREEN if reach > 0.40 else LAMP if reach < 0.30 else LIGHT)
+
+    rows = int((back + half) / (spacing * 0.866))
+    for row in range(rows):
+        y = -half + 0.025 + row * spacing * 0.866
+        for column in range(20):
+            x = left + 0.02 + column * spacing + (spacing / 2.0 if row % 2 else 0.0)
+            if x < half - 0.015 and y < back - 0.015:
+                model.plate((x, y, floor_top + 0.0006), (dot, dot), "+z", shade((x, y, floor_top)))
+    for row in range(int((height - 0.03) / (spacing * 0.866))):
+        z = floor_top + 0.03 + row * spacing * 0.866
+        for column in range(20):
+            shift = spacing / 2.0 if row % 2 else 0.0
+            x = left + 0.03 + column * spacing + shift
+            if x < half - 0.015:
+                model.plate((x, back - 0.0006, z), (dot, dot), "-y", shade((x, back, z)))
+            y = back - 0.03 - column * spacing - shift
+            if y > -half + 0.015:
+                model.plate((left + 0.0006, y, z), (dot, dot), "+x", shade((left, y, z)))
+    # The emitter ring under the ceiling, held from the corner post, six lenses looking down.
+    ring = (0.02, 0.0, top + 0.005)
+    parts.torus(model, ring, 0.22, 0.016, SMOOTH, segments=32, sides=6)
+    _ring(model, (ring[0], ring[1], ring[2] - 0.014), 0.22, 0.005, segments=32)
+    model.beam((-half + 0.06, half - 0.06, top + 0.012), (ring[0] - 0.15, ring[1] + 0.15, ring[2] + 0.006), 0.022,
+               SMOOTH)
+    for index in range(6):
+        angle = math.pi / 6.0 + index * math.pi / 3.0
+        point = (ring[0] + math.cos(angle) * 0.22, ring[1] + math.sin(angle) * 0.22, ring[2] - 0.022)
+        parts.ent_sphere(model, point, 0.014, LAMP, rings=4, segments=8)
     # The projected scene.
     base = floor_top
     for (mx, my), size, peak in (((0.02, 0.10), 0.20, 0.20), ((0.20, -0.04), 0.14, 0.13), ((-0.18, -0.12), 0.12, 0.10)):
