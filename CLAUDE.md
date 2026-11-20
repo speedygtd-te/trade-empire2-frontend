@@ -78,6 +78,8 @@ verschärft, wenn es nötig wird.
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
 | HD-Modelle bauen (nur Module und Hüllen, oberste Detailstufe) | `powershell -File tools\build-models.ps1 -Detail hd` → `game\world\models_hd\` (gleiche Dateinamen, `-Only`/`-Types` wie oben; stellt danach per Godot-Import die Texturen auf verlustbehaftet) |
+| HD-Paket bauen und hochladen (Asset-Host, AWS-Profil `trade-empire-assets`) | `powershell -File tools\hd-bundle.ps1` (`-DryRun` baut nur nach `build\hd\`; zeigt URL, Größe, SHA-256; frischt die Modell-Liste im Preset „HD Bundle“ auf) |
+| HD-Paket prüfen (Download, Prüfsumme, Einbinden; ohne Konto) | `godot --path . --headless res://smoke/hd_package_check.tscn [-- --hd-manifest=<url>]` (im Projektordner sind die Modelle eingebaut; echten Download sehen: `game/world/models_hd` vorübergehend aus dem Projekt nehmen, ohne Import dazwischen, frisches APPDATA unter `build\`) |
 | Ressourcen-Modelle bauen (eins je Ressource, Quelle der Icons) | `powershell -File tools\build-models.ps1 -Only resources [-Types iron,robot_t3]` → `game\world\models\resources\` (trägt `.gdignore`: nicht importiert, nicht im APK; für eine spätere 3D-Detailansicht entfernen) |
 | Ressourcen-Icons rendern (+ Kontaktbogen) | `godot --path . --resolution 720x1280 res://smoke/resource_icons.tscn [-- --only=iron,water]` → `game/ui/resource_icons/<key>.png` (128 px, Import verlustbehaftet mit Mipmaps) und `build/resource_icons/sheet_44.png`, `sheet_128.png`; Nachschlagen im Spiel: `ResourceIcon`, Zeilen über `Ui.resource_icon` / `Ui.add_resource_icon` |
 | Modul- und Hüllen-Icons rendern (Lager, Bau-Palette) | `godot --path . --resolution 720x1280 res://smoke/resource_icons.tscn -- --items [--only=pump_module,hull_dock]` → `game/ui/item_icons/<item>.png` aus dem Modell, das die Kolonie zeigt (Zuordnung Item → Modul/Hülle aus `/v2/definitions`, noch nicht ausgelieferte in `COMING_ITEMS`), Kontaktbogen `build/item_icons/`; schreibt die `.import` gleich mit; neues Modul: Modell bauen, Befehl laufen lassen, Schlüssel in `tests/game/test_item_icons.gd` |
@@ -124,6 +126,12 @@ Module und Hüllen gibt es zusätzlich in HD (`TE_DETAIL=hd`, `kit.HD_*`: doppel
 Kanten, 1024-px-Texturen, verlustbehaftet importiert) unter `game/world/models_hd`; `ColonyView`
 zeigt sie auf der obersten Detailstufe `DetailGovernor.Tier.ULTRA` (nur starke Geräte, Schalter im
 Profil), ein fehlendes HD-Modell fällt auf das normale zurück — neue Modelle in beiden Varianten bauen.
+Die HD-Modelle sind nicht im APK (Rudi, 2026-11-20): `tools\hd-bundle.ps1` packt sie als Godot-Pack auf den
+Asset-Host (`game/hd/<version>/models_hd.pck` + `game/hd/manifest.json`), `HdPackageService` lädt es auf
+Geräten, die ULTRA dürfen, nach `user://hd`, prüft SHA-256 und bindet es ein; erst dann gibt es ULTRA.
+Nach geänderten HD-Modellen: committen, `hd-bundle.ps1` laufen lassen; passt ein altes Pack nicht mehr zum
+Client (Namen, Ordner), `HdBundle.FORMAT` erhöhen; nach einem Godot-Update (major.minor) ebenfalls neu bauen
+(eigener Manifest-Eintrag je Godot-Version, ältere Clients behalten ihren).
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
 am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine Hülle füllt ihre
