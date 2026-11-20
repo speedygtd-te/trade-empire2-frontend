@@ -26,6 +26,18 @@ const MODULE_PAIRS: Array = [
 	["trade_module", "enterprise_supply_hub", 2], ["fusion_reactor", "enterprise_generator", 1],
 	["habitat_t3", "enterprise_habitat_t3", 1], ["fusion_drive", "enterprise_sublight_thruster", 1],
 ]
+## The habitats, drives, weapons, protection and running gear (enterprise_systems.py) beside
+## theirs, in two shots.
+const SYSTEM_PAIRS_LIVING: Array = [
+	["habitat", "enterprise_habitat_t1", 1], ["habitat_t2", "enterprise_habitat_t2", 1],
+	["habitat_t3", "enterprise_habitat_t3", 1], ["habitat_t4", "enterprise_habitat_t4", 1],
+	["habitat_t5", "enterprise_habitat_t5", 1], ["epstein_drive", "enterprise_warp_drive", 1],
+]
+const SYSTEM_PAIRS_COMBAT: Array = [
+	["missile_launcher", "enterprise_rocket_launcher", 2], ["beam_laser", "enterprise_laser", 1],
+	["shield_generator", "enterprise_shield_generator", 1], ["armor_plating", "enterprise_armor", 1],
+	["heavy_wheel", "enterprise_wheel", 1], ["tracks", "enterprise_tracks", 1],
+]
 const HULL_PAIRS: Array = [
 	["hull_standard_closed", "hull_enterprise_hull_standard_closed"],
 	["hull_glass_carbon_closed", "hull_enterprise_hull_glass_closed"],
@@ -60,7 +72,7 @@ const CIVIC_LAYOUT: Array = [
 ## Modules that stand on a platform, not in a hull.
 const OUTDOOR_MODULES: Array[String] = [
 	"enterprise_sublight_thruster", "fusion_drive", "observation_platform", "space_telescope_module",
-	"observation_uplink", "mine",
+	"observation_uplink", "mine", "epstein_drive", "beam_laser", "enterprise_warp_drive", "enterprise_laser",
 ]
 const FLOOR_HEIGHT := 0.06
 ## The mock flagship: hull per cell (x, z; +z is the front) and the modules on it.
@@ -103,6 +115,8 @@ func _ready() -> void:
 		await _shot_pairs(MODULE_PAIRS, true, "compare_modules_" + time)
 		await _shot_pairs(HULL_PAIRS, false, "compare_hulls_" + time)
 		await _shot_overview("overview_" + time)
+		await _shot_pairs(SYSTEM_PAIRS_LIVING, true, "compare_systems_living_" + time)
+		await _shot_pairs(SYSTEM_PAIRS_COMBAT, true, "compare_systems_combat_" + time)
 		await _shot_mock(true, "mock_closed_" + time, 9.5)
 		await _shot_mock(false, "mock_open_" + time, 9.5)
 		await _shot_mock(false, "mock_open_zoom_" + time, 4.2, Vector3(1.6, 0.0, 1.6))

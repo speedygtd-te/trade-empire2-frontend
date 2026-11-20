@@ -297,37 +297,44 @@ def habitat_t3():
 # --- Enterprise Sublight Thruster (1x1, outdoor) ----------------------------------------------
 
 def sublight_thruster():
-    """A sleek white nacelle on a carbon pylon, its nozzle to the front with a glowing cyan
-    throat; a chrome containment ring with four lit nodes turns round it (moving part rotor)."""
+    """A gimballed engine block between two white uprights on a carbon turntable, two heat-ringed
+    thrust bells with a cyan plasma glow at its front; on top a magnetic ring with four lit nodes
+    turns round a chrome mast (moving part rotor). Deliberately no pods or glowing domes (Rudi
+    2026-11-20: our own design); the warp drive is the bigger, taller sister."""
     model = kit.Builder("te_enterprise_sublight_thruster", style=STYLE)
     top = parts.plinth(model, 0.40, height=0.05, radius=0.08)
-    axis = 0.31
-    # The pylon.
-    model.rounded_box((0.0, 0.08, top + 0.06), (0.14, 0.30, 0.12), 0.04, CARBON)
-    model.rounded_box((0.0, 0.08, top + 0.125), (0.10, 0.26, 0.03), 0.03, SMOOTH)
-    # The nacelle along -y (the nozzle looks to the front); heights of the profile run to -y.
-    profile = [
-        (0.0, -0.385, GRAPHITE), (0.10, -0.385), (0.13, -0.37, SMOOTH), (0.165, -0.30), (0.185, -0.17),
-        (0.19, -0.02, CARBON), (0.19, 0.04, SMOOTH), (0.18, 0.14), (0.16, 0.22, GRAPHITE), (0.13, 0.26, GRAPHITE),
-        (0.15, 0.33, GRAPHITE), (0.168, 0.385, GRAPHITE), (0.14, 0.385, LIGHT), (0.08, 0.34, LAMP), (0.0, 0.31),
-    ]
-    with model.placed((0.0, 0.0, axis), tilt=math.pi / 2.0):
-        model.revolve((0.0, 0.0, 0.0), profile, SMOOTH, segments=20, sharp=35.0)
-        # Intake grille at the back and a dorsal fin.
-    model.plate((0.0, 0.386, axis), (0.14, 0.14), "+y", GRAPHITE)
-    model.rounded_box((0.0, 0.04, axis + 0.21), (0.022, 0.26, 0.06), 0.01, WHITE)
-    parts.light_strip(model, (0.0, -0.06, axis + 0.24), (0.0, 0.15, axis + 0.24), 0.008)
+    model.cylinder((0.0, 0.0, top), (0.0, 0.0, top + 0.03), 0.33, CARBON, segments=28)
+    _ring(model, (0.0, 0.0, top + 0.03), 0.33, 0.006, segments=28)
+    model.cylinder((0.0, 0.0, top + 0.03), (0.0, 0.0, top + 0.05), 0.29, SMOOTH, segments=28)
+    base = top + 0.05
+    axis = base + 0.21
     for side in (-1, 1):
-        parts.light_strip(model, (side * 0.19, -0.22, axis), (side * 0.19, 0.10, axis), 0.008)
-    # The turning containment ring.
-    ring_y = -0.12
-    with model.moving("rotor", (0.0, ring_y, axis), tilt=math.pi / 2.0):
-        with model.placed((0.0, ring_y, axis), tilt=math.pi / 2.0):
-            _ring(model, (0.0, 0.0, 0.0), 0.225, 0.014, CHROME, segments=28)
+        x = side * 0.25
+        model.rounded_box((x, 0.03, base + 0.13), (0.07, 0.16, 0.26), 0.03, WHITE)
+        parts.light_strip(model, (x + side * 0.036, -0.02, base + 0.04), (x + side * 0.036, -0.02, base + 0.22), 0.009)
+        model.cylinder((side * 0.17, 0.03, axis), (side * 0.27, 0.03, axis), 0.045, CHROME, segments=14)
+        model.cylinder((side * 0.285, 0.03, axis), (side * 0.30, 0.03, axis), 0.03, LIGHT, segments=12)
+    with model.placed((0.0, 0.03, axis), tilt=-0.12):
+        model.rounded_box((0.0, 0.0, 0.0), (0.34, 0.30, 0.22), 0.07, WHITE)
+        model.rounded_box((0.0, 0.0, 0.0), (0.344, 0.304, 0.045), 0.07, CARBON)
+        model.rounded_box((0.0, 0.0, 0.027), (0.346, 0.306, 0.008), 0.07, LIGHT)
+        model.plate((0.0, -0.1506, 0.0), (0.26, 0.15), "-y", GRAPHITE)
+        for x in (-0.08, 0.08):
+            parts.ent_nozzle(model, (x, -0.14, 0.0), (x, -0.27, 0.0), 0.04, 0.068)
+        for index in range(4):
+            model.box((-0.09 + index * 0.06, 0.12, 0.112), (0.03, 0.06, 0.006), CARBON)
+        mast = 0.11
+        model.cylinder((0.0, 0.0, mast), (0.0, 0.0, mast + 0.09), 0.022, CHROME, segments=10)
+        model.cylinder((0.0, 0.0, mast + 0.09), (0.0, 0.0, mast + 0.10), 0.035, SMOOTH, segments=12)
+        _sphere(model, (0.0, 0.0, mast + 0.115), 0.02, LIGHT, rings=4, segments=8)
+        with model.moving("rotor", (0.0, 0.0, mast + 0.05)):
+            _ring(model, (0.0, 0.0, mast + 0.05), 0.12, 0.014, CHROME, segments=24)
             for index in range(4):
                 angle = index * math.pi / 2.0 + math.pi / 4.0
-                model.box((math.cos(angle) * 0.225, math.sin(angle) * 0.225, 0.0), (0.035, 0.035, 0.035), LIGHT,
+                model.box((math.cos(angle) * 0.12, math.sin(angle) * 0.12, mast + 0.05), (0.032, 0.032, 0.032), LIGHT,
                           turn=angle)
+                model.beam((math.cos(angle) * 0.02, math.sin(angle) * 0.02, mast + 0.05),
+                           (math.cos(angle) * 0.11, math.sin(angle) * 0.11, mast + 0.05), 0.008, CHROME)
     return model.finish()
 
 

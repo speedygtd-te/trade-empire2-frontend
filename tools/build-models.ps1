@@ -5,13 +5,13 @@
 #   powershell -File tools\build-models.ps1 -Only families [-Types academy,rtg]
 #
 # Every script builds one model (pump.py -> pump.glb), except families.py, hulls_closed.py,
-# enterprise.py, enterprise_hulls.py, props.py, perimeter.py, grounds.py, retaining.py and
-# resources.py, which build several (-Types limits them); families.py builds the
+# enterprise.py, enterprise_hulls.py, enterprise_systems.py, props.py, perimeter.py, grounds.py,
+# retaining.py and resources.py, which build several (-Types limits them); families.py builds the
 # module types without a script of their own from shared templates, enterprise.py and
-# enterprise_hulls.py the enterprise modules and hulls (open and shut) in the clean enterprise
-# look (kit style "enterprise"), enterprise_civic.py the civic and population enterprise modules in
-# that look, enterprise_member.py the player modules that enterprise research unlocks for members,
-# props.py the surface props
+# enterprise_hulls.py and enterprise_systems.py the enterprise modules and hulls (open and shut) in
+# the clean enterprise look (kit style "enterprise"), enterprise_civic.py the civic and population
+# enterprise modules in that look, enterprise_member.py the player modules that enterprise research
+# unlocks for members, props.py the surface props
 # (trees, stones ...) into the subfolder props, perimeter.py the masts, radar and beacons around a
 # base into the subfolder perimeter, grounds.py the fence and wall around a large base into the
 # subfolder grounds, retaining.py the retaining walls beside structures on a slope into the subfolder
@@ -56,7 +56,7 @@ $models = Get-ChildItem -LiteralPath (Join-Path $root 'scripts\3d\models') -Filt
     Where-Object { -not $Detail -or $_.BaseName -notin $noDetail } |
     Sort-Object Name
 foreach ($model in $models) {
-    if ($model.BaseName -in @('families', 'hulls_closed', 'enterprise', 'enterprise_hulls', 'enterprise_civic', 'enterprise_member', 'props', 'perimeter', 'grounds', 'retaining', 'resources')) {
+    if ($model.BaseName -in @('families', 'hulls_closed', 'enterprise', 'enterprise_hulls', 'enterprise_systems', 'enterprise_civic', 'enterprise_member', 'props', 'perimeter', 'grounds', 'retaining', 'resources')) {
         # The surface props (trees, stones ...) and the perimeter go into folders of their own.
         $target = if ($model.BaseName -in @('props', 'perimeter', 'grounds', 'retaining', 'resources')) { Join-Path $Out $model.BaseName } else { $Out }
         New-Item -ItemType Directory -Force -Path $target | Out-Null

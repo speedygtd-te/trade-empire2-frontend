@@ -151,7 +151,11 @@ Enterprise-Teile in `parts.py` (`ent_room`, `plinth`, `display`, `console`, `gla
 Ansicht neben Spielermodellen und als Muster-Flaggschiff: `godot --path . --resolution 1600x1200
 res://smoke/enterprise_models.tscn -- --out=build/enterprise-models [--models=res://game/world/models_hd]`.
 Die Farben sind auf das Licht von `ColonyView` abgestimmt (Weiß ~0,65, Böden ~0,33 sRGB) — hellere
-Werte brennen bei Tag aus.
+Werte brennen bei Tag aus. Habitate T1/T2/T4/T5, Antriebe, Waffen, Schutz und Fahrwerk in
+`enterprise_systems.py` (Teile `ent_rocket`, `ent_nozzle`). **Keine Franchise-Anleihen** (Rudi,
+2026-11-20): keine Gondeln an V-Pylonen, keine leuchtenden Bug-Kuppeln, keine Untertassen oder
+Deflektorschüsseln — Antriebe sind kompakte eigene Maschinen auf ihrer Zelle (Düsenbündel mit
+Hitzeringen, Spulenstapel im Carbonrahmen, kardanischer Block).
 
 Serveradresse: überall der Live-Server `https://trade-empire.net` (Rudis Vorgabe vom
 2026-11-17: „Nutz bitte den Server für alles“). Das lokale Backend (`tools\dev-backend.ps1`,

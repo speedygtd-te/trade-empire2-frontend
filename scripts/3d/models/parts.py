@@ -925,3 +925,43 @@ def ent_planter(model, center, z: float, size=(0.14, 0.14), height: float = 0.06
     else:
         model.lump((x, y, z + height + tall * 0.35), (width * 0.85, depth * 0.85, tall * 0.7), "plant",
                    seed=seed, rough=0.25)
+
+
+def ent_rocket(model, length: float, radius: float) -> None:
+    """An ENTERPRISE_ROCKET lying along +x of the current frame, its tail at x = 0, its nose at
+    *length*, on the axis y = z = 0: a white body with a carbon band and a cyan ring, a white
+    nose cone with a glowing seeker tip, a graphite nozzle with a cyan glow and four carbon fins
+    (in the rocket launcher and as the resource model). The player MISSILE is white with red."""
+    r = radius
+    model.cylinder((-0.004, 0.0, 0.0), (0.0, 0.0, 0.0), r * 0.42, ENT_LIGHT, segments=10)
+    model.cylinder((0.0, 0.0, 0.0), (0.08 * length, 0.0, 0.0), r * 0.55, ENT_GRAPHITE, segments=12, end_radius=r * 0.85)
+    model.cylinder((0.08 * length, 0.0, 0.0), (0.74 * length, 0.0, 0.0), r, ENT_SMOOTH, segments=14)
+    model.cylinder((0.20 * length, 0.0, 0.0), (0.30 * length, 0.0, 0.0), r * 1.03, ENT_CARBON, segments=14)
+    model.cylinder((0.62 * length, 0.0, 0.0), (0.65 * length, 0.0, 0.0), r * 1.05, ENT_LIGHT, segments=14)
+    model.cylinder((0.74 * length, 0.0, 0.0), (0.94 * length, 0.0, 0.0), r, ENT_SMOOTH, segments=14, end_radius=r * 0.3)
+    model.cylinder((0.94 * length, 0.0, 0.0), (length, 0.0, 0.0), r * 0.3, ENT_LIGHT, segments=10, end_radius=0.0)
+    for index in range(4):
+        angle = math.pi / 4.0 + index * math.pi / 2.0
+        uy, uz = math.cos(angle), math.sin(angle)
+        root, tip = r * 0.9, r * 2.0
+        model.beam((0.24 * length, uy * root, uz * root), (0.05 * length, uy * tip, uz * tip), r * 0.2, ENT_CARBON)
+        model.beam((0.08 * length, uy * root, uz * root), (0.05 * length, uy * tip, uz * tip), r * 0.2, ENT_CARBON)
+
+
+def ent_nozzle(model, start, end, throat: float, mouth: float, segments: int = 16) -> None:
+    """A short enterprise thrust bell from *start* (its throat, set into a housing) to *end* (its
+    mouth): a graphite bell flaring from *throat* to *mouth* radius, open, with a chrome heat ring
+    round its lip and a cyan plasma glow deep inside. Clustered, they are the drives of the
+    enterprise items (no long pods, no glowing front domes: our own look, not a franchise's)."""
+    dx, dy, dz = (end[0] - start[0], end[1] - start[1], end[2] - start[2])
+    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+    tilt = math.acos(max(-1.0, min(1.0, dz / length)))
+    turn = math.atan2(dx, -dy) if abs(dx) + abs(dy) > 1e-9 else 0.0
+    profile = [
+        (0.0, 0.0, ENT_GRAPHITE), (throat, 0.0, ENT_GRAPHITE), (mouth * 0.96, length * 0.82, ENT_CHROME),
+        (mouth * 1.06, length, ENT_CHROME), (mouth * 0.90, length, ENT_GRAPHITE),
+        (throat + (mouth - throat) * 0.45, length * 0.55, ENT_LIGHT), (throat * 0.85, length * 0.25, ENT_LAMP),
+        (0.0, length * 0.20),
+    ]
+    with model.placed(start, turn=turn, tilt=tilt):
+        model.revolve((0.0, 0.0, 0.0), profile, ENT_GRAPHITE, segments=segments, sharp=30.0)
