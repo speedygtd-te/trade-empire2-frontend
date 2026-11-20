@@ -180,7 +180,7 @@ static func visible_share(tier: DetailGovernor.Tier, zoom: float, big: bool) -> 
 ## shadow is more than a few pixels (each shadow split draws every caster again).
 static func casts_shadows(tier: DetailGovernor.Tier, zoom: float) -> bool:
 	match tier:
-		DetailGovernor.Tier.FAST:
+		DetailGovernor.Tier.ULTRA, DetailGovernor.Tier.FAST:
 			return zoom <= 16.0
 		DetailGovernor.Tier.MEDIUM:
 			return zoom <= 12.0
@@ -195,11 +195,13 @@ static func reach(tier: DetailGovernor.Tier) -> int:
 ## Per tier: (zoom up to which the first share holds, zoom from which the least share holds,
 ## least share, first share).
 const _SHARE_BIG := {
+	DetailGovernor.Tier.ULTRA: [16.0, 40.0, 0.6, 1.0],
 	DetailGovernor.Tier.FAST: [16.0, 40.0, 0.6, 1.0],
 	DetailGovernor.Tier.MEDIUM: [12.0, 36.0, 0.4, 1.0],
 	DetailGovernor.Tier.SLOW: [9.0, 30.0, 0.25, 0.7],
 }
 const _SHARE_SMALL := {
+	DetailGovernor.Tier.ULTRA: [14.0, 28.0, 0.0, 1.0],
 	DetailGovernor.Tier.FAST: [14.0, 28.0, 0.0, 1.0],
 	DetailGovernor.Tier.MEDIUM: [10.0, 22.0, 0.0, 1.0],
 	DetailGovernor.Tier.SLOW: [1.0, 2.0, 0.0, 0.0],

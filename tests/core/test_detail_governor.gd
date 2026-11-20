@@ -117,7 +117,7 @@ func test_median() -> void:
 
 func _slow_governor() -> DetailGovernor:
 	var governor := DetailGovernor.new()
-	governor.restore({"tier": DetailGovernor.Tier.SLOW})
+	governor.restore({"tier": DetailGovernor.Tier.SLOW, "order": DetailGovernor.STATE_ORDER})
 	return governor
 
 
@@ -164,3 +164,159 @@ func test_a_fast_device_climbs_back_after_several_good_windows() -> void:
 
 	assert_int(governor.tier).is_equal(DetailGovernor.Tier.MEDIUM)
 	assert_int(governor.fps_cap()).is_equal(0)
+
+
+# --- ULTRA (high-detail models) -------------------------------------------------------------
+
+func _fast_governor(allowed: bool = true) -> DetailGovernor:
+	var governor := DetailGovernor.new()
+	governor.restore({"tier": DetailGovernor.Tier.FAST, "order": DetailGovernor.STATE_ORDER})
+	governor.allow_ultra(allowed)
+	_feed(governor, 16.7, DetailGovernor.WARMUP_FRAMES)
+	return governor
+
+
+## Runs evaluations EVAL_INTERVAL_MS apart, feeding frames with a work time before each.
+func _evaluate_with_work(governor: DetailGovernor, frame_ms: float, work_ms: float, times: int, start_ms: int = 0) -> int:
+	var changes := 0
+	for index: int in times:
+		for _frame: int in DetailGovernor.SAMPLE_CAPACITY:
+			governor.add_frame(frame_ms, work_ms)
+		if governor.evaluate(start_ms + index * DetailGovernor.EVAL_INTERVAL_MS):
+			changes += 1
+	return changes
+
+
+func test_ultra_is_reached_only_after_more_calm_evaluations() -> void:
+	var governor := _fast_governor()
+
+	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA - 1)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+
+	_evaluate_with_work(governor, 16.7, 5.0, 1, 100000)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.ULTRA)
+	assert_int(governor.fps_cap()).is_equal(0)
+
+
+func test_ultra_needs_the_permission() -> void:
+	var governor := _fast_governor(false)
+
+	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2)
+
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+
+
+func test_ultra_needs_headroom_in_the_work_per_frame() -> void:
+	var governor := _fast_governor()
+
+	# Vsync shows 16.7 ms, but the device works 14 ms of them: no room for more triangles.
+	_evaluate_with_work(governor, 16.7, 14.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2)
+
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+	assert_float(governor.work_ms).is_equal(14.0)
+
+
+func test_ultra_needs_calm_frames() -> void:
+	var governor := _fast_governor()
+	for index: int in DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2:
+		# A good median, but every fifth frame stutters.
+		for frame: int in DetailGovernor.SAMPLE_CAPACITY:
+			governor.add_frame(40.0 if frame % 5 == 0 else 16.7)
+		governor.evaluate(index * DetailGovernor.EVAL_INTERVAL_MS)
+
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+
+
+func test_ultra_without_work_measurement_goes_by_frame_times() -> void:
+	var governor := _fast_governor()
+
+	_evaluate_times(governor, 16.7, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA)
+
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.ULTRA)
+	assert_float(governor.work_ms).is_equal(-1.0)
+
+
+func _ultra_governor() -> DetailGovernor:
+	var governor := _fast_governor()
+	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.ULTRA)
+	return governor
+
+
+func test_ultra_is_left_early_and_not_tried_again() -> void:
+	var governor := _ultra_governor()
+	var now := 1000000
+
+	# 25 ms is still fine for FAST (dead band), but too slow for ULTRA.
+	assert_int(_evaluate_times(governor, 25.0, 1, now)).is_equal(1)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+
+	now += DetailGovernor.EVAL_INTERVAL_MS
+	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2, now)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+
+	# Also not after a restart.
+	var restored := DetailGovernor.new()
+	restored.restore(governor.to_dict())
+	restored.allow_ultra(true)
+	_feed(restored, 16.7, DetailGovernor.WARMUP_FRAMES)
+	_evaluate_with_work(restored, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2)
+	assert_int(restored.tier).is_equal(DetailGovernor.Tier.FAST)
+
+
+func test_frames_in_the_ultra_band_keep_ultra() -> void:
+	var governor := _ultra_governor()
+
+	assert_int(_evaluate_times(governor, 20.0, 5, 1000000)).is_equal(0)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.ULTRA)
+
+
+func test_switching_ultra_off_drops_to_fast_at_once() -> void:
+	var governor := _ultra_governor()
+
+	assert_bool(governor.allow_ultra(false)).is_true()
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+	assert_bool(governor.allow_ultra(false)).is_false()
+
+	# Switching it off was no failure: on again, the way up is open.
+	governor.allow_ultra(true)
+	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA, 1000000)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.ULTRA)
+
+
+func test_a_stored_ultra_starts_as_fast() -> void:
+	var governor := DetailGovernor.new()
+
+	governor.restore({"tier": DetailGovernor.Tier.ULTRA, "order": DetailGovernor.STATE_ORDER})
+
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
+
+
+func test_a_state_from_before_ultra_keeps_its_tier() -> void:
+	# Before ULTRA, FAST was 0 and SLOW 2.
+	var fast := DetailGovernor.new()
+	fast.restore({"tier": 0.0, "metric": 16.0})
+	var slow := DetailGovernor.new()
+	slow.restore({"tier": 2.0})
+
+	assert_int(fast.tier).is_equal(DetailGovernor.Tier.FAST)
+	assert_int(slow.tier).is_equal(DetailGovernor.Tier.SLOW)
+
+
+func test_ultra_on_a_device() -> void:
+	var gib := 1024 * 1024 * 1024
+	# Off phones and tablets: always.
+	assert_bool(DetailGovernor.device_allows_ultra(false, 2 * gib, 2, "PowerVR Rogue GE8320")).is_true()
+	# The low-end test phone (Helio A22, 4 GB).
+	assert_bool(DetailGovernor.device_allows_ultra(true, 4 * gib, 4, "PowerVR Rogue GE8320")).is_false()
+	assert_bool(DetailGovernor.device_allows_ultra(true, 12 * gib, 8, "Adreno (TM) 740")).is_true()
+	assert_bool(DetailGovernor.device_allows_ultra(true, 12 * gib, 8, "Mali-G57 MC2")).is_false()
+	assert_bool(DetailGovernor.device_allows_ultra(true, 6 * gib, 8, "Adreno (TM) 740")).is_false()
+	assert_bool(DetailGovernor.device_allows_ultra(true, 12 * gib, 6, "Adreno (TM) 740")).is_false()
+
+
+func test_percentile() -> void:
+	var values := PackedFloat32Array([5.0, 1.0, 9.0, 3.0, 7.0, 2.0, 8.0, 4.0, 6.0, 10.0])
+	assert_float(DetailGovernor.percentile(values, 0.9)).is_equal(10.0)
+	assert_float(DetailGovernor.percentile(values, 0.0)).is_equal(1.0)
+	assert_float(DetailGovernor.percentile(PackedFloat32Array(), 0.9)).is_equal(-1.0)

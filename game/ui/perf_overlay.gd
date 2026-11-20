@@ -99,6 +99,8 @@ func measured_seconds() -> float:
 
 static func tier_name(tier: int, translator: Object) -> String:
 	match tier:
+		DetailGovernor.Tier.ULTRA:
+			return translator.tr("PROFILE_DETAIL_ULTRA")
 		DetailGovernor.Tier.FAST:
 			return translator.tr("PROFILE_DETAIL_HIGH")
 		DetailGovernor.Tier.MEDIUM:

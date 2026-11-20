@@ -1000,6 +1000,7 @@ PROFILE_ENTERPRISE_JOIN,Join or found an enterprise
 PROFILE_ENTERPRISE_NONE,You are not in an enterprise yet.
 PROFILE_ENTERPRISE_INVITED,{count} invitation(s) waiting
 PROFILE_DETAIL,3D detail
+PROFILE_DETAIL_ULTRA,Ultra (HD models)
 PROFILE_DETAIL_HIGH,High
 PROFILE_DETAIL_MEDIUM,Medium
 PROFILE_DETAIL_LOW,Low
@@ -1093,6 +1094,9 @@ PROFILE_PERFORMANCE_ON,Show performance display
 PROFILE_PERFORMANCE_OFF,Hide performance display
 PROFILE_PERFORMANCE_COPY,Copy measurement
 PROFILE_PERFORMANCE_COPIED,"Copied: the last {seconds} s, ready to paste."
+PROFILE_HD_HINT,"High-detail models: rounder shapes and sharper surfaces up close. Used on their own when this device has power to spare; switch them off to save battery."
+PROFILE_HD_ON,Allow high-detail models
+PROFILE_HD_OFF,Turn off high-detail models
 PERF_BOX,"{fps} fps · {ms} ms (worst {worst})
 {draws} draws · {primitives} tris
 {memory} MB · detail {tier}"
