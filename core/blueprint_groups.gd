@@ -14,9 +14,12 @@ class Group:
 	var blueprint: String = ""
 	var modules: Array[StructureLayout.Module] = []
 	## Of them: under construction (they keep a blueprint set now), and standing still because
-	## the spot does not fit the blueprint (idle LOCATION).
+	## the spot does not fit the blueprint (idle LOCATION), and standing still because the
+	## blueprint came from the enterprise and the player is no longer a member (idle
+	## NO_ENTERPRISE, draft.39).
 	var building: int = 0
 	var location: int = 0
+	var no_enterprise: int = 0
 
 	func count() -> int:
 		return modules.size()
@@ -117,6 +120,8 @@ static func rows(modules: Array[StructureLayout.Module], definitions: GameDefini
 			group.building += 1
 		elif Wire.as_string(idle_reasons.get(placed.module_id)) == "LOCATION":
 			group.location += 1
+		elif Wire.as_string(idle_reasons.get(placed.module_id)) == MemberLinks.IDLE_NO_ENTERPRISE:
+			group.no_enterprise += 1
 	var result: Array[TypeRow] = []
 	for row: TypeRow in by_type.values():
 		row.groups.sort_custom(func(a: Group, b: Group) -> bool: return _before(a, b, definitions))

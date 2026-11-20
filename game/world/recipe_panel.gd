@@ -52,12 +52,33 @@ func show_recipes(module_type: String, current: String, usable: Dictionary, atmo
 			needs = Wire.as_string(notes.get(recipe.key))
 		if not needs.is_empty():
 			text += "\n" + needs
-		if not allowed:
-			text += "\n" + tr("RECIPE_LOCKED")
+		var lock := lock_text(recipe.key, usable)
+		if not lock.is_empty():
+			text += "\n" + lock
 		var button := _entry(text, recipe.key, recipe.key == current, allowed)
 		Ui.add_resource_icon(button, main_output(recipe), true)
 		button.tapped.connect(func() -> void: chosen.emit(recipe.key))
 		_list.add_child(button)
+
+
+## Why a recipe cannot be chosen, or that the enterprise unlocks it (draft.39 member blueprints);
+## "" for an own one that can.
+static func lock_text(blueprint: String, usable: Dictionary) -> String:
+	var definitions := Services.definitions
+	var catalog: ResearchCatalog = definitions.research if definitions != null else null
+	var account: Account = Services.session.account if Services.session != null else null
+	var in_enterprise := account != null and not account.enterprise_id.is_empty()
+	var tech: ResearchCatalog.Tech = catalog.member_tech_of(blueprint) if catalog != null else null
+	var tech_name: String = tech.display_name if tech != null and not tech.display_name.is_empty() \
+		else TranslationServer.translate("STORE_UNKNOWN_ITEM")
+	match MemberLinks.lock_of(blueprint, usable, catalog, in_enterprise):
+		MemberLinks.Lock.RESEARCH:
+			return TranslationServer.translate("RECIPE_LOCKED")
+		MemberLinks.Lock.JOIN:
+			return TranslationServer.translate("RECIPE_LOCKED_JOIN").format({"tech": tech_name})
+		MemberLinks.Lock.ENTERPRISE:
+			return TranslationServer.translate("RECIPE_LOCKED_ENTERPRISE").format({"tech": tech_name})
+	return TranslationServer.translate("RECIPE_MEMBER_UNLOCK").format({"tech": tech_name}) if tech != null else ""
 
 
 ## What a recipe needs from its spot: a gas in the air (with its share here), a deposit in the

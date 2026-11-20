@@ -165,3 +165,12 @@ func test_yield_span_where_it_works_nowhere_is_zero() -> void:
 	assert_int(span.working).is_equal(0)
 	assert_int(span.high_rate).is_equal(0)
 	assert_object(BlueprintGroups.yield_span(empty)).is_null()
+
+
+func test_groups_count_modules_without_their_enterprise_recipe() -> void:
+	# draft.39: production with a member blueprint stands still after leaving the enterprise.
+	var mine := BlueprintGroups.rows(_modules(), _definitions, {1: "NO_ENTERPRISE", 2: "LOCATION"})[0]
+
+	assert_int(mine.group("IRON_EXTRACTION").no_enterprise).is_equal(1)
+	assert_int(mine.group("IRON_EXTRACTION").location).is_equal(0)
+	assert_int(mine.group("COPPER_EXTRACTION").no_enterprise).is_equal(0)

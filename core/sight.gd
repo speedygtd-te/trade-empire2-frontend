@@ -9,8 +9,10 @@ extends RefCounted
 ## range). The client only draws them and previews a telescope upgrade; the server decides.
 
 ## Module types that are telescopes (contract `TelescopeView.moduleType`).
-const TELESCOPE_TYPES: PackedStringArray = ["TELESCOPE_MODULE", "SPACE_TELESCOPE_MODULE"]
+const TELESCOPE_TYPES: PackedStringArray = ["TELESCOPE_MODULE", "SPACE_TELESCOPE_MODULE", "OBSERVATION_PLATFORM"]
 const SOURCE_TELESCOPE := "telescope"
+## `TelescopeView.kind` of the enterprise's observation platform (draft.39).
+const KIND_PLATFORM := "platform"
 ## Highest telescope level (contract: 1 … 20).
 const MAX_LEVEL := 20
 
@@ -47,7 +49,7 @@ class Telescope:
 	var structure_id := 0
 	var module_id := 0
 	var module_type := ""
-	## "ground" or "space".
+	## "ground", "space" or "platform" (the enterprise's OBSERVATION_PLATFORM, draft.39).
 	var kind := ""
 	## Cell of the module in its structure (local coordinates, as in the layout).
 	var cell := Vector3i.ZERO
@@ -69,6 +71,10 @@ class Telescope:
 
 	func has_next() -> bool:
 		return next_level > 0
+
+	## The enterprise's observation platform: a node of the observation net (draft.39).
+	func is_platform() -> bool:
+		return kind == Sight.KIND_PLATFORM or module_type == MemberLinks.PLATFORM
 
 	## The cost resources the store lacks; `stock` maps item keys to micro-units.
 	func lacking(stock: Dictionary) -> PackedStringArray:

@@ -35,6 +35,9 @@ class Tech:
 	var allowed_labs: Dictionary = {}
 	var min_worker_tier: int = 0
 	var unlocks_blueprints: PackedStringArray = []
+	## Enterprise techs only (draft.39): player blueprints every current member of an enterprise
+	## with this tech may use.
+	var member_unlocks_blueprints: PackedStringArray = []
 	## Only weight the choice; they never block it.
 	var prerequisites: PackedStringArray = []
 
@@ -75,6 +78,15 @@ static func from_wire(data: Dictionary) -> ResearchCatalog:
 ## The tech `key`, or null when the catalog does not know it.
 func tech(key: String) -> Tech:
 	return _techs.get(key) as Tech
+
+
+## The enterprise tech that unlocks player blueprint `blueprint` for the members (draft.39
+## `memberUnlocksBlueprints`); null when none does.
+func member_tech_of(blueprint: String) -> Tech:
+	for entry: Tech in _techs.values():
+		if entry.member_unlocks_blueprints.has(blueprint):
+			return entry
+	return null
 
 
 ## Every tech in the order of the game data.
@@ -278,5 +290,6 @@ static func _read_tech(data: Dictionary) -> Tech:
 			entry.allowed_labs[lab] = Wire.as_string(allowed.get("role"))
 	entry.min_worker_tier = Wire.as_int(data.get("minWorkerTier"))
 	entry.unlocks_blueprints = _strings(data.get("unlocksBlueprints"))
+	entry.member_unlocks_blueprints = _strings(data.get("memberUnlocksBlueprints"))
 	entry.prerequisites = _strings(data.get("prerequisites"))
 	return entry

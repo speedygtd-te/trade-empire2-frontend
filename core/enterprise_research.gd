@@ -1,6 +1,7 @@
 class_name EnterpriseResearch
 extends RefCounted
-## The enterprise tech tree (`GET/POST/DELETE /v2/enterprises/{id}/research`, draft.37).
+## The enterprise tech tree (`GET/POST/DELETE /v2/enterprises/{id}/research`, draft.37; member
+## unlocks draft.39).
 ##
 ## 21 techs in four tiers (E1–E4). One research at a time, chosen on purpose: its cost is taken
 ## at the start, then a fixed time runs — but only while the Enterprise Lab works (power, full
@@ -25,6 +26,8 @@ class Tech:
 	var duration_ms := 0
 	## Item keys it unlocks for the factory.
 	var unlocks := PackedStringArray()
+	## Player blueprints it unlocks for every current member (draft.39 `memberUnlocks`).
+	var member_unlocks := PackedStringArray()
 	## 0 while not researched.
 	var researched_at := 0
 	## The server would start it now (prerequisites met, not researched).
@@ -72,6 +75,7 @@ static func from_wire(data: Dictionary) -> EnterpriseResearch:
 		tech.cost = costs_from_wire(row.get("cost"))
 		tech.duration_ms = Wire.as_int(row.get("durationMs"))
 		tech.unlocks = _strings(row.get("unlocks"))
+		tech.member_unlocks = _strings(row.get("memberUnlocks"))
 		tech.researched_at = Wire.as_int(row.get("researchedAt"))
 		tech.available = row.get("available") == true
 		if not tech.key.is_empty():
@@ -136,6 +140,18 @@ func missing_prerequisites(key: String) -> PackedStringArray:
 	for need: String in found.prerequisites:
 		if not is_researched(need):
 			result.append(need)
+	return result
+
+
+## The player blueprints the members may use now (draft.39, SPEC-enterprise-flaggschiff 6a.1):
+## the `memberUnlocks` of every researched tech → true. `/v2/research` of a member does not list
+## them; the server allows them (`blueprint_allowed`) while the player is a current member.
+func member_blueprints() -> Dictionary:
+	var result: Dictionary = {}
+	for entry: Tech in techs:
+		if entry.researched_at > 0:
+			for key: String in entry.member_unlocks:
+				result[key] = true
 	return result
 
 

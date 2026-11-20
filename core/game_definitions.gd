@@ -48,12 +48,31 @@ class ModuleDef:
 	## does not care about its level. `z_prefer_high`: higher is better, otherwise deeper.
 	var z_bonus_percent := 0
 	var z_prefer_high := false
-	## Who may hold it (`owners`, draft.37: PLAYER, ENTERPRISE); absent in the data = players only.
+	## Who may hold it (`owners`, draft.39 in `/v2/definitions`: PLAYER, ENTERPRISE); absent in the
+	## data = players only (older servers: derived, see `owners_derived`).
 	var owners := PackedStringArray([GameDefinitions.OWNER_PLAYER])
 	## The Enterprise Factory may build it.
 	var enterprise_buildable := false
 	## The host that makes its item (`manufacturedBy`: FACTORY, ENTERPRISE_FACTORY …); "" when none.
 	var manufactured_by := ""
+	## What it sends to its neighbours: [emission key, base strength in micro-units].
+	var emissions: Array[Array] = []
+	## How it reacts to emissions: [emission key, effect in micro-percent].
+	var sensitivities: Array[Array] = []
+
+	## The base strength of `emission` it sends (micro-units); 0 when it sends none.
+	func emission_strength(emission: String) -> int:
+		for entry: Array in emissions:
+			if entry[0] == emission:
+				return entry[1]
+		return 0
+
+	## Its effect per received unit of `emission` (micro-percent); 0 when it does not react.
+	func sensitivity(emission: String) -> int:
+		for entry: Array in sensitivities:
+			if entry[0] == emission:
+				return entry[1]
+		return 0
 
 	## Whether an owner of `kind` ("player"/"enterprise", any case) may build it.
 	func allows(kind: String) -> bool:
@@ -102,7 +121,7 @@ class HullDef:
 	var environments: PackedStringArray = []
 	## Inventory item the hull is built from (`HULL_STARTER`).
 	var item: String = ""
-	## Who may hold it (`owners`, draft.37); absent = players only.
+	## Who may hold it (`owners`, draft.39 in `/v2/definitions`); absent = players only.
 	var owners := PackedStringArray([GameDefinitions.OWNER_PLAYER])
 	var enterprise_buildable := false
 
@@ -127,8 +146,9 @@ const ENTERPRISE_HOST := "ENTERPRISE_FACTORY"
 const ENTERPRISE_PREFIX := "ENTERPRISE_"
 
 ## Whether it is known who may hold modules and hulls: from `owners` in the bundle, or derived
-## (`owners_derived`). The draft.37/38 server keeps `owners` in its game data but leaves it out of
-## `/v2/definitions`; then the client derives it (fallback, documented): hulls and modules whose
+## (`owners_derived`). From draft.39 `/v2/definitions` sends `owners` and `enterpriseBuildable`
+## with every module and hull and they are taken as they are. The draft.37/38 server leaves them
+## out; only then the client derives them (fallback for older servers): hulls and modules whose
 ## key begins with ENTERPRISE_ or that the Enterprise Factory makes (`manufacturedBy`) are the
 ## enterprise's alone, SHARED_MODULES both, everything else the players'. The server decides
 ## (MODULE_NOT_ALLOWED).
@@ -151,6 +171,8 @@ var _resource_names: Dictionary = {}
 ## Resource key → [kind (NATURAL, PRODUCED, MODULE_ITEM, HULL_ITEM), utility].
 var _resource_kinds: Dictionary = {}
 var _blueprints: Dictionary = {}
+## Emission key → decay per hull (micro-units).
+var _emission_decay: Dictionary = {}
 
 
 ## Reads a parsed bundle; null when it is not a definitions bundle.
@@ -187,6 +209,11 @@ static func from_bundle(data: Dictionary) -> GameDefinitions:
 		if not blueprint.key.is_empty():
 			definitions._blueprints[blueprint.key] = blueprint
 	definitions.research = ResearchCatalog.from_wire(Wire.as_dict(data.get("research")))
+	for entry: Variant in _list(data.get("emissions")):
+		var emission := Wire.as_dict(entry)
+		var emission_key := Wire.as_string(emission.get("key"))
+		if not emission_key.is_empty():
+			definitions._emission_decay[emission_key] = Wire.as_int(emission.get("decayPerSegment"))
 	for entry: Variant in _list(data.get("housingTiers")):
 		var row := Wire.as_dict(entry)
 		var tier := HousingTierDef.new()
@@ -211,6 +238,11 @@ func module(key: String) -> ModuleDef:
 
 
 ## The hull type `key`, or null when the game data does not know it.
+## How much an emission loses per hull it travels (micro-units); 0 when unknown.
+func emission_decay(key: String) -> int:
+	return Wire.as_int(_emission_decay.get(key))
+
+
 func hull(key: String) -> HullDef:
 	return _hulls.get(key) as HullDef
 
@@ -335,6 +367,16 @@ static func _read_module(data: Dictionary) -> ModuleDef:
 	module.owners = _owners(data.get("owners"))
 	module.enterprise_buildable = data.get("enterpriseBuildable") == true
 	module.manufactured_by = Wire.as_string(data.get("manufacturedBy"))
+	for entry: Variant in _list(data.get("emissions")):
+		var row := Wire.as_dict(entry)
+		var kind := Wire.as_string(row.get("emission"))
+		if not kind.is_empty():
+			module.emissions.append([kind, Wire.as_int(row.get("baseStrength"))])
+	for entry: Variant in _list(data.get("sensitivities")):
+		var row := Wire.as_dict(entry)
+		var kind := Wire.as_string(row.get("emission"))
+		if not kind.is_empty():
+			module.sensitivities.append([kind, Wire.as_int(row.get("effectPercent"))])
 	return module
 
 

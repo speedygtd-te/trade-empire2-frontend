@@ -157,6 +157,8 @@ func _tech_row(research: EnterpriseResearch, tech: EnterpriseResearch.Tech) -> v
 			line = tr("ENTERPRISE_RESEARCH_STATE_LOCKED").format({"techs": _names(research, research.missing_prerequisites(tech.key))})
 			color = AppTheme.COLOR_MUTED
 	row.text = "%s\n%s" % [tech.name, line]
+	if not tech.member_unlocks.is_empty():
+		row.text += "\n" + _member_unlocks_text(tech)
 	row.add_theme_color_override("font_color", color)
 	var key := tech.key
 	row.tapped.connect(func() -> void:
@@ -182,6 +184,9 @@ func _show_detail(research: EnterpriseResearch, tech: EnterpriseResearch.Tech) -
 		for unlock: String in tech.unlocks:
 			names.append(blueprint_text(unlock, self))
 		text_label(box, tr("ENTERPRISE_RESEARCH_UNLOCKS").format({"items": ", ".join(names)}), AppTheme.VARIATION_MUTED)
+	if not tech.member_unlocks.is_empty():
+		var members := text_label(box, _member_unlocks_text(tech))
+		members.add_theme_color_override("font_color", AppTheme.COLOR_ACCENT)
 	if not tech.prerequisites.is_empty():
 		text_label(box, tr("ENTERPRISE_RESEARCH_NEEDS").format({"techs": _names(research, tech.prerequisites)}), AppTheme.VARIATION_MUTED)
 	var reason := research.start_blocker(tech.key, holds(Enterprise.FLAG_TREASURY), _has_flagship())
@@ -208,6 +213,18 @@ func _reason_text(reason: String) -> String:
 		"right":
 			return right_needed(Enterprise.FLAG_TREASURY)
 	return ""
+
+
+## "Unlocks for all members: Mining Optimizer" — the item each member blueprint makes (draft.39).
+func _member_unlocks_text(tech: EnterpriseResearch.Tech) -> String:
+	var names := PackedStringArray()
+	var definitions := Services.definitions
+	for key: String in tech.member_unlocks:
+		var recipe: GameDefinitions.BlueprintDef = definitions.blueprint(key) if definitions != null else null
+		var made := RecipePanel.main_output(recipe)
+		var name := definitions.resource_name(made) if definitions != null and not made.is_empty() else ""
+		names.append(name if not name.is_empty() else blueprint_text(key, self))
+	return tr("ENTERPRISE_RESEARCH_MEMBER_UNLOCKS").format({"items": ", ".join(names)})
 
 
 func _tech_name(research: EnterpriseResearch, key: String) -> String:

@@ -185,7 +185,7 @@ RECIPE_IDLE_LOCATION,Cannot work at this spot (atmosphere or deposit missing).
 ERROR_NOT_BLUEPRINT_MODULE,This module does not run recipes.
 ERROR_INVALID_BLUEPRINT,This recipe does not exist.
 ERROR_INCOMPATIBLE_BLUEPRINT,This module cannot run that recipe.
-ERROR_BLUEPRINT_LOCKED,This recipe needs research first.
+ERROR_BLUEPRINT_LOCKED,"This recipe is locked: it needs research first, or, for enterprise members, your enterprise's."
 STORE_POWER,Energy: {production} made / {consumption} used per hour
 STORE_LIFE_SUPPORT,Life support: {production} made / {consumption} used per hour
 STORE_FOOD_SHORTAGE,Food is running out.
@@ -1423,3 +1423,22 @@ COLONY_STRUCTURE_FOUNDED,A new structure was founded on the dock.
 TRAVEL_FUEL_ENTERPRISE,"{resource}: {amount} needed, {on_board} in the enterprise inventory"
 FLEETS_FUEL_ENTERPRISE,"{resource}: needs {amount}, the enterprise inventory holds {on_board}"
 FLEETS_ENTERPRISE_MARK,Enterprise fleet
+RECIPE_LOCKED_JOIN,For enterprise members only: needs an enterprise that researched {tech}.
+RECIPE_LOCKED_ENTERPRISE,Your enterprise has to research {tech} first.
+RECIPE_MEMBER_UNLOCK,Unlocked by your enterprise ({tech}).
+RECIPE_IDLE_NO_ENTERPRISE,Stands still: the recipe came from your enterprise and is gone.
+DETAILS_IDLE_NO_ENTERPRISE,{count} idle: needs the enterprise
+DETAILS_BLUEPRINTS_NO_ENTERPRISE,{count} stand still: enterprise recipe gone
+ENTERPRISE_RESEARCH_MEMBER_UNLOCKS,Unlocks for all members: {items}
+MEMBER_OPTIMIZER_OFF,Inactive: needs an enterprise with a working Mining Efficiency Distributor. It still draws power.
+MEMBER_OPTIMIZER_ON,"Extraction focus: {count} extractors here gain up to +{percent} %."
+MEMBER_OPTIMIZER_NONE,Extraction focus: no extractor within 5 hulls on this level.
+MEMBER_UPLINK_OFF,Not linked: needs an enterprise with a working Observation Platform. It still draws power.
+MEMBER_UPLINK_ON,Linked: the telescopes of this structure feed the enterprise's observation net; you discover what it sees.
+MEMBER_NODE_OFF,Inactive: needs an enterprise that researched the Intergalactic Research Network. It still draws power.
+MEMBER_NODE_ON,Linked to the enterprise's research network. Networked labs follow in a later update.
+MEMBER_FOCUS_BONUS,"Extraction focus: +{percent} % from a Mining Optimizer nearby."
+MEMBER_FOCUS_WAITING,Extraction focus: a Mining Optimizer is near but inactive.
+SIGHT_PLATFORM_NET,Node of the enterprise's observation net while it sees.
+PROBE_EXPLORED_SHARED,{count} of them shared by the enterprise archive (dashed edge).
+PROBE_SIGHTING_SHARED,(shared by the enterprise archive)

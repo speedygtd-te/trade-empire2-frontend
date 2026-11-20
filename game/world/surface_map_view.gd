@@ -23,6 +23,8 @@ const COLOR_BAND_EDGE := Color(0.612, 0.639, 0.686, 0.35)
 const COLOR_BEYOND := Color(0.02, 0.025, 0.04)
 const COLOR_EXPLORED := Color(0.204, 0.827, 0.600, 0.22)
 const COLOR_EXPLORED_EDGE := Color(0.204, 0.827, 0.600, 0.85)
+## Dash length of the edge of an area the enterprise's archive shares (draft.39).
+const SHARED_DASH_PX := 8.0
 const COLOR_OWN := AppTheme.COLOR_ACCENT
 const COLOR_SEEN := AppTheme.COLOR_PENDING
 const COLOR_TARGET := AppTheme.COLOR_ACCENT
@@ -171,18 +173,41 @@ func _draw_area(area: RevealMap.Area) -> void:
 	var reach := Rect2(start, Vector2.ZERO).expand(end).grow(radius)
 	if not reach.intersects(Rect2(Vector2.ZERO, size)):
 		return
-	draw_circle(start, radius, COLOR_EXPLORED)
+	# Areas the enterprise's Cartography Archive shares (draft.39): fainter, with a dashed edge.
+	var shared := area.is_shared()
+	var fill := Color(COLOR_EXPLORED, COLOR_EXPLORED.a * 0.6) if shared else COLOR_EXPLORED
+	draw_circle(start, radius, fill)
 	if start.distance_to(end) > 0.5:
-		draw_circle(end, radius, COLOR_EXPLORED)
+		draw_circle(end, radius, fill)
 		var across := (end - start).normalized().orthogonal() * radius
-		draw_colored_polygon(PackedVector2Array([start + across, end + across, end - across, start - across]), COLOR_EXPLORED)
-		draw_line(start + across, end + across, COLOR_EXPLORED_EDGE, 2.0, true)
-		draw_line(start - across, end - across, COLOR_EXPLORED_EDGE, 2.0, true)
+		draw_colored_polygon(PackedVector2Array([start + across, end + across, end - across, start - across]), fill)
+		_edge_line(start + across, end + across, shared)
+		_edge_line(start - across, end - across, shared)
 		var turn := (end - start).angle()
-		draw_arc(start, radius, turn + PI * 0.5, turn + PI * 1.5, CIRCLE_POINTS, COLOR_EXPLORED_EDGE, 2.0, true)
-		draw_arc(end, radius, turn - PI * 0.5, turn + PI * 0.5, CIRCLE_POINTS, COLOR_EXPLORED_EDGE, 2.0, true)
+		_edge_arc(start, radius, turn + PI * 0.5, turn + PI * 1.5, shared)
+		_edge_arc(end, radius, turn - PI * 0.5, turn + PI * 0.5, shared)
 	else:
-		draw_arc(start, radius, 0.0, TAU, CIRCLE_POINTS, COLOR_EXPLORED_EDGE, 2.0, true)
+		_edge_arc(start, radius, 0.0, TAU, shared)
+
+
+## An explored area's straight edge: solid for an own area, dashed for a shared one.
+func _edge_line(from: Vector2, to: Vector2, dashed: bool) -> void:
+	if dashed:
+		draw_dashed_line(from, to, COLOR_EXPLORED_EDGE, 2.0, SHARED_DASH_PX, true, true)
+	else:
+		draw_line(from, to, COLOR_EXPLORED_EDGE, 2.0, true)
+
+
+## An explored area's round edge: solid for an own area, dashed for a shared one.
+func _edge_arc(at: Vector2, radius: float, from: float, to: float, dashed: bool) -> void:
+	if not dashed:
+		draw_arc(at, radius, from, to, CIRCLE_POINTS, COLOR_EXPLORED_EDGE, 2.0, true)
+		return
+	var step := clampf(SHARED_DASH_PX * 2.0 / maxf(radius, 1.0), 0.05, PI / 6.0)
+	var angle := from
+	while angle < to:
+		draw_arc(at, radius, angle, minf(angle + step * 0.5, to), 4, COLOR_EXPLORED_EDGE, 2.0, true)
+		angle += step
 
 
 ## A foreign structure seen by a probe: its footprint's rows (draft.32) once a cell is at least a

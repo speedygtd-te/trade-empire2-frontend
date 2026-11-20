@@ -405,4 +405,6 @@ func _idle_text(reason: String, count: int) -> String:
 			return tr("DETAILS_IDLE_NO_RECIPE").format({"count": count})
 		"LOCATION":
 			return tr("DETAILS_IDLE_LOCATION").format({"count": count})
+		MemberLinks.IDLE_NO_ENTERPRISE:
+			return tr("DETAILS_IDLE_NO_ENTERPRISE").format({"count": count})
 	return tr("DETAILS_IDLE_OTHER").format({"count": count})
