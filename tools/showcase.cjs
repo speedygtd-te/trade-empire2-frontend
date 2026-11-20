@@ -108,7 +108,10 @@ async function main() {
   for (const resource of definitions.resources) if (resource.kind === 'MODULE_ITEM') moduleItem[resource.module] = resource.key;
 
   // Shafts (elevator, staircase) need a hull above them; under-water modules need water.
-  const fits = (m) => slotOf(m) !== null && !m.verticalAccess;
+  // Only what a player may build (draft.39 `owners`; enterprise items are refused), and at most
+  // two cells deep: two rows lie between the corridor rows, a deeper module never fits there.
+  const playerMay = (m) => !Array.isArray(m.owners) || m.owners.includes('player');
+  const fits = (m) => slotOf(m) !== null && !m.verticalAccess && playerMay(m) && m.size.y <= 2 && m.size.x <= 12;
   // Modules the store does not hold (the core module: the colony has its one already) stay out.
   const inStore = (m) => (stock[moduleItem[m.key]] || 0) >= 1;
   const wanted = definitions.modules.filter((m) => fits(m) && inStore(m));
