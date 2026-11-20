@@ -50,10 +50,10 @@ const ULTRA_UP_P90_MS := 19.0
 const ULTRA_UP_WORK_MS := 9.0
 ## ULTRA is left for FAST when the median frame time passes this (below ~45 fps).
 const ULTRA_DOWN_ABOVE_MS := 22.0
-## After leaving ULTRA for being too slow, the way up starts again only after this pause (ms):
-## a stutter may come from outside (a call, updates installing), so ULTRA is never given up for
-## good (Rudi, 2026-11-20).
-const ULTRA_RETRY_MS := 120000
+## After leaving ULTRA for being too slow, the way up starts again only after this pause (ms,
+## 30 min): a stutter may come from outside (a call, updates installing), so ULTRA is never given
+## up for good (Rudi, 2026-11-20). The pause runs on in the background; measuring does not.
+const ULTRA_RETRY_MS := 1800000
 ## A phone or tablet gets ULTRA only with this much memory (the textures of the high-detail
 ## models take four times the memory) and this many processor cores, and not with a GPU of the
 ## low class (parts of the adapter name, lower case). Android reports the memory without what the
