@@ -4,7 +4,9 @@ extends Control
 ## vehicles come first, each with where it is or where it is heading and when it arrives (and its
 ## route); bases and stations follow in a section of their own. The structure Base shows is
 ## marked. A tap opens the structure's details (FleetDetail, a layer): travel, show it in Base,
-## its routes. The route editor is a layer as well.
+## its routes. The route editor is a layer as well. Fleets (draft.33) come first: each with its
+## ships, where it is or its flight, and its shared supply; a tap opens it (FleetGroupDetail),
+## "Form a fleet" picks ships for a new one (FleetGroupCreate).
 
 ## The player wants to see a structure in Base.
 signal chosen(structure_id: int)
@@ -31,6 +33,8 @@ var _start_with_routes := false
 var _probes_tab: Button
 var _probes: ProbeList
 var _exploration: ProbeTargetScreen = null
+var _group: FleetGroupDetail = null
+var _create: FleetGroupCreate = null
 
 
 ## `current`: the structure Base shows; `routes`: open on the routes tab.
@@ -147,8 +151,37 @@ func open_detail(structure_id: int, travel: bool = false) -> FleetDetail:
 	_detail.setup(_fleet, structure_id, travel)
 	_detail.show_requested.connect(func(id: int) -> void: chosen.emit(id))
 	_detail.route_requested.connect(_on_route_requested)
+	_detail.group_requested.connect(func(fleet_id: int) -> void: open_group(fleet_id))
 	ScreenStack.push_onto(self, _detail)
 	return _detail
+
+
+## Opens a fleet as a layer.
+func open_group(fleet_id: int) -> FleetGroupDetail:
+	ScreenStack.close_layer(_group)
+	_group = FleetGroupDetail.new()
+	_group.setup(_fleet, fleet_id)
+	_group.member_requested.connect(func(id: int) -> void: open_detail(id))
+	ScreenStack.push_onto(self, _group)
+	return _group
+
+
+## The fleet layer while it is open; null otherwise.
+func group_detail() -> FleetGroupDetail:
+	return _group if ScreenStack.is_open(_group) else null
+
+
+## Opens the choice of ships for a new fleet as a layer.
+func open_group_create() -> FleetGroupCreate:
+	ScreenStack.close_layer(_create)
+	_create = FleetGroupCreate.new()
+	_create.setup(_fleet)
+	_create.created.connect(func(fleet_id: int) -> void:
+		ScreenStack.close_layer(_create)
+		_create = null
+		open_group(fleet_id))
+	ScreenStack.push_onto(self, _create)
+	return _create
 
 
 ## The details layer while it is open; null otherwise.
@@ -213,6 +246,7 @@ func _rebuild() -> void:
 	for entry: Fleet.Entry in _fleet.fleet.entries():
 		if not movables.has(entry):
 			others.append(entry)
+	_add_groups()
 	if not movables.is_empty():
 		_list.add_child(Ui.label("FLEET_SECTION_MOVABLE", AppTheme.VARIATION_MUTED))
 		for entry: Fleet.Entry in movables:
@@ -223,6 +257,31 @@ func _rebuild() -> void:
 		for entry: Fleet.Entry in others:
 			_add_row(entry)
 	_update_lines()
+
+
+## The fleets and "Form a fleet", when the server has fleets and the player has a ship.
+func _add_groups() -> void:
+	if not _fleet.groups_supported:
+		return
+	var ships := false
+	for entry: Fleet.Entry in _fleet.fleet.entries():
+		ships = ships or entry.can_fly()
+	if not ships and _fleet.groups.size() == 0:
+		return
+	_list.add_child(Ui.label("FLEETS_SECTION", AppTheme.VARIATION_MUTED))
+	for group: FleetGroups.Group in _fleet.groups.groups():
+		var row := ListButton.new()
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.set_meta("group", group.fleet_id)
+		var id := group.fleet_id
+		row.tapped.connect(func() -> void: open_group(id))
+		_list.add_child(row)
+	var create := Ui.secondary_button("FLEETS_CREATE_OPEN")
+	create.disabled = _fleet.groups.candidates(_fleet.fleet, "", Services.clock.now_ms()).is_empty()
+	create.pressed.connect(func() -> void: open_group_create())
+	_list.add_child(create)
+	_list.add_child(Ui.spacer(8))
 
 
 func _add_row(entry: Fleet.Entry) -> void:
@@ -241,6 +300,14 @@ func _update_lines() -> void:
 	for row: Node in _list.get_children():
 		var button := row as ListButton
 		if button == null or button.is_queued_for_deletion():
+			continue
+		if button.has_meta("group"):
+			var group_id: int = button.get_meta("group", 0)
+			var group := _fleet.groups.find(group_id)
+			if group != null:
+				button.text = "%s
+%s · %s" % [group.name, tr("FLEETS_SUBTITLE").format({"count": group.members.size()}),
+					FleetGroupDetail.status_text(_fleet, group, now, self)]
 			continue
 		var id: int = button.get_meta("structure", 0)
 		var entry := _fleet.fleet.find(id)
@@ -268,7 +335,9 @@ func _on_retry() -> void:
 
 ## One line on where a structure is: its kind and place, or where it is heading and when it
 ## arrives; a route it drives is mentioned.
-static func status_text(fleet_model: FleetModel, entry: Fleet.Entry, now: int, translator: Object) -> String:
+## `with_fleet`: name the fleet it flies with (off inside that fleet's own view).
+static func status_text(fleet_model: FleetModel, entry: Fleet.Entry, now: int, translator: Object,
+		with_fleet: bool = true) -> String:
 	var kind := translator.tr("FLEET_KIND_" + entry.kind.to_upper()) if not entry.kind.is_empty() else ""
 	var place := ""
 	if entry.motion != null and entry.is_moving(now):
@@ -290,6 +359,9 @@ static func status_text(fleet_model: FleetModel, entry: Fleet.Entry, now: int, t
 	var line := "%s · %s" % [kind, place] if not kind.is_empty() else place
 	if entry.route_id != 0:
 		line += " · " + translator.tr("FLEET_ON_ROUTE")
+	var group := fleet_model.group_of(entry.structure_id) if with_fleet else null
+	if group != null:
+		line += " · " + translator.tr("FLEET_IN_FLEET").format({"name": group.name})
 	return line
 
 

@@ -98,6 +98,14 @@ const HANDLED_CODES: PackedStringArray = [
 	"NOT_A_PROBE_LAUNCHER",
 	"LAUNCHER_NOT_READY",
 	"NO_PROBE",
+	# Fleets (draft.33).
+	"FLEET_NOT_FOUND",
+	"ALREADY_IN_FLEET",
+	"NOT_IN_FLEET",
+	"FLEET_HAS_COMMAND",
+	"FLEET_NOT_CO_LOCATED",
+	"FLEET_NOT_READY",
+	"FLEET_MEMBER_LOCKED",
 	# Workforce (PUT /v2/structures/{id}/workforce).
 	"TIER_TOO_LOW",
 	"INSUFFICIENT_WORKERS",

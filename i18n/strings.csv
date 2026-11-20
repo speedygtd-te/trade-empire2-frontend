@@ -1215,3 +1215,73 @@ PROBE_WRECK_OWN,Wreck of your probe (landed {ago} ago).
 PROBE_WRECK_FOREIGN,Wreck of someone else's probe (landed {ago} ago).
 PROBE_WRECKS,{count} probe wrecks; the latest landed {ago} ago.
 PROBE_MAP_LEGEND,Cyan: your structures · Green: explored · Amber: probes and structures seen
+FLEETS_SECTION,Fleets
+FLEETS_SUBTITLE,Fleet · {count} ship(s)
+FLEETS_AT,Together at {body}
+FLEETS_APART,Not together: its ships rest at different places.
+FLEETS_FLYING,Flying to {target} · arrives in {duration}
+FLEETS_ARRIVING,Arriving…
+FLEETS_SUPPLY,Shared supply for trips: {rows}
+FLEETS_SUPPLY_EMPTY,"Shared supply for trips: nothing on board. Fuel goes into a ship's own supply."
+FLEETS_SHIPS,Ships of the fleet
+FLEETS_LEAVE,Leave
+FLEETS_LEFT,The ship left the fleet and can travel alone again.
+FLEETS_ADD_SHIP,Add a ship
+FLEETS_ADD_CLOSE,Close the list
+FLEETS_ADD_NONE,"No other ship can join here: it needs a space drive, must rest at the same place and must not drive a route."
+FLEETS_JOINED,The ship joined the fleet.
+FLEETS_STANCE,Stance of every ship in the fleet
+FLEETS_STANCE_PEACEFUL,Peaceful
+FLEETS_STANCE_AGGRESSIVE,Aggressive
+FLEETS_INTENT_DESTROY,Destroy
+FLEETS_INTENT_CAPTURE,Capture
+FLEETS_STANCE_NOTE,"Peaceful: the fleet does not attack. The intent says what it does when it fights."
+FLEETS_STANCE_NOTE_AGGRESSIVE,"Aggressive: the fleet attacks foreign structures, starting one hour after the order."
+FLEETS_AGGRESSIVE_CONFIRM,"Tap Aggressive again: all ships attack foreign structures, starting in one hour."
+FLEETS_STANCE_SET,The fleet's stance was set.
+FLEETS_FLY,Fly to an orbit
+FLEETS_FLY_NOTE,"The ships fly as one: the slowest sets the pace, fuel comes from all of them."
+FLEETS_FLYING_NOW,The fleet is under way right now.
+FLEETS_NOT_TOGETHER,Its ships do not rest at one place.
+FLEETS_OTHER_TARGET,Another target
+FLEETS_START,Start the flight
+FLEETS_STARTED,"“{name}” took off, arrives in {duration}."
+FLEETS_LAUNCH_SET_BY,Launch: {name} takes the longest
+FLEETS_PACE_SET_BY,Pace: {name} (warp {warp})
+FLEETS_FUEL,"{resource}: needs {amount}, all ships carry {on_board}"
+FLEETS_MEMBER_DRAW,{name} gives {rows}
+FLEETS_DRAWS_NOTHING,nothing
+FLEETS_MEMBER_BLOCKED,{name}: {reasons}
+FLEETS_DISBAND,Disband the fleet
+FLEETS_DISBAND_CONFIRM,Tap again to disband
+FLEETS_DISBAND_HINT,Disbanding frees the ships; each keeps its stance.
+FLEETS_DISBAND_WARNING,Tap again to disband the fleet. Its ships stay where they are and travel alone again.
+FLEETS_DISBAND_FLYING,A fleet cannot be disbanded during its flight.
+FLEETS_GONE,Fleet disbanded
+FLEETS_GONE_TEXT,This fleet no longer exists.
+FLEETS_NAME_HINT,Name of the fleet
+FLEETS_NAME_OPTIONAL,Name (optional)
+FLEETS_NAME_INVALID,"A name has 1 to 40 letters, digits, spaces, - or _."
+FLEETS_RENAME_SAVE,Save
+FLEETS_RENAMED,The fleet was renamed.
+FLEETS_CREATE_OPEN,Form a fleet
+FLEETS_CREATE_TITLE,Form a fleet
+FLEETS_CREATE_HINT,"Pick ships resting at the same place. A fleet flies as one ship, shares its fuel and its stance; its ships take no orders of their own."
+FLEETS_CREATE_NONE,"No ship can join a fleet now: it needs a space drive, must rest and must not drive a route or be in another fleet."
+FLEETS_CREATE_AT,At {body}
+FLEETS_PICKED,{name} · picked
+FLEETS_CREATE,Form the fleet
+FLEETS_CREATE_COUNT,Form the fleet ({count} ship(s))
+FLEETS_CREATING,Forming…
+FLEETS_OPEN_FLEET,Open its fleet
+FLEETS_OPEN_NAMED,Open the fleet “{name}”
+FLEETS_MEMBER_LOCKED,"It flies with the fleet “{name}”. Leave the fleet to travel alone."
+FLEET_IN_FLEET,fleet “{name}”
+ROUTE_PICK_IN_FLEET,In a fleet: leave the fleet first
+ERROR_FLEET_NOT_FOUND,This fleet no longer exists.
+ERROR_ALREADY_IN_FLEET,This ship is already in a fleet.
+ERROR_NOT_IN_FLEET,This ship is not in the fleet.
+ERROR_FLEET_HAS_COMMAND,The fleet is under way; wait until it has arrived.
+ERROR_FLEET_NOT_CO_LOCATED,"The ships do not rest at one place. A fleet forms, flies and disbands only when all its ships rest at the same body."
+ERROR_FLEET_NOT_READY,Not every ship of the fleet is ready to fly.
+ERROR_FLEET_MEMBER_LOCKED,"This ship is in a fleet: it travels, drives routes and takes a stance only with its fleet. Leave the fleet first."

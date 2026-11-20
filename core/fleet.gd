@@ -32,6 +32,9 @@ class Entry:
 	## The route it drives as transporter (0: none) and the routes it is a station of.
 	var route_id := 0
 	var routes: Array[int] = []
+	## The fleet it is a member of (draft.33; 0: none). A member takes no trip, route or stance
+	## of its own.
+	var fleet_id := 0
 	var total_hulls := 0
 	var total_modules := 0
 
@@ -105,6 +108,7 @@ func apply_details(details: Dictionary) -> void:
 	_read(entry, details)
 	entry.motion = TravelMotion.from_wire(details.get("motion"))
 	entry.route_id = Wire.as_int(details.get("routeId"))
+	entry.fleet_id = Wire.as_int(details.get("fleetId"))
 	entry.routes.clear()
 	if typeof(details.get("routes")) == TYPE_ARRAY:
 		var ids: Array = details.get("routes")
@@ -140,6 +144,19 @@ func apply_event(type: String, data: Dictionary) -> bool:
 				return false
 			transporter.route_id = Wire.as_int(route.get("routeId"))
 			return true
+		"fleet.updated", "fleet.departed", "fleet.arrived":
+			var group := Wire.as_dict(data.get("fleet"))
+			var fleet_id := Wire.as_int(group.get("fleetId"))
+			if fleet_id == 0:
+				return false
+			var members: Dictionary = {}
+			if typeof(group.get("members")) == TYPE_ARRAY:
+				var rows: Array = group.get("members")
+				for row: Variant in rows:
+					members[Wire.as_int(Wire.as_dict(row).get("structureId"))] = true
+			return set_fleet_members(fleet_id, members)
+		"fleet.dissolved":
+			return set_fleet_members(Wire.as_int(data.get("fleetId")), {})
 		"route.deleted":
 			var gone := Wire.as_int(data.get("routeId"))
 			var changed := false
@@ -152,6 +169,18 @@ func apply_event(type: String, data: Dictionary) -> bool:
 					changed = true
 			return changed
 	return false
+
+
+## Makes exactly `members` (structure id → true) the members of fleet `fleet_id` (an empty one
+## for a dissolved fleet); returns whether that changed anything.
+func set_fleet_members(fleet_id: int, members: Dictionary) -> bool:
+	var changed := false
+	for entry: Entry in _entries.values():
+		var wanted := fleet_id if members.has(entry.structure_id) else (0 if entry.fleet_id == fleet_id else entry.fleet_id)
+		if entry.fleet_id != wanted:
+			entry.fleet_id = wanted
+			changed = true
+	return changed
 
 
 func find(id: int) -> Entry:

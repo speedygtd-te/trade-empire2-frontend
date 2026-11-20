@@ -437,6 +437,8 @@ func _fill_picker() -> void:
 				continue
 			if entry.route_id != 0:
 				reason = tr("ROUTE_PICK_BUSY")
+			elif _fleet.group_of(entry.structure_id) != null:
+				reason = tr("ROUTE_PICK_IN_FLEET")
 		else:
 			if entry.structure_id == _draft.transporter_id:
 				continue

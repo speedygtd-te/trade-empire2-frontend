@@ -13,6 +13,8 @@ signal closed
 signal show_requested(structure_id: int)
 ## The player wants the routes: the list (0) or one route's editor.
 signal route_requested(route_id: int)
+## The player wants the fleet this structure is a member of (draft.33).
+signal group_requested(fleet_id: int)
 
 ## How long the loaded structure may take to bring its layout (seconds).
 const LOAD_SECONDS := 15.0
@@ -35,6 +37,7 @@ var _actions: VBoxContainer
 var _travel_button: Button
 var _travel_note: Label
 var _route_button: Button
+var _group_button: Button
 var _status: Label
 var _travel_panel: TravelPanel
 
@@ -91,6 +94,10 @@ func _ready() -> void:
 	_actions.add_child(_travel_button)
 	_travel_note = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_actions.add_child(_travel_note)
+	_group_button = Ui.secondary_button("FLEETS_OPEN_FLEET")
+	_group_button.visible = false
+	_group_button.pressed.connect(_on_group)
+	_actions.add_child(_group_button)
 	var show := Ui.secondary_button("FLEET_SHOW_IN_BASE")
 	show.pressed.connect(func() -> void: show_requested.emit(_id))
 	_actions.add_child(show)
@@ -155,6 +162,10 @@ func _update() -> void:
 	else:
 		_route_line.text = tr("FLEET_NO_ROUTE")
 	_route_button.text = tr("FLEET_EDIT_ROUTE") if route != null else tr("FLEET_ROUTES")
+	var group := _fleet.group_of(_id)
+	_group_button.visible = group != null
+	if group != null:
+		_group_button.text = tr("FLEETS_OPEN_NAMED").format({"name": group.name})
 	var reason := _travel_reason(entry)
 	_travel_button.disabled = not reason.is_empty()
 	_travel_note.text = reason
@@ -166,12 +177,21 @@ func _update() -> void:
 func _travel_reason(entry: Fleet.Entry) -> String:
 	if not entry.can_fly() and not entry.can_drive():
 		return tr("FLEET_NO_DRIVE")
+	var group := _fleet.group_of(entry.structure_id)
+	if group != null:
+		return tr("FLEETS_MEMBER_LOCKED").format({"name": group.name})
 	if entry.is_moving(Services.clock.now_ms()):
 		return tr("FLEET_UNDER_WAY_NOW")
 	var can := TravelPanel.allowed(_fleet.fleet, entry)
 	if can.get("fly") != true and can.get("drive") != true:
 		return tr("FLEET_CANNOT_TRAVEL_HERE")
 	return ""
+
+
+func _on_group() -> void:
+	var group := _fleet.group_of(_id)
+	if group != null:
+		group_requested.emit(group.fleet_id)
 
 
 func _on_route() -> void:
