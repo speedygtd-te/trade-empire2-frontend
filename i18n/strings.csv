@@ -658,6 +658,9 @@ STORE_TO_CARGO,Use as cargo
 STORE_TO_SUPPLY,Use as supply
 STORE_MODE_SET_CARGO,The storage now holds cargo.
 STORE_MODE_SET_SUPPLY,The storage now holds own supply.
+STORE_INSPECT_LINE,Storage: {mode} · {capacity} units
+STORE_INSPECT_TO_CARGO,Use as cargo hold
+STORE_INSPECT_TO_SUPPLY,Use as own supply
 STORE_MOVE_TO_CARGO,Move to the cargo hold:
 STORE_MOVE_TO_SUPPLY,Move to the own supply:
 STORE_MOVE_NO_ROOM,There is not enough room in the cargo hold.

@@ -11,7 +11,8 @@ extends Control
 ## layers, the Profile tab with the enterprise as a layer, and the Back chains between them.
 ## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map and
 ## the galaxy (`--only=galaxy` does the same); `--only=shapes` goes from the opened colony straight to the hull
-## shapes in Build.
+## shapes in Build; `--only=storage` to a storage module in Inspect, switched for real (with
+## `--account=<name>` for an account whose store has room, e.g. `routes`).
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 ## The account of `--only=probes_live` (fresh draft.31 accounts own probes and launchers).
@@ -59,6 +60,11 @@ func _run() -> void:
 	await _capture("login_error")
 
 	var account_path := PROBES_ACCOUNT if OS.get_cmdline_user_args().has("--only=probes_live") else DEV_ACCOUNT
+	# `--account=<name>`: another account of tools/dev-account.cjs (.local/<name>-account.json),
+	# e.g. one whose store has room for `--only=storage` to switch for real.
+	for argument: String in OS.get_cmdline_user_args():
+		if argument.begins_with("--account="):
+			account_path = "res://.local/%s-account.json" % argument.trim_prefix("--account=")
 	var account := Wire.parse_object(FileAccess.get_file_as_string(ProjectSettings.globalize_path(account_path)))
 	# Password reset against the server: the development account's address cannot receive mail,
 	# so the request is harmless; a made-up code must be refused.
@@ -140,6 +146,10 @@ func _run() -> void:
 		await _capture_telescope(colony)
 		await _finish(shell, session, had_session)
 		return
+	if OS.get_cmdline_user_args().has("--only=storage"):
+		await _capture_storage(colony)
+		await _finish(shell, session, had_session)
+		return
 	if OS.get_cmdline_user_args().has("--only=fog"):
 		await _capture_fog(colony)
 		await _finish(shell, session, had_session)
@@ -180,6 +190,7 @@ func _run() -> void:
 				print("INSPECT  %s: %s | %s" % [kind, colony._info.text.replace("\n", " / "), colony._ground.text.replace("\n", " / ")])
 				break
 	await _capture_telescope(colony)
+	await _capture_storage(colony)
 	var ground_cell := layout.to_absolute(_free_neighbour(layout))
 	colony._select(ground_cell)
 	await _ground_ready(colony, ground_cell)
@@ -1104,6 +1115,71 @@ func _capture_telescope(colony: ColonyScreen) -> void:
 	scope.upgrade_to = 0
 	colony._model.reload_telescopes()
 	colony._select(null)
+
+
+## A storage module in Inspect (when the structure has one): its mode and size, then switched for
+## real to the other area and back (`setStorageMode`) — the card while sending, with the result,
+## and the Inventory tab's row for the same module in between. A store too full for the switch
+## shows the server's refusal; then the other mode is only a sample (made up, never sent).
+func _capture_storage(colony: ColonyScreen) -> void:
+	var layout := colony._model.layout
+	var store_module: StructureLayout.Module = null
+	for placed: StructureLayout.Module in layout.modules():
+		if colony._switches_storage(placed):
+			store_module = placed
+			break
+	if store_module == null:
+		print("STORAGE  none in this structure (place one to see the inspect card)")
+		return
+	var at := layout.to_absolute(store_module.origin)
+	var start_mode := store_module.storage_mode
+	colony._select(at)
+	await _capture("colony_inspect_storage")
+	print("STORAGE  %s | button '%s'" % [colony._scope.text, colony._secondary.text])
+	# While sending (held as a sample: the server answers before a picture is taken).
+	colony._busy = true
+	colony._status.text = tr("COLONY_SENDING")
+	colony._refresh()
+	await _capture("colony_inspect_storage_sending_sample")
+	print("SAMPLE  sending: %s | button disabled %s" % [colony._status.text, colony._secondary.disabled])
+	colony._busy = false
+	for step: int in 2:
+		var to := StorePanel.other_mode(store_module)
+		await colony._switch_storage(store_module)
+		store_module = colony._model.layout.module(store_module.module_id)
+		await _capture("colony_inspect_storage_switched_%d" % step)
+		print("STORAGE  to %s: %s | %s | button '%s'" % [to, colony._status.text, colony._scope.text, colony._secondary.text])
+		if store_module.storage_mode != to:
+			# Refused (e.g. the store is too full): the other mode as a sample only.
+			store_module.storage_mode = to
+			colony._status.text = ""
+			colony._refresh()
+			await _capture("colony_inspect_storage_other_sample")
+			print("SAMPLE  storage as %s: %s | button '%s'" % [to, colony._scope.text, colony._secondary.text])
+			store_module.storage_mode = start_mode
+			colony._refresh()
+			break
+		if step == 0:
+			# The Inventory tab lists the same module with the new mode.
+			colony._set_mode(ColonyScreen.Mode.STORE)
+			await get_tree().process_frame
+			colony._store._scroll.scroll_vertical = int(colony._store._list.size.y)
+			await _capture("colony_store_storage_modules")
+			print("STORAGE  inventory tab: %s" % _storage_rows(colony._store))
+			colony._set_mode(ColonyScreen.Mode.VIEW)
+			colony._select(at)
+	print("STORAGE  back to %s: %s" % [start_mode, colony._model.layout.module(store_module.module_id).storage_mode == start_mode])
+	colony._status.text = ""
+	colony._select(null)
+
+
+## The texts of the Inventory tab's storage module rows.
+func _storage_rows(store: StorePanel) -> String:
+	var texts := PackedStringArray()
+	for row: Node in store._list.get_children():
+		if row is HBoxContainer and row.get_child_count() == 2 and row.get_child(0) is Label:
+			texts.append((row.get_child(0) as Label).text)
+	return " / ".join(texts)
 
 
 ## The surface fog of draft.31 on the live server: a fresh base sees 1 000 cells around itself, so
