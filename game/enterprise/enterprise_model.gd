@@ -14,6 +14,12 @@ signal list_changed
 signal diplomacy_changed
 signal taxes_changed
 signal stock_changed
+## Flagship, research or factory changed (draft.37).
+signal flagship_changed
+signal research_changed
+signal factory_changed
+## The player wants to see a structure of the enterprise in Base (the shell switches there).
+signal structure_requested(structure_id: int)
 ## A logo finished downloading (`url` as the server gave it).
 signal logo_loaded(url: String)
 ## Every enterprise or diplomacy event, for whoever wants to follow them (smoke, notices).
@@ -50,6 +56,17 @@ var taxes: EnterpriseTaxes = null
 var taxes_error: ApiError = null
 var stock: EnterpriseTaxes.Stock = null
 var stock_error: ApiError = null
+## Flagship, research and factory (draft.37); null until loaded. A server without them answers
+## 404 (`NOT_FOUND`): then `assets_supported` turns false and the screens hide them.
+var flagship: EnterpriseFlagship = null
+var flagship_error: ApiError = null
+var research: EnterpriseResearch = null
+var research_error: ApiError = null
+var factory: EnterpriseFactory = null
+var factory_error: ApiError = null
+var assets_supported := true
+## The player's structures (for the bodies a flagship can be delivered to); set by the shell.
+var fleet: FleetModel = null
 
 var _loading := false
 var _again := false
@@ -214,6 +231,67 @@ func reload_stock() -> void:
 	else:
 		stock_error = answer.error
 	stock_changed.emit()
+
+
+## Whether the own enterprise has flagship, research and factory (the server is draft.37 or newer).
+func has_assets() -> bool:
+	return assets_supported and mine != null and mine.has_flagship_features()
+
+
+func reload_flagship() -> void:
+	if not has_assets():
+		return
+	var answer := await api.get_json(_path("/flagship"))
+	if answer.is_ok():
+		flagship = EnterpriseFlagship.from_wire(answer.data)
+		flagship_error = null
+		_sync_cap(flagship)
+	else:
+		_asset_failed(answer.error)
+		flagship_error = answer.error
+	flagship_changed.emit()
+
+
+func reload_research() -> void:
+	if not has_assets():
+		return
+	var answer := await api.get_json(_path("/research"))
+	if answer.is_ok():
+		research = EnterpriseResearch.from_wire(answer.data)
+		research_error = null
+	else:
+		_asset_failed(answer.error)
+		research_error = answer.error
+	research_changed.emit()
+
+
+func reload_factory() -> void:
+	if not has_assets():
+		return
+	var answer := await api.get_json(_path("/factory"))
+	if answer.is_ok():
+		factory = EnterpriseFactory.from_wire(answer.data)
+		factory_error = null
+	else:
+		_asset_failed(answer.error)
+		factory_error = answer.error
+	factory_changed.emit()
+
+
+## A 404 without an enterprise code: the route is unknown, the server is older than draft.37.
+func _asset_failed(failure: ApiError) -> void:
+	if failure.code == "NOT_FOUND" or failure.code == "METHOD_NOT_ALLOWED":
+		assets_supported = false
+		changed.emit()
+
+
+## The flagship answer carries cap and count: the overview follows without another load.
+func _sync_cap(view: EnterpriseFlagship) -> void:
+	if mine == null or (mine.member_cap == view.member_cap and mine.member_count == view.member_count):
+		return
+	mine.member_cap = view.member_cap
+	mine.member_count = view.member_count
+	changed.emit()
 
 
 ## One page of the own enterprise's log (`before` 0: the newest).
@@ -381,6 +459,65 @@ func set_taxes(draft: Dictionary) -> ApiResult:
 	return result
 
 
+## Orders the flagship into the orbit of `body_id` (MANAGE_TREASURY). A refusal for missing
+## goods marks them in the price shown.
+func order_flagship(body_id: String) -> ApiResult:
+	if mine == null:
+		return _not_member()
+	var result := await api.post_json(_path("/flagship"), EnterpriseFlagship.order_body(body_id))
+	if result.is_ok():
+		flagship = EnterpriseFlagship.from_wire(result.data)
+		flagship_error = null
+		reload_stock()
+	elif result.error.code == "INSUFFICIENT_STOCK" and flagship != null:
+		flagship.apply_missing(EnterpriseFlagship.missing_from_details(result.error.details))
+	flagship_changed.emit()
+	return result
+
+
+## Starts researching `tech` (MANAGE_TREASURY); its cost is taken at once.
+func start_research(tech: String) -> ApiResult:
+	if mine == null:
+		return _not_member()
+	var result := await api.post_json(_path("/research"), EnterpriseResearch.start_body(tech))
+	if result.is_ok():
+		research = EnterpriseResearch.from_wire(result.data)
+		research_error = null
+		research_changed.emit()
+		reload_stock()
+	return result
+
+
+## Cancels the running research; nothing is refunded.
+func cancel_research() -> ApiResult:
+	if mine == null:
+		return _not_member()
+	var result := await api.delete_json(_path("/research"))
+	if result.is_ok():
+		research = EnterpriseResearch.from_wire(result.data)
+		research_error = null
+		research_changed.emit()
+	return result
+
+
+## Replaces the factory lines (MANAGE_TREASURY): [[blueprint, quantity], …].
+func set_factory(lines: Array[Array]) -> ApiResult:
+	if mine == null:
+		return _not_member()
+	var result := await api.put_json(_path("/factory"), EnterpriseFactory.body(lines))
+	if result.is_ok():
+		factory = EnterpriseFactory.from_wire(result.data)
+		factory_error = null
+		factory_changed.emit()
+	return result
+
+
+## Asks the shell to show a structure of the enterprise in Base.
+func show_structure(structure_id: int) -> void:
+	if structure_id != 0:
+		structure_requested.emit(structure_id)
+
+
 # --- logos ----------------------------------------------------------------------------------
 
 ## The texture of a logo path; the default ring while it downloads (`logo_loaded` follows) or
@@ -461,6 +598,9 @@ func _set_mine(view: Enterprise) -> void:
 		taxes = null
 		stock = null
 		diplomacy = null
+		flagship = null
+		research = null
+		factory = null
 
 
 ## The player is out (left, dissolved, removed).
@@ -511,6 +651,21 @@ func _on_event(event: SseEvent) -> void:
 		"enterprise.taxes":
 			if own:
 				reload_taxes()
+		"enterprise.flagship":
+			if own:
+				reload_flagship()
+				reload_stock()
+				# A delivered or lost flagship changes the member cap (its administrations).
+				reload()
+		"enterprise.research":
+			if own:
+				reload_research()
+				if Wire.as_string(data.get("kind")) == "started":
+					reload_stock()
+		"enterprise.factory":
+			if own:
+				reload_factory()
+				reload_stock()
 		"enterprise.dissolved":
 			_forget(id)
 			if own:
@@ -540,3 +695,9 @@ func _on_resync(_rev: int) -> void:
 		reload_taxes()
 	if stock != null:
 		reload_stock()
+	if flagship != null:
+		reload_flagship()
+	if research != null:
+		reload_research()
+	if factory != null:
+		reload_factory()

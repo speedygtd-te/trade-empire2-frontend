@@ -73,6 +73,9 @@ func refresh() -> void:
 		text_label(about, view.description if not view.description.is_empty() else tr("ENTERPRISE_NO_DESCRIPTION"),
 			"" if not view.description.is_empty() else AppTheme.VARIATION_MUTED)
 		text_label(about, tr("ENTERPRISE_JOIN_MODE_OPEN") if view.is_open() else tr("ENTERPRISE_JOIN_MODE_CLOSED"), AppTheme.VARIATION_MUTED)
+		var members := text_label(about, cap_text(view, self))
+		if view.is_full():
+			members.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 		var age := maxi(Services.clock.now_ms() - view.founded_at, 0)
 		text_label(about, tr("ENTERPRISE_FOUNDED_AGO").format({"duration": TimeFormat.duration(age)}), AppTheme.VARIATION_MUTED)
 		if view.has_flag("EDIT_IDENTITY"):

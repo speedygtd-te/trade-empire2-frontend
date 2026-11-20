@@ -60,3 +60,38 @@ func test_an_entry_names_the_store_item_it_is_built_from() -> void:
 
 	assert_str(items["hull:STARTER"]).is_equal("HULL_STARTER")
 	assert_str(items["module:PUMP"]).is_equal("PUMP_MODULE")
+
+
+func test_owners_decide_who_may_build_when_the_data_says() -> void:
+	var definitions := GameDefinitions.from_bundle({
+		"dataHash": "x",
+		"modules": [
+			{"key": "PUMP", "displayName": "Pump", "category": "PRODUCTION", "item": "PUMP_MODULE"},
+			{"key": "LIFE_SUPPORT", "displayName": "Life Support", "category": "COLONY", "item": "LIFE_SUPPORT_MODULE",
+				"owners": ["PLAYER", "ENTERPRISE"]},
+			{"key": "ENTERPRISE_GENERATOR", "displayName": "Generator", "category": "COLONY",
+				"item": "ENTERPRISE_GENERATOR_MODULE", "owners": ["ENTERPRISE"], "enterpriseBuildable": true},
+		],
+		"hulls": [{"key": "ENTERPRISE_DOCK", "displayName": "Enterprise Dock", "item": "HULL_ENTERPRISE_DOCK",
+			"owners": ["ENTERPRISE"]}],
+	})
+	var units := {"PUMP_MODULE": 1, "LIFE_SUPPORT_MODULE": 1, "ENTERPRISE_GENERATOR_MODULE": 1, "HULL_ENTERPRISE_DOCK": 1}
+
+	assert_bool(definitions.owners_known).is_true()
+	assert_bool(definitions.module("ENTERPRISE_GENERATOR").enterprise_buildable).is_true()
+	var player: Array[String] = []
+	for entry: BuildCatalog.Entry in BuildCatalog.entries(definitions, units):
+		player.append(entry.tool)
+	var enterprise: Array[String] = []
+	for entry: BuildCatalog.Entry in BuildCatalog.entries(definitions, units, "enterprise"):
+		enterprise.append(entry.tool)
+	assert_array(player).contains_exactly_in_any_order(["module:PUMP", "module:LIFE_SUPPORT"])
+	assert_array(enterprise).contains_exactly_in_any_order(["hull:ENTERPRISE_DOCK", "module:LIFE_SUPPORT",
+		"module:ENTERPRISE_GENERATOR"])
+
+
+func test_without_owners_in_the_data_nothing_is_filtered() -> void:
+	# The draft.37 server keeps `owners` out of /v2/definitions.
+	assert_bool(_definitions.owners_known).is_false()
+	assert_int(BuildCatalog.entries(_definitions, _units(), "enterprise").size()).is_equal(
+		BuildCatalog.entries(_definitions, _units()).size())

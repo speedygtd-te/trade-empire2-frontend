@@ -27,6 +27,9 @@ var probes: ProbeModel
 var groups := FleetGroups.new()
 ## Whether the server has fleets (false on one older than draft.33, after its 404).
 var groups_supported := true
+## Whether the server lists enterprise structures (false on one older than draft.37, after its
+## 404). They are in `fleet` as well (`Fleet.enterprise_entries`), the flagship first.
+var enterprise_supported := true
 
 var _loading := false
 var _again := false
@@ -67,12 +70,46 @@ func reload() -> void:
 			var details := await Services.api.get_json("/v2/structures/%d" % entry.structure_id)
 			if details.is_ok():
 				fleet.apply_details(details.data)
+	await _load_enterprise()
 	_sync_members()
 	await _name_bodies()
 	loaded = true
 	_loading = false
 	changed.emit()
 	_finish()
+
+
+## Loads the structures of the player's enterprise again (it changed, or its flagship came).
+func reload_enterprise() -> void:
+	if _loading or not loaded:
+		return
+	await _load_enterprise()
+	await _name_bodies()
+	changed.emit()
+
+
+## The enterprise's structures (draft.37) with their details; none outside an enterprise. A
+## failed answer keeps what is known; a server without them hides them.
+func _load_enterprise() -> void:
+	var account := Services.session.account
+	var id := account.enterprise_id if account != null else ""
+	var refs: Array[EnterpriseFlagship.StructureRef] = []
+	if not id.is_empty() and enterprise_supported:
+		var answer := await Services.api.get_json("/v2/enterprises/%s/structures" % id.uri_encode())
+		if answer.is_ok():
+			refs = EnterpriseFlagship.structures_from_wire(answer.data)
+		elif answer.error.code == "NOT_FOUND" or answer.error.code == "METHOD_NOT_ALLOWED":
+			enterprise_supported = false
+		else:
+			return
+	fleet.apply_enterprise(refs, id)
+	for entry: Fleet.Entry in fleet.enterprise_entries():
+		var details := await Services.api.get_json("/v2/structures/%d" % entry.structure_id)
+		if details.is_ok():
+			fleet.apply_details(details.data)
+			# The list does not say it; the structure itself does.
+			entry.owner_kind = "enterprise"
+			entry.enterprise_id = id
 
 
 ## Every structure of the player, all pages in one answer (`data.items`).
@@ -193,7 +230,7 @@ func body_name(body_id: String) -> String:
 ## Looks up the names of the bodies the fleet is at or heading to that are not known yet.
 func _name_bodies() -> void:
 	var wanted: Dictionary = {}
-	for entry: Fleet.Entry in fleet.entries():
+	for entry: Fleet.Entry in fleet.entries() + fleet.enterprise_entries():
 		if not entry.body_id.is_empty():
 			wanted[entry.body_id] = true
 		if entry.motion != null and not entry.motion.target_body_id().is_empty():
@@ -217,6 +254,10 @@ func _finish() -> void:
 
 
 func _on_event(event: SseEvent) -> void:
+	if event.type == "enterprise.flagship":
+		# Delivered or destroyed: the enterprise's structures changed.
+		reload_enterprise()
+		return
 	if event.type.begins_with("fleet."):
 		_on_group_event(event)
 		return

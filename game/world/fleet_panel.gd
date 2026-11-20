@@ -6,7 +6,8 @@ extends Control
 ## marked. A tap opens the structure's details (FleetDetail, a layer): travel, show it in Base,
 ## its routes. The route editor is a layer as well. Fleets (draft.33) come first: each with its
 ## ships, where it is or its flight, and its shared supply; a tap opens it (FleetGroupDetail),
-## "Form a fleet" picks ships for a new one (FleetGroupCreate).
+## "Form a fleet" picks ships for a new one (FleetGroupCreate). The structures of the player's
+## enterprise (draft.37, the flagship first) follow in a section of their own, marked as such.
 
 ## The player wants to see a structure in Base.
 signal chosen(structure_id: int)
@@ -263,6 +264,13 @@ func _rebuild() -> void:
 		_list.add_child(Ui.label("FLEET_SECTION_STATIONARY", AppTheme.VARIATION_MUTED))
 		for entry: Fleet.Entry in others:
 			_add_row(entry)
+	# The enterprise's structures (draft.37): every member sees them; travel needs a right.
+	var enterprise := _fleet.fleet.enterprise_entries()
+	if not enterprise.is_empty():
+		_list.add_child(Ui.spacer(8))
+		_list.add_child(Ui.label("FLEET_SECTION_ENTERPRISE", AppTheme.VARIATION_MUTED))
+		for entry: Fleet.Entry in enterprise:
+			_add_row(entry)
 	_update_lines()
 
 
@@ -323,6 +331,8 @@ func _update_lines() -> void:
 		var line := status_text(_fleet, entry, now, self)
 		if entry.motion != null and entry.is_moving(now):
 			line += " · " + tr("FLEET_PROGRESS").format({"percent": roundi(entry.motion.progress_at(now) * 100.0)})
+		if entry.is_enterprise():
+			line = "%s · %s" % [tr("FLEET_FLAGSHIP_MARK") if entry.flagship else tr("FLEET_ENTERPRISE_MARK"), line]
 		button.text = "%s\n%s" % [entry.name, line]
 
 

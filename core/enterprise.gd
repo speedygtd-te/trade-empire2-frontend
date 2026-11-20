@@ -9,7 +9,12 @@ extends RefCounted
 ## The rights a role can carry (`EnterpriseFlag`), in the order the screen lists them.
 const FLAGS: PackedStringArray = [
 	"MANAGE_MEMBERS", "MANAGE_ROLES", "SET_DIPLOMACY", "EDIT_IDENTITY", "DISSOLVE", "SET_TAX",
+	"MANAGE_TREASURY", "COMMAND_ENTERPRISE_FLEET",
 ]
+## Order the flagship, run research and the factory (draft.37).
+const FLAG_TREASURY := "MANAGE_TREASURY"
+## Travel and stance of the enterprise's structures (draft.37).
+const FLAG_FLEET := "COMMAND_ENTERPRISE_FLEET"
 ## The founder role: all rights, rights fixed, never without a holder.
 const FOUNDER_ROLE := "1"
 const JOIN_OPEN := "open"
@@ -141,6 +146,9 @@ var ticker := ""
 var description := ""
 var join_mode := ""
 var member_count := 0
+## Most members (5 + 5 per working administration in the flagship, draft.37); -1 from a server
+## before draft.37, which has no cap and no flagship.
+var member_cap := -1
 var founded_at := 0
 var founder_id := ""
 ## `enterprise-{id}`
@@ -169,6 +177,7 @@ static func from_wire(data: Dictionary) -> Enterprise:
 	view.description = Wire.as_string(data.get("description"))
 	view.join_mode = Wire.as_string(data.get("joinMode"))
 	view.member_count = Wire.as_int(data.get("memberCount"))
+	view.member_cap = Wire.as_int(data.get("memberCap"), -1) if data.has("memberCap") else -1
 	view.founded_at = Wire.as_int(data.get("foundedAt"))
 	view.founder_id = Wire.as_string(data.get("founderId"))
 	view.faction = Wire.as_string(data.get("faction"))
@@ -259,6 +268,17 @@ func is_open() -> bool:
 
 func has_flag(flag: String) -> bool:
 	return my_flags.has(flag)
+
+
+## Whether the server knows flagship, research, factory and the member cap (draft.37).
+func has_flagship_features() -> bool:
+	return member_cap >= 0
+
+
+## Whether joining, admitting and accepting an invitation are refused (`ENTERPRISE_FULL`). Members
+## above the cap stay; only new ones are kept out.
+func is_full() -> bool:
+	return member_cap >= 0 and member_count >= member_cap
 
 
 ## Whether the asking player holds the founder role.

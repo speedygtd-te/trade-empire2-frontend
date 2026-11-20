@@ -153,7 +153,10 @@ func _update() -> void:
 		_travel_button.disabled = true
 		return
 	_header.set_title(entry.name)
-	_header.set_subtitle(tr("FLEET_KIND_" + entry.kind.to_upper()) if not entry.kind.is_empty() else "")
+	var subtitle := tr("FLEET_KIND_" + entry.kind.to_upper()) if not entry.kind.is_empty() else ""
+	if entry.is_enterprise():
+		subtitle = "%s · %s" % [tr("FLEET_FLAGSHIP_MARK") if entry.flagship else tr("FLEET_ENTERPRISE_MARK"), subtitle]
+	_header.set_subtitle(subtitle)
 	var route := _fleet.routes.book.find(entry.route_id) if entry.route_id != 0 and _fleet.routes != null else null
 	if route != null:
 		_route_line.text = tr("FLEET_DRIVES_ROUTE").format({"name": route.name})
@@ -162,6 +165,8 @@ func _update() -> void:
 	else:
 		_route_line.text = tr("FLEET_NO_ROUTE")
 	_route_button.text = tr("FLEET_EDIT_ROUTE") if route != null else tr("FLEET_ROUTES")
+	# Enterprise structures have no routes (they draw from the enterprise inventory).
+	_route_button.visible = not entry.is_enterprise()
 	var group := _fleet.group_of(_id)
 	_group_button.visible = group != null
 	if group != null:
@@ -177,6 +182,10 @@ func _update() -> void:
 func _travel_reason(entry: Fleet.Entry) -> String:
 	if not entry.can_fly() and not entry.can_drive():
 		return tr("FLEET_NO_DRIVE")
+	if entry.is_enterprise():
+		var account := Services.session.account
+		if account == null or not account.enterprise_flags.has(Enterprise.FLAG_FLEET):
+			return tr("FLEET_ENTERPRISE_NEEDS_RIGHT").format({"right": tr("ENTERPRISE_FLAG_COMMAND_ENTERPRISE_FLEET")})
 	var group := _fleet.group_of(entry.structure_id)
 	if group != null:
 		return tr("FLEETS_MEMBER_LOCKED").format({"name": group.name})

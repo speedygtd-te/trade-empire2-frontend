@@ -219,3 +219,20 @@ func test_strings_and_players_of_json_arrays() -> void:
 	var refs := Enterprise.players([{"playerId": "4", "playerName": "Ann"}, {"playerName": "no id"}])
 	assert_int(refs.size()).is_equal(1)
 	assert_str(refs[0].player_name).is_equal("Ann")
+
+
+func test_member_cap_and_new_rights() -> void:
+	var older := Enterprise.from_wire({"enterpriseId": "1", "memberCount": 7.0})
+	var full := Enterprise.from_wire({"enterpriseId": "2", "memberCount": 5.0, "memberCap": 5.0,
+		"me": {"flags": ["MANAGE_TREASURY", "COMMAND_ENTERPRISE_FLEET"], "roleIds": ["1"]}})
+	var room := Enterprise.from_wire({"enterpriseId": "3", "memberCount": 3.0, "memberCap": 10.0})
+
+	assert_int(older.member_cap).is_equal(-1)
+	assert_bool(older.has_flagship_features()).is_false()
+	assert_bool(older.is_full()).is_false()
+	assert_bool(full.is_full()).is_true()
+	assert_bool(full.has_flagship_features()).is_true()
+	assert_bool(full.has_flag(Enterprise.FLAG_TREASURY)).is_true()
+	assert_bool(full.has_flag(Enterprise.FLAG_FLEET)).is_true()
+	assert_bool(room.is_full()).is_false()
+	assert_bool(Enterprise.FLAGS.has("COMMAND_ENTERPRISE_FLEET")).is_true()
