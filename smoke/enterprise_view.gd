@@ -7,6 +7,12 @@ extends Control
 ## and with role switches, the role editor, the dissolve warning and the log. Both enterprises
 ## are dissolved at the end.
 ##
+## Flagship, research and factory (draft.37): live as a new enterprise has them (no flagship,
+## the price with everything missing, the order refused with INSUFFICIENT_STOCK, the tree, the
+## recipes); then made-up states the accounts cannot reach (the flagship costs about 1.55 M
+## units from taxes) — ordered, active, research running and paused, factory lines, the
+## enterprise section of Fleet. Those files end in `_SAMPLE` and are never sent.
+##
 ##   godot --path . --resolution 720x1280 res://smoke/enterprise_view.tscn -- --out=build/enterprise
 
 const ACCOUNT_A := "res://.local/enterprise-a-account.json"
@@ -16,6 +22,7 @@ var _out_dir := "user://enterprise"
 var _a: EnterpriseModel
 var _b: EnterpriseModel
 var _panel: EnterprisePanel
+var _fleet: FleetModel
 
 
 func _ready() -> void:
@@ -48,6 +55,10 @@ func _run() -> void:
 	await _until(func() -> bool: return Services.definitions != null, 15000)
 	_a = EnterpriseModel.new()
 	add_child(_a)
+	_fleet = FleetModel.new()
+	add_child(_fleet)
+	_a.fleet = _fleet
+	_fleet.reload()
 	var b_api := ApiClient.new()
 	b_api.base_url = Services.server.base
 	add_child(b_api)
@@ -102,6 +113,7 @@ func _run() -> void:
 	await get_tree().create_timer(3.0).timeout
 	print("VIEW  logo now %s" % _a.mine.logo.status)
 	await _capture("enterprise_overview")
+	await _flagship_views()
 
 	# Diplomacy: an alliance that ended (still friends for an hour) and a new proposal.
 	var fa := _b.mine.faction
@@ -109,7 +121,7 @@ func _run() -> void:
 	print("VIEW  alliance: %s, accept: %s, break: %s, propose again: %s" % [
 		_code(await _a.diplomacy_step(fa, "alliance")), _code(await _b.diplomacy_step(fb, "accept")),
 		_code(await _a.diplomacy_step(fa, "break")), _code(await _b.diplomacy_step(fb, "alliance"))])
-	_panel.show_tab(3)
+	_panel.show_tab_key("ENTERPRISE_TAB_DIPLOMACY")
 	await _until(func() -> bool: return _a.diplomacy != null and _a.diplomacy.proposed_to_us(fa), 8000)
 	await _capture("enterprise_diplomacy")
 	var diplomacy := _panel.current_tab() as EnterpriseDiplomacyTab
@@ -124,7 +136,7 @@ func _run() -> void:
 
 	# Taxes: two announced increases, then the editor on one of them.
 	print("VIEW  taxes: %s" % _code(await _a.set_taxes({"IRON": 10, "WATER": 5})))
-	_panel.show_tab(4)
+	_panel.show_tab_key("ENTERPRISE_TAB_TAXES")
 	var taxes := _panel.current_tab() as EnterpriseTaxesTab
 	await _until(func() -> bool: return _a.taxes != null, 8000)
 	await _capture("enterprise_taxes")
@@ -150,7 +162,7 @@ func _run() -> void:
 	# B leaves its own (dissolves it) and applies to A's.
 	print("VIEW  B dissolves: %s, applies: %s" % [_code(await _b.dissolve()), _code(await _b.apply_to(_a.mine.enterprise_id))])
 	await _a.reload()
-	_panel.show_tab(1)
+	_panel.show_tab_key("ENTERPRISE_TAB_MEMBERS")
 	await _capture("enterprise_members_application")
 	var members := _panel.current_tab() as EnterpriseMembersTab
 	await members._on_admit(_b.player_id())
@@ -163,7 +175,7 @@ func _run() -> void:
 	await _capture("enterprise_members_kick_armed")
 	members.armed = ""
 	members._toggle(_b.player_id())
-	_panel.show_tab(2)
+	_panel.show_tab_key("ENTERPRISE_TAB_ROLES")
 	await _capture("enterprise_roles")
 	var roles := _panel.current_tab() as EnterpriseRolesTab
 	roles._open_editor(Wire.as_string(created.data.get("roleId")))
@@ -173,7 +185,7 @@ func _run() -> void:
 	await _capture("enterprise_role_editor_founder")
 	roles._close_editor()
 
-	_panel.show_tab(0)
+	_panel.show_tab_key("ENTERPRISE_TAB_OVERVIEW")
 	var overview := _panel.current_tab() as EnterpriseOverviewTab
 	overview._on_dissolve()
 	await _until(func() -> bool: return _a.stock != null, 5000)
@@ -181,7 +193,7 @@ func _run() -> void:
 	await _capture("enterprise_dissolve_warning")
 	overview.armed = ""
 	overview.refresh()
-	_panel.show_tab(5)
+	_panel.show_tab_key("ENTERPRISE_TAB_LOG")
 	await get_tree().create_timer(2.0).timeout
 	await _capture("enterprise_log")
 
@@ -191,6 +203,192 @@ func _run() -> void:
 	if not had_session:
 		await Services.session.logout()
 	get_tree().quit()
+
+
+## Flagship, research and factory: live first, then the made-up states (`_SAMPLE`).
+func _flagship_views() -> void:
+	if not _a.has_assets():
+		print("SKIP  the server has no flagship (older than draft.37)")
+		return
+	print("VIEW  member cap: %d of %d" % [_a.mine.member_count, _a.mine.member_cap])
+	await _until(func() -> bool: return _fleet.loaded, 15000)
+	_panel.show_tab_key("ENTERPRISE_TAB_FLAGSHIP")
+	await _until(func() -> bool: return _a.flagship != null, 8000)
+	print("VIEW  flagship: %s, price %d resources, total %d" % [_a.flagship.status, _a.flagship.price.size(), _a.flagship.total_price()])
+	await _capture("enterprise_flagship")
+	var flagship_tab := _panel.current_tab() as EnterpriseFlagshipTab
+	# The order is refused live (nothing in the inventory): the missing goods stay red. The
+	# button is disabled while the price is short, so the refusal is asked for directly.
+	var refused := await _a.order_flagship(Services.session.account.home_body_id)
+	print("VIEW  order without stock: %s, missing %s" % [_code(refused),
+		str(EnterpriseFlagship.missing_from_details(refused.error.details).size()) if not refused.is_ok() else "-"])
+	if not refused.is_ok():
+		# As the tab says it after its own refused order.
+		flagship_tab.say(flagship_tab.tr("ENTERPRISE_FLAGSHIP_NEEDS_STOCK"), AppTheme.COLOR_DANGER)
+	await _capture("enterprise_flagship_refused")
+	flagship_tab.say("")
+
+	_panel.show_tab_key("ENTERPRISE_TAB_RESEARCH")
+	await _until(func() -> bool: return _a.research != null, 8000)
+	print("VIEW  research: %d techs, running %s" % [_a.research.techs.size(), _a.research.running != null])
+	await _capture("enterprise_research")
+	var research_tab := _panel.current_tab() as EnterpriseResearchTab
+	research_tab._chosen = "ET_LIFE_SCIENCES"
+	research_tab.refresh()
+	await _capture("enterprise_research_detail")
+	research_tab._chosen = ""
+	var started := await _a.start_research("ET_LIFE_SCIENCES")
+	print("VIEW  research without flagship: %s" % _code(started))
+
+	_panel.show_tab_key("ENTERPRISE_TAB_FACTORY")
+	await _until(func() -> bool: return _a.factory != null, 8000)
+	print("VIEW  factory: %d recipes, %d lines, max %d" % [_a.factory.recipes.size(), _a.factory.lines.size(), _a.factory.max_lines])
+	await _capture("enterprise_factory")
+	var live_factory := _panel.current_tab() as EnterpriseFactoryTab
+	live_factory._catalog = true
+	live_factory.refresh()
+	await _capture("enterprise_factory_blueprints")
+	live_factory._catalog = false
+	live_factory.refresh()
+	var lines: Array[Array] = [["ENTERPRISE_DOCK_MANUFACTURING", 2]]
+	print("VIEW  factory without flagship: %s" % _code(await _a.set_factory(lines)))
+
+	# --- made-up states (never sent) ---------------------------------------------------------
+	var now := Services.clock.now_ms()
+	var home := _fleet.fleet.places()[0].body_id if not _fleet.fleet.places().is_empty() else ""
+	var real_flagship := _a.flagship
+	var real_research := _a.research
+	var real_factory := _a.factory
+	var sample := Wire.parse_object(JSON.stringify(_flagship_wire(real_flagship)))
+	sample["status"] = "ordered"
+	sample["bodyId"] = home
+	sample["orderedAt"] = now - 20 * 3600000
+	sample["deliversAt"] = now + 52 * 3600000
+	# Shown first: showing a tab loads it again, which would replace the sample.
+	_panel.show_tab_key("ENTERPRISE_TAB_FLAGSHIP")
+	await get_tree().create_timer(2.0).timeout
+	_a.flagship = EnterpriseFlagship.from_wire(sample)
+	_a.flagship_changed.emit()
+	await _capture("enterprise_flagship_ordered_SAMPLE")
+	sample["status"] = "active"
+	sample["structureId"] = 990001
+	sample["labRunning"] = false
+	sample["administrations"] = 1
+	sample["memberCap"] = 10
+	_a.flagship = EnterpriseFlagship.from_wire(sample)
+	var ref := EnterpriseFlagship.StructureRef.new()
+	ref.structure_id = 990001
+	ref.name = "%s Flagship" % _a.mine.name
+	ref.flagship = true
+	var refs: Array[EnterpriseFlagship.StructureRef] = [ref]
+	_fleet.fleet.apply_enterprise(refs, _a.mine.enterprise_id)
+	_fleet.fleet.apply_details({"structureId": 990001, "kind": "ship", "ownerKind": "enterprise",
+		"enterpriseId": _a.mine.enterprise_id, "capabilities": ["SPACE_DRIVE"],
+		"anchor": {"type": "free", "kind": "orbit", "bodyId": home}})
+	_a.flagship_changed.emit()
+	await _capture("enterprise_flagship_active_SAMPLE")
+
+	_panel.show_tab_key("ENTERPRISE_TAB_RESEARCH")
+	await get_tree().create_timer(2.0).timeout
+	_a.research = EnterpriseResearch.from_wire(_research_sample(real_research, now))
+	_a.research_changed.emit()
+	await _capture("enterprise_research_running_SAMPLE")
+	var idle := _research_sample(real_research, now)
+	idle.erase("running")
+	_a.research = EnterpriseResearch.from_wire(idle)
+	research_tab._chosen = "ET_GLASS_ARCHITECTURE"
+	research_tab.refresh()
+	research_tab._on_start("ET_GLASS_ARCHITECTURE")
+	await _capture("enterprise_research_start_armed_SAMPLE")
+	research_tab.armed = ""
+	research_tab._chosen = ""
+	_a.research = EnterpriseResearch.from_wire(_research_sample(real_research, now))
+	research_tab._on_cancel()
+	await _capture("enterprise_research_cancel_armed_SAMPLE")
+	research_tab.armed = ""
+
+	_panel.show_tab_key("ENTERPRISE_TAB_FACTORY")
+	await get_tree().create_timer(2.0).timeout
+	_a.factory = EnterpriseFactory.from_wire(_factory_sample(real_factory, now))
+	_a.factory_changed.emit()
+	await _capture("enterprise_factory_lines_SAMPLE")
+	var factory_tab := _panel.current_tab() as EnterpriseFactoryTab
+	factory_tab._on_step(0, 10)
+	await _capture("enterprise_factory_edit_SAMPLE")
+	factory_tab._on_undo()
+	factory_tab._picking = true
+	factory_tab.refresh()
+	await _capture("enterprise_factory_pick_SAMPLE")
+	factory_tab._picking = false
+
+	# Fleet with the enterprise section (the flagship made up above).
+	var fleet_panel := FleetPanel.new()
+	fleet_panel.setup(_fleet, 0)
+	add_child(fleet_panel)
+	_fleet.changed.emit()
+	await _capture("fleet_enterprise_SAMPLE")
+	fleet_panel.open_detail(990001)
+	await _capture("fleet_enterprise_detail_SAMPLE")
+	fleet_panel.queue_free()
+
+	print("SAMPLE  flagship ordered/active, research running, factory lines, fleet section (not from the server)")
+	var none: Array[EnterpriseFlagship.StructureRef] = []
+	_fleet.fleet.apply_enterprise(none, "")
+	_a.flagship = real_flagship
+	_a.research = real_research
+	_a.factory = real_factory
+	_a.flagship_changed.emit()
+	_a.research_changed.emit()
+	_a.factory_changed.emit()
+	_panel.show_tab_key("ENTERPRISE_TAB_OVERVIEW")
+
+
+## A flagship answer back as wire data (for the samples built on the live price).
+func _flagship_wire(view: EnterpriseFlagship) -> Dictionary:
+	var price: Array[Dictionary] = []
+	for item: EnterpriseFlagship.PriceItem in view.price:
+		price.append({"resource": item.resource, "amount": item.amount, "available": item.amount, "missing": 0})
+	return {"enterpriseId": view.enterprise_id, "status": view.status, "price": price, "deliveryMs": view.delivery_ms,
+		"labRunning": false, "administrations": 0, "memberCap": view.member_cap, "memberCount": view.member_count}
+
+
+## The live tree with E1 researched and Advanced Habitation unlocked; Energy Systems running, paused.
+func _research_sample(real: EnterpriseResearch, now: int) -> Dictionary:
+	var techs: Array[Dictionary] = []
+	for tech: EnterpriseResearch.Tech in real.techs:
+		var cost: Array[Dictionary] = []
+		for item: Array in tech.cost:
+			cost.append({"resource": item[0], "amount": item[1]})
+		var row := {"key": tech.key, "name": tech.name, "tier": tech.tier, "prerequisites": Array(tech.prerequisites),
+			"cost": cost, "durationMs": tech.duration_ms, "unlocks": Array(tech.unlocks), "available": tech.available}
+		if tech.key == "ET_LIFE_SCIENCES":
+			row["researchedAt"] = now - 3600000
+			row["available"] = false
+		if tech.key in ["ET_ADVANCED_HABITATION", "ET_GLASS_ARCHITECTURE", "ET_EDUCATION", "ET_MEDICINE", "ET_CULTURE"]:
+			row["available"] = true
+		if tech.key == "ET_ENERGY_SYSTEMS":
+			row["available"] = false
+		techs.append(row)
+	return {"enterpriseId": real.enterprise_id, "at": now, "techs": techs,
+		"running": {"tech": "ET_ENERGY_SYSTEMS", "startedAt": now - 5 * 3600000, "remainingMs": 7 * 3600000, "running": false}}
+
+
+## The live recipes with the basics unlocked and two lines running.
+func _factory_sample(real: EnterpriseFactory, now: int) -> Dictionary:
+	var recipes: Array[Dictionary] = []
+	for recipe: EnterpriseFactory.Recipe in real.recipes:
+		var inputs: Array[Dictionary] = []
+		for item: Array in recipe.inputs:
+			inputs.append({"resource": item[0], "amount": item[1]})
+		recipes.append({"blueprint": recipe.blueprint, "item": recipe.item, "inputs": inputs,
+			"unitsPerHour": recipe.units_per_hour, "unlocked": recipe.tech.is_empty() or recipe.tech == "ET_LIFE_SCIENCES",
+			"tech": recipe.tech})
+	return {"enterpriseId": real.enterprise_id, "at": now, "maxLines": real.max_lines, "recipes": recipes, "lines": [
+		{"blueprint": "ENTERPRISE_ADMINISTRATION_MANUFACTURING", "item": "ENTERPRISE_ADMINISTRATION_MODULE",
+			"quantity": 2, "produced": 1400000, "startedAt": now - 3600000},
+		{"blueprint": "ENTERPRISE_DOCK_MANUFACTURING", "item": "HULL_ENTERPRISE_DOCK",
+			"quantity": 20, "produced": 6000000, "startedAt": now - 1800000},
+	]}
 
 
 func _clean_up() -> void:

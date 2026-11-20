@@ -1314,3 +1314,112 @@ FLEETS_ON_ROUTE,Runs the route “{name}”
 FLEETS_ROUTE_LEG,next stop in {duration}
 FLEETS_SHIP_COUNT,{count} ship(s)
 ROUTE_QUOTE_FUEL_FLEET,Fuel: {count} {item} (all ships carry {have})
+ENTERPRISE_TAB_FLAGSHIP,Flagship
+ENTERPRISE_TAB_RESEARCH,Research
+ENTERPRISE_TAB_FACTORY,Factory
+ENTERPRISE_FLAG_MANAGE_TREASURY,Manage treasury
+ENTERPRISE_FLAG_COMMAND_ENTERPRISE_FLEET,Command enterprise fleet
+ENTERPRISE_MEMBERS_OF_CAP,{count} of {cap} members
+ENTERPRISE_FULL_SHORT,full
+ENTERPRISE_FULL_NOTE,"This enterprise is full. Nobody can join until a place is free (its flagship's administrations add places)."
+ENTERPRISE_FULL_ADMIT_NOTE,"Full ({members}): applicants can only be admitted when a place is free."
+ENTERPRISE_CAP_NOTE,"5 places, plus 5 for each working, fully staffed administration in the flagship. Nobody is removed when the cap drops; only joining stops."
+ENTERPRISE_NEEDS_RIGHT,Needs the right: {right}.
+ENTERPRISE_FLAGSHIP_LOAD_FAILED,The flagship could not be loaded.
+ENTERPRISE_FLAGSHIP_NONE,No flagship yet
+ENTERPRISE_FLAGSHIP_INTRO,"The flagship belongs to the enterprise: factory, lab, administration and drives. Its price is taken from the enterprise inventory at once; it arrives {duration} later in the orbit of the body you choose."
+ENTERPRISE_FLAGSHIP_DESTROYED,Flagship destroyed
+ENTERPRISE_FLAGSHIP_DESTROYED_NOTE,"Lost {duration} ago. Inventory and research remain; a new one can be ordered."
+ENTERPRISE_FLAGSHIP_PRICE,Price (in the inventory / needed)
+ENTERPRISE_FLAGSHIP_HAVE,{have} of {need}
+ENTERPRISE_FLAGSHIP_MISSING,{missing} missing
+ENTERPRISE_FLAGSHIP_TOTAL,Total: {total} units
+ENTERPRISE_FLAGSHIP_BODY,Delivery: orbit of {body}
+ENTERPRISE_FLAGSHIP_NO_BODY,choose a place
+ENTERPRISE_FLAGSHIP_ORDER,Order flagship
+ENTERPRISE_FLAGSHIP_ORDER_CONFIRM,Tap again to pay {total} units
+ENTERPRISE_FLAGSHIP_ORDER_WARNING,"The price is taken at once and cannot be refunded; the order cannot be cancelled. Delivery: orbit of {body}."
+ENTERPRISE_FLAGSHIP_NEEDS_STOCK,The enterprise inventory does not hold the whole price yet.
+ENTERPRISE_FLAGSHIP_NEEDS_BODY,Choose where it is delivered: a place where you have a structure.
+ENTERPRISE_FLAGSHIP_ORDERED_DONE,Flagship ordered.
+ENTERPRISE_FLAGSHIP_ORDERED,Flagship ordered
+ENTERPRISE_FLAGSHIP_ARRIVES,Arrives in the orbit of {body} in {duration}
+ENTERPRISE_FLAGSHIP_ORDERED_NOTE,Paid. Delivery cannot be cancelled.
+ENTERPRISE_FLAGSHIP_ACTIVE,Flagship in service
+ENTERPRISE_FLAGSHIP_LAB_WORKING,Enterprise Lab works: research time runs.
+ENTERPRISE_FLAGSHIP_LAB_IDLE,"Enterprise Lab does not work (power or crew missing): research is paused."
+ENTERPRISE_FLAGSHIP_ADMINISTRATIONS,Working administrations: {count}
+ENTERPRISE_FLAGSHIP_SHOW,Show in Base
+ENTERPRISE_FLAGSHIP_COMMAND_NOTE,Flying it needs the right: {right}.
+ENTERPRISE_RESEARCH_LOAD_FAILED,The research could not be loaded.
+ENTERPRISE_RESEARCH_NO_FLAGSHIP,Research runs in the Enterprise Lab of the flagship.
+ENTERPRISE_RESEARCH_IDLE,No research is running.
+ENTERPRISE_RESEARCH_RUNNING,Researching {tech}
+ENTERPRISE_RESEARCH_LEFT,{duration} left
+ENTERPRISE_RESEARCH_LEFT_PAUSED,{duration} left (paused)
+ENTERPRISE_RESEARCH_PAUSED,"Paused: the Enterprise Lab does not work (power or crew missing)."
+ENTERPRISE_RESEARCH_CANCEL,Cancel research
+ENTERPRISE_RESEARCH_CANCEL_CONFIRM,Tap again to cancel
+ENTERPRISE_RESEARCH_CANCEL_WARNING,The cost is not refunded.
+ENTERPRISE_RESEARCH_CANCELLED,Research cancelled.
+ENTERPRISE_RESEARCH_TIER,Tier E{tier}
+ENTERPRISE_RESEARCH_STATE_DONE,Researched
+ENTERPRISE_RESEARCH_STATE_RUNNING,Running
+ENTERPRISE_RESEARCH_STATE_AVAILABLE,Can be started · {duration}
+ENTERPRISE_RESEARCH_STATE_LOCKED,Needs {techs}
+ENTERPRISE_RESEARCH_COST,Cost: {cost} · {duration}
+ENTERPRISE_RESEARCH_LACKS,The inventory lacks {cost}.
+ENTERPRISE_RESEARCH_UNLOCKS,Unlocks: {items}
+ENTERPRISE_RESEARCH_NEEDS,Needs: {techs}
+ENTERPRISE_RESEARCH_START,Start research
+ENTERPRISE_RESEARCH_START_CONFIRM,Tap again to start and pay
+ENTERPRISE_RESEARCH_START_WARNING,"The cost is taken at once; cancelling refunds nothing."
+ENTERPRISE_RESEARCH_STARTED,Research started.
+ENTERPRISE_RESEARCH_WHY_BUSY,Another research is running.
+ENTERPRISE_RESEARCH_UNKNOWN_TECH,a tech
+ENTERPRISE_FACTORY_LOAD_FAILED,The factory could not be loaded.
+ENTERPRISE_FACTORY_NO_FLAGSHIP,The Enterprise Factory is part of the flagship.
+ENTERPRISE_FACTORY_INTRO,"Up to {count} lines at double rate, built from the enterprise inventory. A line ends when its pieces are done."
+ENTERPRISE_FACTORY_EMPTY,No line is running.
+ENTERPRISE_FACTORY_DONE,{done} of {quantity} built
+ENTERPRISE_FACTORY_PLANNED,new: {quantity} pieces (not saved)
+ENTERPRISE_FACTORY_RATE,{rate} · each: {cost}
+ENTERPRISE_FACTORY_ADD,Add line
+ENTERPRISE_FACTORY_REMOVE,Remove line
+ENTERPRISE_FACTORY_SAVE,Save lines
+ENTERPRISE_FACTORY_UNDO,Undo
+ENTERPRISE_FACTORY_SAVED,Lines saved.
+ENTERPRISE_FACTORY_PICK,Choose a blueprint for the new line:
+ENTERPRISE_FACTORY_NOTHING_OFFERED,No researched blueprint is free for a new line.
+ENTERPRISE_FACTORY_LOCKED_COUNT,{count} more blueprints need research.
+ENTERPRISE_FACTORY_TOO_MANY,Too many lines.
+ENTERPRISE_FACTORY_TWICE,Each blueprint can run on one line only.
+ENTERPRISE_FACTORY_QUANTITY,"Each line builds 1 to 1,000,000 pieces."
+ENTERPRISE_FACTORY_LOCKED,A blueprint on a line is not researched.
+FLEET_SECTION_ENTERPRISE,Enterprise
+FLEET_ENTERPRISE_MARK,Enterprise
+FLEET_FLAGSHIP_MARK,Flagship
+FLEET_ENTERPRISE_NEEDS_RIGHT,Flying enterprise structures needs the right: {right}.
+ERROR_ENTERPRISE_FULL,"This enterprise is full. Nobody can join until a place is free."
+ERROR_FLAGSHIP_EXISTS,The enterprise already has a flagship.
+ERROR_FLAGSHIP_NOT_FOUND,The enterprise has no flagship (yet).
+ERROR_MODULE_NOT_ALLOWED,This item cannot be built here: player and enterprise items do not mix.
+ERROR_UNIQUE_MODULE_LOCKED,This module comes with the flagship and cannot be built or removed.
+ERROR_NOT_ENTERPRISE_BUILDABLE,The Enterprise Factory cannot build this.
+ERROR_ENTERPRISE_TECH_LOCKED,This needs enterprise research first.
+ERROR_ENTERPRISE_RESEARCH_RUNNING,Another research is already running.
+ERROR_UNKNOWN_ENTERPRISE_TECH,"This research is unknown, already done, or nothing is running."
+ENTERPRISE_FACTORY_CATALOG,All blueprints ({count})
+ENTERPRISE_FACTORY_CATALOG_CLOSE,Hide blueprints
+ENTERPRISE_FACTORY_READY,ready
+ENTERPRISE_FACTORY_NEEDS_TECH,needs {tech}
+ENTERPRISE_FACTORY_NEEDS_FLAGSHIP,needs the flagship
+ENTERPRISE_NEEDS_TREASURY,"Building and managing enterprise structures needs the right: {right}."
+ENTERPRISE_NEEDS_FLEET,"Flying, landing and fleets of enterprise structures need the right: {right}."
+ENTERPRISE_NEEDS_FLAGSHIP,"No flagship stands: enterprise structures are built from its store, the enterprise inventory."
+STORE_ENTERPRISE_INVENTORY,"Enterprise inventory: every enterprise structure builds and flies from it."
+STORE_ENTERPRISE_TOPPED_UP,"Own store, topped up from the enterprise inventory every 6 h. Building and fuel come from the enterprise inventory."
+COLONY_STRUCTURE_FOUNDED,A new structure was founded on the dock.
+TRAVEL_FUEL_ENTERPRISE,"{resource}: {amount} needed, {on_board} in the enterprise inventory"
+FLEETS_FUEL_ENTERPRISE,"{resource}: needs {amount}, the enterprise inventory holds {on_board}"
+FLEETS_ENTERPRISE_MARK,Enterprise fleet

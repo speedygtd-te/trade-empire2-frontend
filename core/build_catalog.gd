@@ -24,16 +24,24 @@ class Entry:
 
 
 ## The entries for a store: `units` maps an item (`HULL_STARTER`, `PUMP_MODULE` …) to the whole
-## units on hand; items without units are left out.
-static func entries(definitions: GameDefinitions, units: Dictionary) -> Array[Entry]:
+## units on hand; items without units are left out, and so are items the structure's owner kind
+## (`ownerKind`: "player" or "enterprise", draft.37 `owners`) may not build — as far as the game
+## data says (`GameDefinitions.owners_known`).
+static func entries(definitions: GameDefinitions, units: Dictionary, owner_kind: String = "player") -> Array[Entry]:
 	var result: Array[Entry] = []
 	if definitions == null:
 		return result
+	var kind := owner_kind if not owner_kind.is_empty() else "player"
+	var by_owner := definitions.owners_known
 	for key: String in definitions.hull_keys():
 		var hull := definitions.hull(key)
+		if by_owner and not hull.allows(kind):
+			continue
 		_add(result, "hull:" + key, hull.item, hull.display_name, Wire.as_int(units.get(hull.item)), HULLS)
 	for key: String in definitions.module_keys():
 		var module_def := definitions.module(key)
+		if by_owner and not module_def.allows(kind):
+			continue
 		var category := module_def.category if ORDER.has(module_def.category) else OTHER
 		_add(result, "module:" + key, module_def.item, module_def.display_name, Wire.as_int(units.get(module_def.item)), category)
 	return result

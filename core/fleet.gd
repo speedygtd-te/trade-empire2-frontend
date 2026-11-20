@@ -37,6 +37,15 @@ class Entry:
 	var fleet_id := 0
 	var total_hulls := 0
 	var total_modules := 0
+	## "player", or "enterprise" for a structure of the player's enterprise (draft.37): every
+	## member sees it; travel needs COMMAND_ENTERPRISE_FLEET.
+	var owner_kind := "player"
+	var enterprise_id := ""
+	## The enterprise's flagship.
+	var flagship := false
+
+	func is_enterprise() -> bool:
+		return owner_kind == "enterprise"
 
 	func where() -> Where:
 		match anchor_type:
@@ -74,8 +83,9 @@ class Entry:
 var _entries: Dictionary = {}
 
 
-## Takes the structure list (`StructureSummary` items): the fleet is exactly these from now on;
-## what is known of a trip stays for structures that are still there.
+## Takes the structure list (`StructureSummary` items): the fleet is exactly these from now on
+## (enterprise structures aside, `apply_enterprise` keeps those); what is known of a trip stays for
+## structures that are still there.
 func apply_list(items: Array) -> void:
 	var seen: Dictionary = {}
 	for value: Variant in items:
@@ -91,8 +101,41 @@ func apply_list(items: Array) -> void:
 			_entries[id] = entry
 		_read(entry, summary)
 	for id: int in _entries.keys():
-		if not seen.has(id):
+		if not seen.has(id) and not (_entries[id] as Entry).is_enterprise():
 			_entries.erase(id)
+
+
+## Takes the enterprise's structures (`GET /v2/enterprises/{id}/structures`, the details follow
+## with `apply_details`): they are exactly these from now on; none outside an enterprise.
+func apply_enterprise(refs: Array[EnterpriseFlagship.StructureRef], enterprise: String) -> void:
+	var seen: Dictionary = {}
+	for ref: EnterpriseFlagship.StructureRef in refs:
+		seen[ref.structure_id] = true
+		var entry := find(ref.structure_id)
+		if entry == null:
+			entry = Entry.new()
+			entry.structure_id = ref.structure_id
+			_entries[ref.structure_id] = entry
+		entry.name = ref.name if not ref.name.is_empty() else entry.name
+		entry.owner_kind = "enterprise"
+		entry.enterprise_id = enterprise
+		entry.flagship = ref.flagship
+	for id: int in _entries.keys():
+		if not seen.has(id) and (_entries[id] as Entry).is_enterprise():
+			_entries.erase(id)
+
+
+## The enterprise's structures, the flagship first.
+func enterprise_entries() -> Array[Entry]:
+	var result: Array[Entry] = []
+	for value: Entry in _entries.values():
+		if value.is_enterprise():
+			result.append(value)
+	result.sort_custom(func(a: Entry, b: Entry) -> bool:
+		if a.flagship != b.flagship:
+			return a.flagship
+		return a.structure_id < b.structure_id)
+	return result
 
 
 ## Takes the details of one structure (`StructureResponse`): anchor, motion, routes.
@@ -191,11 +234,13 @@ func size() -> int:
 	return _entries.size()
 
 
-## Every structure, the favourites first, then by name and id.
+## Every own structure (the enterprise's left out: `enterprise_entries`), the favourites first,
+## then by name and id.
 func entries() -> Array[Entry]:
 	var result: Array[Entry] = []
 	for value: Entry in _entries.values():
-		result.append(value)
+		if not value.is_enterprise():
+			result.append(value)
 	result.sort_custom(func(a: Entry, b: Entry) -> bool:
 		if a.favorite != b.favorite:
 			return a.favorite
@@ -312,3 +357,6 @@ func _read(entry: Entry, data: Dictionary) -> void:
 		entry.set_anchor(data.get("anchor"))
 	entry.total_hulls = Wire.as_int(data.get("totalHulls"), entry.total_hulls)
 	entry.total_modules = Wire.as_int(data.get("totalModules"), entry.total_modules)
+	if data.has("ownerKind"):
+		entry.owner_kind = Wire.as_string(data.get("ownerKind"), "player")
+		entry.enterprise_id = Wire.as_string(data.get("enterpriseId"))

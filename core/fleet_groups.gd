@@ -59,6 +59,12 @@ class Group:
 	var arrival_at := 0
 	var inventory: Array[Item] = []
 
+	## Whether this is a fleet of the player's enterprise (draft.38): its `ownerId` is the
+	## enterprise's internal account, not the asking player; members with
+	## COMMAND_ENTERPRISE_FLEET see and command it, its fuel comes from the enterprise inventory.
+	func is_enterprise(player_id: String) -> bool:
+		return not owner_id.is_empty() and not player_id.is_empty() and owner_id != player_id
+
 	## Reads a `FleetView`; null when it is none.
 	static func from_wire(value: Variant) -> Group:
 		var data := Wire.as_dict(value)
@@ -297,10 +303,15 @@ func apply_answer(data: Dictionary) -> void:
 
 
 ## The structures that could form a fleet or join one now: own ships with a space drive, resting,
-## not driving a route, in no fleet; at `body_id` when given ("" for any body).
-func candidates(structures: Fleet, body_id: String, now: int) -> Array[Fleet.Entry]:
+## not driving a route, in no fleet; at `body_id` when given ("" for any body). With `enterprise`
+## the enterprise's structures follow (draft.38: a member with COMMAND_ENTERPRISE_FLEET forms
+## enterprise fleets from them; a fleet never mixes them with own ships).
+func candidates(structures: Fleet, body_id: String, now: int, enterprise: bool = false) -> Array[Fleet.Entry]:
 	var result: Array[Fleet.Entry] = []
-	for entry: Fleet.Entry in structures.entries():
+	var pool := structures.entries()
+	if enterprise:
+		pool.append_array(structures.enterprise_entries())
+	for entry: Fleet.Entry in pool:
 		if not entry.can_fly() or entry.is_moving(now) or entry.route_id != 0:
 			continue
 		if of_structure(entry.structure_id) != null:

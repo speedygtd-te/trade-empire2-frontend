@@ -12,6 +12,16 @@ extends RefCounted
 ## `offset` lies in that grid (guest local cell = host cell − offset).
 
 const DOCK := "DOCK"
+## The enterprise's dock (draft.38): founds daughter structures of the enterprise like DOCK founds
+## guests, and members dock their own ships on it.
+const ENTERPRISE_DOCK := "ENTERPRISE_DOCK"
+## Every hull type that is a dock.
+const DOCK_TYPES: PackedStringArray = [DOCK, ENTERPRISE_DOCK]
+
+## Whether a hull type is a dock (DOCK, ENTERPRISE_DOCK).
+static func is_dock(hull_type: String) -> bool:
+	return DOCK_TYPES.has(hull_type)
+
 
 ## What a hull placed at a host cell does.
 enum Placement {
@@ -96,7 +106,7 @@ static func touching_guests(guests: Array[StructureLayout], host_cell: Vector3i)
 static func placement(host: StructureLayout, guests: Array[StructureLayout], host_cell: Vector3i) -> Placement:
 	if not touching_guests(guests, host_cell).is_empty():
 		return Placement.EXTEND
-	if host.hull_at(host_cell + Vector3i(0, 0, -1)) == DOCK:
+	if is_dock(host.hull_at(host_cell + Vector3i(0, 0, -1))):
 		return Placement.FOUND
 	return Placement.HOST
 
@@ -109,7 +119,7 @@ static func placement(host: StructureLayout, guests: Array[StructureLayout], hos
 static func check_place_hull(host: StructureLayout, guests: Array[StructureLayout], host_cell: Vector3i,
 		hull_type: String = "", definitions: GameDefinitions = null, site: LevelRules.Site = null) -> BuildRules.Verdict:
 	var touching := touching_guests(guests, host_cell)
-	var on_dock := host.hull_at(host_cell + Vector3i(0, 0, -1)) == DOCK
+	var on_dock := is_dock(host.hull_at(host_cell + Vector3i(0, 0, -1)))
 	var checked := not hull_type.is_empty() and definitions != null and site != null
 	if checked:
 		var absolute := host.to_absolute(host_cell)
@@ -153,7 +163,7 @@ static func check_remove_hull(
 		var verdict := BuildRules.check_remove_hull(host, host_cell)
 		if verdict != BuildRules.Verdict.OK:
 			return verdict
-		if host.hull_at(host_cell) == DOCK and guest_on_dock(guests, host_cell) != null:
+		if is_dock(host.hull_at(host_cell)) and guest_on_dock(guests, host_cell) != null:
 			return BuildRules.Verdict.HULL_HAS_GUEST
 		return BuildRules.Verdict.OK
 	var local := guest_cell(structure, host_cell)
@@ -185,7 +195,7 @@ static func target_cell(host: StructureLayout, focus: StructureLayout, column: V
 		level: int = 0) -> Vector3i:
 	if focus == host or not focus.is_docked():
 		var cell := Vector3i(column.x, column.y, level - host.offset.z - host.base.z)
-		if new_hull and host.hull_at(cell) == DOCK:
+		if new_hull and is_dock(host.hull_at(cell)):
 			return cell + Vector3i(0, 0, 1)
 		return cell
 	var local := column - Vector2i(focus.offset.x, focus.offset.y)
@@ -204,7 +214,7 @@ static func _check_area(
 ) -> BuildRules.Verdict:
 	for y: int in range(rect.position.y, rect.end.y):
 		for x: int in range(rect.position.x, rect.end.x):
-			if host.hull_at(Vector3i(x, y, dock_z)) != DOCK:
+			if not is_dock(host.hull_at(Vector3i(x, y, dock_z))):
 				return BuildRules.Verdict.DOCK_AREA_TOO_SMALL
 	for other: StructureLayout in guests:
 		if other != except and dock_level(other) == dock_z and dock_rect(other).intersects(rect):

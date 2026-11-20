@@ -164,11 +164,18 @@ func _fill_detail() -> void:
 	for member: Enterprise.Member in view.members:
 		names_list.append(member.player_name)
 	text_label(rows, tr("ENTERPRISE_MEMBER_LIST").format({"count": view.member_count, "names": ", ".join(names_list)}), AppTheme.VARIATION_MUTED)
+	if view.member_cap >= 0:
+		var cap := text_label(rows, cap_text(view, self))
+		if view.is_full():
+			cap.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	if view.is_full():
+		# Joining, applying to be admitted and accepting an invitation wait for a free place.
+		text_label(_detail, tr("ENTERPRISE_FULL_NOTE"), "").add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	if view.invited:
 		text_label(_detail, tr("ENTERPRISE_INVITED_NOTE"), "").add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	if view.invited or view.is_open():
 		var join := Ui.primary_button("ENTERPRISE_JOIN")
-		join.disabled = busy
+		join.disabled = busy or view.is_full()
 		join.pressed.connect(_on_join)
 		_detail.add_child(join)
 	elif view.applied:

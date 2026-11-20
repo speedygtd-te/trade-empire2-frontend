@@ -34,20 +34,47 @@ const MARGIN := 0.06
 ## The contact sheets: the size the UI shows an icon at, and the enlarged size.
 const SHEET_SIZES: Array[int] = [44, 128]
 ## Items the server does not offer yet whose models exist (item key -> model), after the specs
-## in Backend-V2/docs: the probe launcher (SPEC-sonden); the first enterprise modules and the
-## enterprise hulls (SPEC-enterprise-flaggschiff 5.1, 5.2; item keys <MODULE>_MODULE and
-## HULL_<TYPE>, indoor hulls shown shut). The unique factory, lab and supply hub have no item.
+## in Backend-V2/docs: the probe launcher (SPEC-sonden); the enterprise modules and the
+## enterprise hulls (SPEC-enterprise-flaggschiff 3.6, 5.1, 5.2, 5.5, 6a; item keys <MODULE>_MODULE and
+## HULL_<TYPE>, indoor hulls shown shut; several module keys there are working titles) and the
+## member modules of 6a. The unique factory, lab and supply hub have no item.
 const COMING_ITEMS: Dictionary[String, String] = {
 	"PROBE_LAUNCHER_MODULE": "probe_launcher",
 	"ENTERPRISE_GENERATOR_MODULE": "enterprise_generator",
 	"ENTERPRISE_HABITAT_T3_MODULE": "enterprise_habitat_t3",
 	"ENTERPRISE_SUBLIGHT_THRUSTER_MODULE": "enterprise_sublight_thruster",
+	"ENTERPRISE_HABITAT_T1_MODULE": "enterprise_habitat_t1",
+	"ENTERPRISE_HABITAT_T2_MODULE": "enterprise_habitat_t2",
+	"ENTERPRISE_HABITAT_T4_MODULE": "enterprise_habitat_t4",
+	"ENTERPRISE_HABITAT_T5_MODULE": "enterprise_habitat_t5",
+	"ENTERPRISE_WARP_DRIVE_MODULE": "enterprise_warp_drive",
+	"ENTERPRISE_LASER_MODULE": "enterprise_laser",
+	"ENTERPRISE_ROCKET_LAUNCHER_MODULE": "enterprise_rocket_launcher",
+	"ENTERPRISE_SHIELD_GENERATOR_MODULE": "enterprise_shield_generator",
+	"ENTERPRISE_ARMOR_MODULE": "enterprise_armor",
+	"ENTERPRISE_WHEEL_MODULE": "enterprise_wheel",
+	"ENTERPRISE_TRACKS_MODULE": "enterprise_tracks",
 	"HULL_ENTERPRISE_HULL_STANDARD": "hull_enterprise_hull_standard_closed",
 	"HULL_ENTERPRISE_HULL_GLASS": "hull_enterprise_hull_glass_closed",
 	"HULL_ENTERPRISE_HULL_ARMORED": "hull_enterprise_hull_armored_closed",
 	"HULL_ENTERPRISE_PLATFORM": "hull_enterprise_platform",
 	"HULL_ENTERPRISE_PLATFORM_ARMORED": "hull_enterprise_platform_armored",
 	"HULL_ENTERPRISE_DOCK": "hull_enterprise_dock",
+	"ENTERPRISE_ADMINISTRATION_MODULE": "enterprise_administration",
+	"MINING_EFFICIENCY_DISTRIBUTOR_MODULE": "mining_efficiency_distributor",
+	"CARTOGRAPHY_ARCHIVE_MODULE": "cartography_archive",
+	"OBSERVATION_PLATFORM_MODULE": "observation_platform",
+	"ENTERPRISE_SCHOOL_MODULE": "enterprise_school",
+	"ENTERPRISE_ACADEMY_MODULE": "enterprise_academy",
+	"ENTERPRISE_ELITE_ACADEMY_MODULE": "enterprise_elite_academy",
+	"ENTERPRISE_MEDICAL_BAY_MODULE": "enterprise_medical_bay",
+	"ENTERPRISE_SECURITY_HQ_MODULE": "enterprise_security_hq",
+	"ENTERPRISE_HOLODECK_MODULE": "enterprise_holodeck",
+	"ENTERPRISE_PROMENADE_MODULE": "enterprise_promenade",
+	"ENTERPRISE_BIODOME_MODULE": "enterprise_biodome",
+	"RESEARCH_NETWORK_NODE_MODULE": "research_network_node",
+	"OBSERVATION_UPLINK_MODULE": "observation_uplink",
+	"MINING_OPTIMIZER_MODULE": "mining_optimizer",
 }
 ## How long --items waits for the game data.
 const DEFINITIONS_TIMEOUT_SECONDS := 30.0

@@ -128,7 +128,7 @@ static func spots_for(model: ColonyModel) -> Array[Perimeter.Spot]:
 			if cell.z < 0:
 				continue
 			footprint.append(Vector2i(cell.x, cell.y))
-			if layout.hull_at(local) == DockRules.DOCK:
+			if DockRules.is_dock(layout.hull_at(local)):
 				docks.append(Vector2i(cell.x, cell.y))
 		result.append_array(Perimeter.spots(footprint, occupied, model.size_x, docks))
 	return result
@@ -153,7 +153,7 @@ static func grounds_for(model: ColonyModel) -> Array[BaseGrounds.Plan]:
 			if cell.z < 0:
 				continue
 			footprint.append(Vector2i(cell.x, cell.y))
-			if layout.hull_at(local) == DockRules.DOCK:
+			if DockRules.is_dock(layout.hull_at(local)):
 				docks.append(Vector2i(cell.x, cell.y))
 		if BaseGrounds.stage(footprint.size()) == BaseGrounds.Stage.START:
 			continue

@@ -36,6 +36,8 @@ var _active: Tab = Tab.BASE
 var _colony: ColonyScreen = null
 var _fleet: FleetModel = null
 var _enterprise: EnterpriseModel = null
+## The enterprise the fleet's enterprise structures were loaded for.
+var _fleet_enterprise := ""
 ## The system the Map root was built for.
 var _map_system := ""
 
@@ -82,7 +84,18 @@ func _make_models() -> void:
 	add_child(_enterprise)
 	_enterprise.changed.connect(_update_badges)
 	_enterprise.list_changed.connect(_update_badges)
+	_enterprise.fleet = _fleet
+	_enterprise.structure_requested.connect(show_structure)
+	# Joining, leaving or founding changes the enterprise structures Fleet lists.
+	_enterprise.changed.connect(_on_enterprise_changed)
 	_enterprise.reload()
+
+
+func _on_enterprise_changed() -> void:
+	var id := _enterprise.mine.enterprise_id if _enterprise.mine != null else ""
+	if id != _fleet_enterprise:
+		_fleet_enterprise = id
+		_fleet.reload_enterprise()
 
 
 ## A new colony screen for Base.

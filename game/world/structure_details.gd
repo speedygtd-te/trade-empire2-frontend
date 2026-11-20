@@ -293,6 +293,10 @@ func open_workforce(module_type: String) -> void:
 	_workforce_panel.visible = true
 	_workforce_panel.show_group(group_of(_structure, module_type), _structure.workforce, _structure.robots_in_store(),
 		module_def.display_name if module_def != null else "")
+	# Enterprise structures: staffing needs MANAGE_TREASURY (draft.38).
+	var reason := _structure.manage_reason()
+	_workforce_panel.set_blocked(tr("ENTERPRISE_NEEDS_TREASURY").format({"right": tr("ENTERPRISE_FLAG_MANAGE_TREASURY")})
+		if not reason.is_empty() else "")
 
 
 func _close_workforce() -> void:

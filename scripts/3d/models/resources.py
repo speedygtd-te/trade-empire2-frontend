@@ -1,5 +1,5 @@
 """The goods of the game as small low-poly models: every NATURAL and PRODUCED resource of
-/v2/definitions (plus the coming PROBE). They are screenshotted into the icons of the game
+/v2/definitions (plus the coming PROBE and ENTERPRISE_ROCKET). They are screenshotted into the icons of the game
 (smoke/resource_icons.tscn -> game/ui/resource_icons) and may later turn on a details page.
 
 Families share one builder each, so a family looks alike and only its colours and fittings
@@ -781,6 +781,21 @@ def probe(name):
     return model.finish()
 
 
+def enterprise_rocket(name):
+    """Enterprise rocket (SPEC-enterprise-flaggschiff 5.4): the clean enterprise look instead of
+    the white-and-red missile - a white rocket with a carbon band, a cyan ring and seeker tip and
+    carbon fins (parts.ent_rocket) on two soft white saddles over a carbon plate."""
+    model = kit.Builder(name, style="enterprise")
+    model.rounded_box((0.0, 0.0, 0.005), (0.52, 0.24, 0.01), 0.05, parts.ENT_CARBON)
+    for x in (-0.14, 0.12):
+        model.rounded_box((x, 0.0, 0.05), (0.07, 0.20, 0.08), 0.025, parts.ENT_SMOOTH)
+        parts.light_strip(model, (x, -0.101, 0.03), (x, -0.101, 0.07), 0.01)
+        model.box((x, 0.0, 0.094), (0.072, 0.10, 0.012), parts.ENT_CARBON)
+    with model.placed((-0.33, 0.0, 0.165)):
+        parts.ent_rocket(model, 0.68, 0.07)
+    return model.finish()
+
+
 # --- The list -------------------------------------------------------------------------------------
 
 def _models() -> dict:
@@ -843,6 +858,7 @@ def _models() -> dict:
         "algae": lambda: algae("te_res_algae"),
         "housing": lambda: housing("te_res_housing"),
         "probe": lambda: probe("te_res_probe"),
+        "enterprise_rocket": lambda: enterprise_rocket("te_res_enterprise_rocket"),
     }
     for key, build in singles.items():
         models[key] = (build, one)

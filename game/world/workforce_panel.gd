@@ -22,6 +22,9 @@ var _robots: Array[int] = [0, 0, 0, 0, 0]
 ## Whether the steppers count people (true) or robots.
 var _people := true
 var _busy := false
+## Why the staffing may not be changed here (an enterprise structure without MANAGE_TREASURY,
+## draft.38); "" when it may.
+var _blocked := ""
 
 var _title: Label
 var _need: Label
@@ -93,6 +96,13 @@ func show_group(group: Workforce.Group, workforce: Workforce, robots_in_store: A
 	_people = workforce.total_population() > 0
 	_title.text = tr("WORKFORCE_TITLE").format({"module": module_name})
 	_rebuild()
+
+
+## Says why the staffing may not be changed ("" lifts it): the line shows it, Apply waits.
+func set_blocked(text: String) -> void:
+	_blocked = text
+	if _group != null:
+		_refresh()
 
 
 ## While the assignment is being sent the buttons wait.
@@ -196,7 +206,10 @@ func _refresh() -> void:
 		"assigned": assigned, "modules": _group.modules})
 	var problem := _workforce.check(_group, _humans, _robots, _store)
 	var changed := _humans != _group.humans or _robots != _group.robots
-	if not problem.is_empty():
+	if not _blocked.is_empty():
+		_verdict.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+		_verdict.text = _blocked
+	elif not problem.is_empty():
 		_verdict.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
 		_verdict.text = tr("ERROR_" + problem)
 	elif assigned < _group.needed():
@@ -205,7 +218,7 @@ func _refresh() -> void:
 	else:
 		_verdict.add_theme_color_override("font_color", AppTheme.COLOR_OK)
 		_verdict.text = tr("WORKFORCE_FULL")
-	_apply.disabled = _busy or not problem.is_empty() or not changed
+	_apply.disabled = _busy or not problem.is_empty() or not changed or not _blocked.is_empty()
 
 
 func _on_apply() -> void:

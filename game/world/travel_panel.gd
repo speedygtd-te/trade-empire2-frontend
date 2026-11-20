@@ -88,7 +88,7 @@ func open(fleet: FleetModel, mover: ColonyModel) -> void:
 	_fleet = fleet
 	_mover = mover
 	_entry = fleet.fleet.find(mover.structure_id)
-	_quote.setup(mover.structure_id)
+	_quote.setup(mover.structure_id, _entry != null and _entry.is_enterprise())
 	_title.text = tr("TRAVEL_TITLE").format({"name": mover.structure_name})
 	_show_step(Step.CHOOSE)
 
@@ -140,7 +140,9 @@ func _show_step(step: Step) -> void:
 
 # --- docking --------------------------------------------------------------------------------
 
-## The player's resting structures with room on their docks.
+## The player's resting structures with room on their docks, and (draft.38) those of the
+## player's enterprise: members dock their own ships there; an enterprise structure docks only at
+## the enterprise's (EnterpriseStructures.may_dock).
 func _show_hosts() -> void:
 	_show_step(Step.HOSTS)
 	_subtitle.text = tr("TRAVEL_DOCK_CHOOSE")
@@ -150,7 +152,12 @@ func _show_hosts() -> void:
 	var cells := TravelPlan.mover_cells(_mover.layout, _mover.guest_layouts())
 	var now := Services.clock.now_ms()
 	var candidates: Array[Fleet.Entry] = []
-	for entry: Fleet.Entry in _fleet.fleet.entries():
+	var account := Services.session.account
+	var member := account != null and not account.enterprise_id.is_empty()
+	var mover_kind := _entry.owner_kind if _entry != null else "player"
+	for entry: Fleet.Entry in _fleet.fleet.entries() + _fleet.fleet.enterprise_entries():
+		if not EnterpriseStructures.may_dock(mover_kind, entry.owner_kind, member):
+			continue
 		if entry.structure_id == _mover.structure_id or entry.is_moving(now) or entry.total_hulls == 0:
 			continue
 		if entry.where() != Fleet.Where.SURFACE and entry.where() != Fleet.Where.ORBIT:
@@ -170,7 +177,7 @@ func _show_hosts() -> void:
 			continue
 		var has_docks := false
 		for cell: Vector3i in layout.hull_cells():
-			if layout.hull_at(cell) == TravelPlan.DOCK:
+			if DockRules.is_dock(layout.hull_at(cell)):
 				has_docks = true
 				break
 		if not has_docks:
@@ -180,6 +187,8 @@ func _show_hosts() -> void:
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var place := FleetPanel.status_text(_fleet, entry, now, self)
+		if entry.is_enterprise():
+			place = "%s · %s" % [tr("FLEET_FLAGSHIP_MARK") if entry.flagship else tr("FLEET_ENTERPRISE_MARK"), place]
 		if offset == null:
 			row.text = "%s\n%s · %s" % [entry.name, place, tr("TRAVEL_DOCK_NO_ROOM")]
 			row.disabled = true

@@ -3,6 +3,11 @@ extends VBoxContainer
 ## The store of the colony: every item with its amount now and its rate per hour, plus how
 ## full the store is. Amounts are extrapolated from the flows every second. A chosen item can be
 ## moved to a docked guest or to the host (transfer), or discarded (two-step).
+##
+## At a structure of the enterprise (draft.38) a note says whose store it is: the flagship's is
+## the enterprise inventory every enterprise structure builds and flies from; a daughter's is its
+## own, topped up by the server from the enterprise inventory. Discarding, moving and transfers
+## there need MANAGE_TREASURY; without it a line says so instead of the buttons.
 
 ## Most of the screen stays free for the colony; the list scrolls.
 const LIST_HEIGHT := 460
@@ -16,6 +21,8 @@ const AREA_SUPPLY := "selfUse"
 const AREA_CARGO := "transport"
 
 var _model: ColonyModel
+## Whose store this is, at an enterprise structure (muted, above the fill).
+var _note: Label
 var _summary: Label
 var _balance: Label
 var _scroll: ScrollContainer
@@ -54,6 +61,9 @@ func setup(model: ColonyModel) -> void:
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 12)
+	_note = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	_note.visible = false
+	add_child(_note)
 	_summary = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	add_child(_summary)
 	_balance = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
@@ -170,6 +180,9 @@ static func is_short(model: ColonyModel) -> bool:
 ## Shows a (new) inventory; rows are rebuilt.
 func show_inventory(inventory: Inventory) -> void:
 	_inventory = inventory
+	var note := EnterpriseStructures.store_note(_model.owner_kind, _model.is_flagship()) if _model != null else ""
+	_note.text = tr(note) if not note.is_empty() else ""
+	_note.visible = not note.is_empty()
 	for child: Node in _list.get_children():
 		child.queue_free()
 	_rows.clear()
@@ -403,6 +416,16 @@ func _select(item: String, area: String = AREA_SUPPLY) -> void:
 
 
 func _update_discard_bar() -> void:
+	var reason := _model.manage_reason() if _model != null else ""
+	if not reason.is_empty():
+		# Enterprise structure without MANAGE_TREASURY: say so instead of the buttons.
+		_move_bar.visible = false
+		_discard_bar.visible = false
+		_transfer_bar.visible = false
+		_discard_status.remove_theme_color_override("font_color")
+		_discard_status.text = "" if _selected.is_empty() else tr("ENTERPRISE_NEEDS_TREASURY").format(
+			{"right": tr("ENTERPRISE_FLAG_MANAGE_TREASURY")})
+		return
 	_update_move_bar()
 	# Discarding and moving to a guest or host work on the own supply only.
 	_discard_bar.visible = not _selected.is_empty() and _area == AREA_SUPPLY

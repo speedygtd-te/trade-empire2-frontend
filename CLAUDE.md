@@ -55,7 +55,8 @@ verschärft, wenn es nötig wird.
 | Bauen gegen das Backend (Entwicklerkonto) | `powershell -File tools\colony-smoke.ps1` (setzt Hülle, Modul, Rezept und räumt wieder auf) |
 | Docks und Gäste gegen das Backend | `powershell -File tools\colony-smoke.ps1 -Scene dock_build` (gründet, erweitert, räumt auf) |
 | Enterprises, Rollen, Steuern, Diplomatie gegen das Backend | `powershell -File tools\colony-smoke.ps1 -Scene enterprise_flow` (zwei eigene Konten `.local/enterprise-a-`/`-b-account.json`; löst am Ende beide Enterprises auf) |
-| Enterprise-Bildschirme ansehen (live, dieselben zwei Konten) | `godot --path . --resolution 720x1280 res://smoke/enterprise_view.tscn -- --out=build/enterprise` |
+| Enterprise-Bildschirme ansehen (live, dieselben zwei Konten; Flaggschiff, Forschung, Factory live ohne Flaggschiff, dazu `_SAMPLE`-Zustände) | `godot --path . --resolution 720x1280 res://smoke/enterprise_view.tscn -- --out=build/enterprise` |
+| Enterprise-Strukturen ansehen (Bauen, Lager, Flotten; Orbit-Bau mit dem Konto `travel`) | `godot --path . --resolution 720x1280 res://smoke/enterprise_build_view.tscn -- --out=build/enterprise2` (Konto `enterprise-a`; Flaggschiff-Zustände als `_SAMPLE`, nichts davon wird gesendet) |
 | Ebenen und Schächte gegen das Backend (eigenes Konto `levels`) | `powershell -File tools\colony-smoke.ps1 -Scene level_build` (Stockwerke, Keller, Überhang, Treppe, räumt auf) |
 | Ebenen ansehen (Wähler, Schnitt-Ansicht, Schacht, Stockwerke von außen) | `godot --path . --resolution 720x1280 res://smoke/level_view.tscn -- --out=build/levels` (Konto `levels`; baut auf und räumt ab) |
 | Routen und Lagermodi gegen das Backend (eigenes Konto `routes`) | `powershell -File tools\colony-smoke.ps1 -Scene route_flow -TimeoutSeconds 900` (baut einmal Transporter + Station und lässt sie stehen; Route anlegen, Lieferung, Pause, Löschen; dauert Minuten) |
@@ -151,7 +152,11 @@ Enterprise-Teile in `parts.py` (`ent_room`, `plinth`, `display`, `console`, `gla
 Ansicht neben Spielermodellen und als Muster-Flaggschiff: `godot --path . --resolution 1600x1200
 res://smoke/enterprise_models.tscn -- --out=build/enterprise-models [--models=res://game/world/models_hd]`.
 Die Farben sind auf das Licht von `ColonyView` abgestimmt (Weiß ~0,65, Böden ~0,33 sRGB) — hellere
-Werte brennen bei Tag aus.
+Werte brennen bei Tag aus. Habitate T1/T2/T4/T5, Antriebe, Waffen, Schutz und Fahrwerk in
+`enterprise_systems.py` (Teile `ent_rocket`, `ent_nozzle`). **Keine Franchise-Anleihen** (Rudi,
+2026-11-20): keine Gondeln an V-Pylonen, keine leuchtenden Bug-Kuppeln, keine Untertassen oder
+Deflektorschüsseln — Antriebe sind kompakte eigene Maschinen auf ihrer Zelle (Düsenbündel mit
+Hitzeringen, Spulenstapel im Carbonrahmen, kardanischer Block).
 
 Serveradresse: überall der Live-Server `https://trade-empire.net` (Rudis Vorgabe vom
 2026-11-17: „Nutz bitte den Server für alles“). Das lokale Backend (`tools\dev-backend.ps1`,
