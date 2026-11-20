@@ -2290,6 +2290,10 @@ func _yield_text(module_type: String, cells: Array[Vector3i], z: int, blueprint:
 	if ExtractionYield.is_extraction(recipe):
 		chosen.append(ExtractionYield.estimate(recipe, module_def, z, deposits, _model.atmosphere, _model.atmosphere_density,
 			_water_depths(cells)))
+	elif built:
+		# A standing module without a recipe: no list of what it could extract (the deposit line
+		# and the recipe picker show it with exact rates; Rudi 2026-11-20).
+		return ""
 	else:
 		for found: ExtractionYield.Estimate in ExtractionYield.estimates(definitions, module_type, z, deposits,
 				_model.atmosphere, _model.atmosphere_density, _focus.usable_blueprints, _water_depths(cells)):

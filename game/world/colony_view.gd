@@ -89,6 +89,8 @@ const COLOR_OK := Color(0.133, 0.827, 0.933, 0.45)
 const COLOR_BAD := Color(0.973, 0.443, 0.443, 0.45)
 const COLOR_BUILDING := Color(0.984, 0.749, 0.141, 0.40)
 const COLOR_DISABLED := Color(0.55, 0.08, 0.08, 0.45)
+## A grey veil over a module that produces nothing now (idle in the rate solution).
+const COLOR_IDLE := Color(0.42, 0.44, 0.47, 0.55)
 const COLOR_SELECTED := Color(0.133, 0.827, 0.933, 0.9)
 const COLOR_STRUCTURE := Color(0.133, 0.827, 0.933, 0.18)
 const COLOR_WAITING := Color(0.984, 0.749, 0.141, 0.45)
@@ -191,6 +193,8 @@ var _highlight_id := 0
 var _highlight_material: StandardMaterial3D
 ## Rotors, fans, dishes, pump rods and solar panels of the modules on screen (ModuleMotion).
 var _mover := ModuleMover.new()
+## Every drawn module with what decides its state colour: [node, ColonyModel, Module].
+var _module_looks: Array[Array] = []
 ## Ground blocks (first cell) waiting to be built, a few per frame.
 var _ground_queue: Array[Vector2i] = []
 ## Whether they move (not on the slowest detail tier), and where the sun stands for the panels.
@@ -239,6 +243,7 @@ func setup(colony: ColonyModel) -> void:
 	model.surface_loaded.connect(_on_surface_loaded)
 	model.surface_reset.connect(_on_surface_reset)
 	model.production_changed.connect(_mover.refresh_activity)
+	model.production_changed.connect(_refresh_module_looks)
 
 
 func _ready() -> void:
@@ -1275,6 +1280,7 @@ func _rebuild_structure() -> void:
 	for child: Node in _modules.get_children():
 		child.queue_free()
 	_mover.clear()
+	_module_looks.clear()
 	_travelling.clear()
 	var now := Services.clock.now_ms()
 	var structures := _structures()
@@ -1373,10 +1379,8 @@ func _build_structure(structure: ColonyModel) -> void:
 		# The footprint centre already stands on the module's level.
 		node.position = _footprint_centre(cells) + Vector3(0.0, HULL_FLOOR_HEIGHT, 0.0) + lift
 		node.rotation.y = -deg_to_rad(placed.rotation)
-		if placed.is_building():
-			_tint(node, COLOR_BUILDING)
-		elif placed.is_disabled():
-			_tint(node, COLOR_DISABLED)
+		_apply_module_look(node, structure, placed)
+		_module_looks.append([node, structure, placed])
 		if not shut and StructureLook.cell_closed(layout, definitions, placed.origin):
 			_set_layers(node, INTERIOR_LAYER)
 		module_group.add_child(node)
@@ -1831,12 +1835,46 @@ func _shaft_head() -> Node3D:
 	return holder
 
 
+## The state colour of a standing module: under construction amber, switched off red, idle
+## (the rate solution says it produces nothing now: no recipe, no input, no power …) a grey
+## veil, so a resting mine stands out from a working one (Rudi 2026-11-20); else none.
+func _apply_module_look(node: Node3D, structure: ColonyModel, placed: StructureLayout.Module) -> void:
+	if placed.is_building():
+		_tint(node, COLOR_BUILDING)
+	elif placed.is_disabled():
+		_tint(node, COLOR_DISABLED)
+	elif structure.production_known() and structure.idle_reasons.has(placed.module_id):
+		_tint(node, COLOR_IDLE)
+	else:
+		_untint(node)
+
+
+## The rate solution changed: idle modules get or lose their grey veil without a rebuild.
+func _refresh_module_looks() -> void:
+	for entry: Array in _module_looks:
+		var node: Node3D = entry[0]
+		var structure: ColonyModel = entry[1]
+		var placed: StructureLayout.Module = entry[2]
+		if is_instance_valid(node):
+			_apply_module_look(node, structure, placed)
+	# A module that lost its state colour takes the selection tint again.
+	_apply_highlight()
+
+## Takes the state colour off every mesh of a model (a selection tint stays).
+func _untint(node: Node3D) -> void:
+	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh := found as MeshInstance3D
+		if mesh.material_overlay != null and mesh.material_overlay.has_meta("state_tint"):
+			mesh.material_overlay = null
+
+
 ## Lays a translucent colour over every mesh of a model.
 func _tint(node: Node3D, color: Color) -> void:
 	var overlay := StandardMaterial3D.new()
 	overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	overlay.albedo_color = color
+	overlay.set_meta("state_tint", true)
 	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
 		(found as MeshInstance3D).material_overlay = overlay
 
