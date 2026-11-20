@@ -837,3 +837,91 @@ def robot_arm_clean(model, position, turn: float, z: float, reach: float = 0.22)
         model.cylinder(wrist, (wrist[0], wrist[1], wrist[2] - 0.04), 0.014, ENT_CHROME, segments=10)
         model.cylinder((wrist[0], wrist[1], wrist[2] - 0.04), (wrist[0], wrist[1], wrist[2] - 0.05), 0.009,
                        ENT_LIGHT, segments=8)
+
+
+# --- Enterprise furniture and fittings (enterprise_civic.py) ------------------------------------
+# Offices, classrooms, lounges and archives of the enterprise share these; all in the ENT_*
+# colours, soft-cornered.
+
+def ent_sphere(model, center, radius: float, color: str, rings: int = 6, segments: int = 12) -> None:
+    """A ball (a lamp, a hologram's core, a planet)."""
+    profile = [(radius * math.sin(math.pi * k / rings), -radius * math.cos(math.pi * k / rings))
+               for k in range(rings + 1)]
+    model.revolve(center, profile, color, segments=segments)
+
+
+def ent_chair(model, position, z: float, turn: float = 0.0, seat: str = ENT_GRAPHITE, shell: str = ENT_SMOOTH,
+              size: float = 0.07) -> None:
+    """A swivel chair at *position* on *z*, facing -y of its *turn*: a chrome stem on a small
+    carbon foot, a soft seat, a white shell as its back."""
+    with model.placed((position[0], position[1], z), turn=turn):
+        model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, 0.006), size * 0.45, ENT_CARBON, segments=10)
+        model.cylinder((0.0, 0.0, 0.006), (0.0, 0.0, size * 0.55), size * 0.08, ENT_CHROME, segments=6)
+        model.rounded_box((0.0, 0.0, size * 0.62), (size, size, size * 0.18), size * 0.3, seat)
+        model.rounded_box((0.0, size * 0.46, size * 1.0), (size, size * 0.16, size * 0.70), size * 0.08, shell)
+
+
+def ent_desk(model, center, z: float, size=(0.22, 0.10), turn: float = 0.0, seed: int = 0,
+             screen: bool = True, height: float = 0.11) -> None:
+    """A slim white desk at *center* on *z*, its user at -y of its *turn*: a carbon side panel at
+    each end, a cyan line under its front edge and, with *screen*, a display at its back."""
+    width, depth = size
+    with model.placed((center[0], center[1], z), turn=turn):
+        model.rounded_box((0.0, 0.0, height), (width, depth, 0.012), 0.012, ENT_SMOOTH)
+        for side in (-1, 1):
+            model.box((side * (width / 2.0 - 0.008), 0.0, height / 2.0), (0.012, depth * 0.8, height), ENT_CARBON)
+        light_strip(model, (-width * 0.40, -depth / 2.0 + 0.004, height - 0.010),
+                    (width * 0.40, -depth / 2.0 + 0.004, height - 0.010), 0.005)
+        if screen:
+            model.box((0.0, depth * 0.30, height + 0.03), (0.008, 0.008, 0.05), ENT_GRAPHITE)
+            display(model, (0.0, depth * 0.30 - 0.004, height + 0.06), (width * 0.62, width * 0.34), "-y",
+                    seed=seed, depth=0.006)
+
+
+def holo_pad(model, position, z: float, radius: float = 0.08, beam: float | None = None) -> float:
+    """A round projector set in the floor at *position* on *z*: a carbon ring, a glowing lens
+    and, with *beam* (its height), a thin cyan beam up from it. Returns the pad's top."""
+    x, y = position
+    model.cylinder((x, y, z), (x, y, z + 0.012), radius, ENT_CARBON, segments=20)
+    model.cylinder((x, y, z + 0.012), (x, y, z + 0.018), radius * 0.78, ENT_SMOOTH, segments=20)
+    model.cylinder((x, y, z + 0.018), (x, y, z + 0.021), radius * 0.55, ENT_SCREEN, segments=20)
+    torus(model, (x, y, z + 0.018), radius * 0.66, 0.004, ENT_LIGHT, segments=20, sides=4)
+    if beam:
+        model.cylinder((x, y, z + 0.021), (x, y, z + beam), 0.004, ENT_LIGHT, segments=6)
+    return z + 0.021
+
+
+def data_core(model, position, z: float, height: float = 0.26, radius: float = 0.05, discs: int = 5) -> None:
+    """A data core at *position* on *z*: a glass tube between white caps, a stack of glowing
+    discs on a chrome spindle inside."""
+    x, y = position
+    model.cylinder((x, y, z), (x, y, z + 0.03), radius + 0.012, ENT_SMOOTH, segments=14)
+    model.cylinder((x, y, z + 0.004), (x, y, z + 0.010), radius + 0.014, ENT_LIGHT, segments=14)
+    model.cylinder((x, y, z + 0.03), (x, y, z + height - 0.03), radius, _PANE, segments=14)
+    model.cylinder((x, y, z + 0.03), (x, y, z + height - 0.03), 0.008, ENT_CHROME, segments=6)
+    step = (height - 0.08) / max(1, discs - 1)
+    for index in range(discs):
+        level = z + 0.05 + index * step
+        model.cylinder((x, y, level), (x, y, level + 0.008), radius * 0.78, ENT_LIGHT if index % 2 else ENT_LAMP,
+                       segments=14)
+    model.cylinder((x, y, z + height - 0.03), (x, y, z + height), radius + 0.012, ENT_SMOOTH, segments=14)
+    model.cylinder((x, y, z + height), (x, y, z + height + 0.006), radius * 0.5, ENT_CARBON, segments=10)
+
+
+def ent_planter(model, center, z: float, size=(0.14, 0.14), height: float = 0.06, seed: int = 0,
+                tall: float = 0.14) -> None:
+    """A white planter with soft corners and a cyan band, green crowns in it (a shrub, or a slim
+    tree when *tall* is larger than the planter)."""
+    x, y = center
+    width, depth = size
+    model.rounded_box((x, y, z + height / 2.0), (width, depth, height), min(width, depth) * 0.25, ENT_SMOOTH)
+    model.rounded_box((x, y, z + height * 0.30), (width + 0.003, depth + 0.003, height * 0.12),
+                      min(width, depth) * 0.25, ENT_LIGHT)
+    model.plate((x, y, z + height + 0.0006), (width * 0.86, depth * 0.86), "+z", "soil")
+    if tall > max(width, depth) * 1.3:
+        model.cylinder((x, y, z + height), (x, y, z + height + tall * 0.55), 0.008, "wood", segments=5)
+        model.lump((x, y, z + height + tall * 0.68), (tall * 0.55, tall * 0.55, tall * 0.55), "plant",
+                   seed=seed, rough=0.22)
+    else:
+        model.lump((x, y, z + height + tall * 0.35), (width * 0.85, depth * 0.85, tall * 0.7), "plant",
+                   seed=seed, rough=0.25)

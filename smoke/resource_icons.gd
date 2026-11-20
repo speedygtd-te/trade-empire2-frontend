@@ -34,8 +34,27 @@ const MARGIN := 0.06
 ## The contact sheets: the size the UI shows an icon at, and the enlarged size.
 const SHEET_SIZES: Array[int] = [44, 128]
 ## Items the server does not offer yet whose models exist (item key -> model), after the specs
-## in Backend-V2/docs: the probe launcher (SPEC-sonden).
-const COMING_ITEMS: Dictionary[String, String] = {"PROBE_LAUNCHER_MODULE": "probe_launcher"}
+## in Backend-V2/docs: the probe launcher (SPEC-sonden); the civic and population enterprise
+## modules and the member modules of SPEC-enterprise-flaggschiff (item keys after the usual
+## <MODULE>_MODULE pattern; several module keys there are working titles).
+const COMING_ITEMS: Dictionary[String, String] = {
+	"PROBE_LAUNCHER_MODULE": "probe_launcher",
+	"ENTERPRISE_ADMINISTRATION_MODULE": "enterprise_administration",
+	"MINING_EFFICIENCY_DISTRIBUTOR_MODULE": "mining_efficiency_distributor",
+	"CARTOGRAPHY_ARCHIVE_MODULE": "cartography_archive",
+	"OBSERVATION_PLATFORM_MODULE": "observation_platform",
+	"ENTERPRISE_SCHOOL_MODULE": "enterprise_school",
+	"ENTERPRISE_ACADEMY_MODULE": "enterprise_academy",
+	"ENTERPRISE_ELITE_ACADEMY_MODULE": "enterprise_elite_academy",
+	"ENTERPRISE_MEDICAL_BAY_MODULE": "enterprise_medical_bay",
+	"ENTERPRISE_SECURITY_HQ_MODULE": "enterprise_security_hq",
+	"ENTERPRISE_HOLODECK_MODULE": "enterprise_holodeck",
+	"ENTERPRISE_PROMENADE_MODULE": "enterprise_promenade",
+	"ENTERPRISE_BIODOME_MODULE": "enterprise_biodome",
+	"RESEARCH_NETWORK_NODE_MODULE": "research_network_node",
+	"OBSERVATION_UPLINK_MODULE": "observation_uplink",
+	"MINING_OPTIMIZER_MODULE": "mining_optimizer",
+}
 ## How long --items waits for the game data.
 const DEFINITIONS_TIMEOUT_SECONDS := 30.0
 

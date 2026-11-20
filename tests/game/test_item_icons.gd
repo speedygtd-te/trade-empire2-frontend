@@ -32,6 +32,16 @@ const MODULE_ITEMS: Array[String] = [
 	"UNIVERSITY_MODULE", "WATER_FARM_MODULE", "WATER_SYNTHESIZER_MODULE", "WHEEL_MODULE",
 	"WIND_TURBINE_MODULE", "WORMHOLE_MODULE_MODULE",
 ]
+## Coming enterprise items (SPEC-enterprise-flaggschiff: civic and population modules, member
+## modules of Kap. 6a; smoke/resource_icons.gd COMING_ITEMS).
+const ENTERPRISE_CIVIC_ITEMS: Array[String] = [
+	"ENTERPRISE_ADMINISTRATION_MODULE", "MINING_EFFICIENCY_DISTRIBUTOR_MODULE",
+	"CARTOGRAPHY_ARCHIVE_MODULE", "OBSERVATION_PLATFORM_MODULE", "ENTERPRISE_SCHOOL_MODULE",
+	"ENTERPRISE_ACADEMY_MODULE", "ENTERPRISE_ELITE_ACADEMY_MODULE", "ENTERPRISE_MEDICAL_BAY_MODULE",
+	"ENTERPRISE_SECURITY_HQ_MODULE", "ENTERPRISE_HOLODECK_MODULE", "ENTERPRISE_PROMENADE_MODULE",
+	"ENTERPRISE_BIODOME_MODULE", "RESEARCH_NETWORK_NODE_MODULE", "OBSERVATION_UPLINK_MODULE",
+	"MINING_OPTIMIZER_MODULE",
+]
 ## The HULL_ITEM resources of /v2/definitions (contract draft.31).
 const HULL_ITEMS: Array[String] = [
 	"HULL_AIRTIGHT", "HULL_COMPOSITE", "HULL_COMPOSITE_PLATFORM_SPACE", "HULL_DOCK",
@@ -45,7 +55,7 @@ func test_an_item_icon_lies_in_the_item_folder() -> void:
 
 
 func test_every_module_and_hull_item_has_an_icon() -> void:
-	for key: String in MODULE_ITEMS + HULL_ITEMS:
+	for key: String in MODULE_ITEMS + HULL_ITEMS + ENTERPRISE_CIVIC_ITEMS:
 		var texture := ResourceIcon.texture(key)
 		assert_object(texture).override_failure_message("no icon for " + key).is_not_null()
 		if texture != null:
@@ -54,7 +64,7 @@ func test_every_module_and_hull_item_has_an_icon() -> void:
 
 
 func test_every_item_icon_file_belongs_to_a_known_item() -> void:
-	var known := MODULE_ITEMS + HULL_ITEMS
+	var known := MODULE_ITEMS + HULL_ITEMS + ENTERPRISE_CIVIC_ITEMS
 	for file: String in DirAccess.get_files_at(ResourceIcon.ITEM_FOLDER):
 		if file.ends_with(".png"):
 			assert_bool(file.get_basename().to_upper() in known).override_failure_message(file).is_true()

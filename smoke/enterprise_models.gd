@@ -34,6 +34,34 @@ const HULL_PAIRS: Array = [
 	["hull_platform_space", "hull_enterprise_platform"],
 	["hull_dock", "hull_enterprise_dock"],
 ]
+## The civic and population enterprise modules (scripts/3d/models/enterprise_civic.py): their
+## population counterparts of the players side by side, and all of them on enterprise hulls at the
+## game's default zoom (ColonyView.ZOOM_DEFAULT) beside the member modules of Kap. 6a
+## (enterprise_member.py, rough player look, on player hulls).
+const POPULATION_PAIRS: Array = [
+	["advanced_school", "enterprise_school", 1], ["university", "enterprise_academy", 1],
+	["elite_academy", "enterprise_elite_academy", 1], ["medical_center", "enterprise_medical_bay", 1],
+	["security_center", "enterprise_security_hq", 1], ["experience_arena", "enterprise_holodeck", 1],
+	["luxury_promenade", "enterprise_promenade", 1], ["biosphere", "enterprise_biodome", 1],
+	["space_telescope_module", "observation_platform", 1],
+]
+## [model, cell (x, z), cells, player look]
+const CIVIC_LAYOUT: Array = [
+	["enterprise_administration", Vector2i(0, 0), 2, false], ["mining_efficiency_distributor", Vector2i(3, 0), 2, false],
+	["cartography_archive", Vector2i(6, 0), 2, false],
+	["enterprise_school", Vector2i(0, 3), 1, false], ["enterprise_academy", Vector2i(1, 3), 1, false],
+	["enterprise_elite_academy", Vector2i(2, 3), 1, false], ["enterprise_medical_bay", Vector2i(3, 3), 1, false],
+	["enterprise_security_hq", Vector2i(4, 3), 1, false], ["enterprise_holodeck", Vector2i(5, 3), 1, false],
+	["enterprise_promenade", Vector2i(6, 3), 1, false], ["enterprise_biodome", Vector2i(7, 3), 1, false],
+	["observation_platform", Vector2i(8, 3), 1, false],
+	["research_network_node", Vector2i(2, 5), 1, true], ["mining_optimizer", Vector2i(3, 5), 1, true],
+	["observation_uplink", Vector2i(4, 5), 1, true], ["mine", Vector2i(5, 5), 1, true],
+]
+## Modules that stand on a platform, not in a hull.
+const OUTDOOR_MODULES: Array[String] = [
+	"enterprise_sublight_thruster", "fusion_drive", "observation_platform", "space_telescope_module",
+	"observation_uplink", "mine",
+]
 const FLOOR_HEIGHT := 0.06
 ## The mock flagship: hull per cell (x, z; +z is the front) and the modules on it.
 const MOCK_SIZE := Vector2i(8, 7)
@@ -79,6 +107,10 @@ func _ready() -> void:
 		await _shot_mock(false, "mock_open_" + time, 9.5)
 		await _shot_mock(false, "mock_open_zoom_" + time, 4.2, Vector3(1.6, 0.0, 1.6))
 		await _shot_mock(true, "mock_closed_zoom_" + time, 4.2, Vector3(6.0, 0.0, 4.5))
+		await _shot_pairs(POPULATION_PAIRS, true, "compare_population_" + time)
+		await _shot_civic("civic_" + time, ColonyView.ZOOM_DEFAULT, Vector3(4.5, 0.0, 3.0))
+		await _shot_civic("civic_zoom_" + time, 4.2, Vector3(4.5, 0.0, 3.5))
+		await _shot_civic("civic_large_zoom_" + time, 4.2, Vector3(4.0, 0.0, 1.0))
 	if _stage != null:
 		_stage.free()
 	for model: Node3D in _cache.values():
@@ -216,7 +248,7 @@ func _shot_pairs(pairs: Array, modules: bool, name: String) -> void:
 			var lift := FLOOR_HEIGHT if modules else 0.0
 			if modules:
 				var floor_key := "hull_starter" if side == 0 else "hull_enterprise_hull_standard"
-				if key.ends_with("thruster") or key == "fusion_drive":
+				if key in OUTDOOR_MODULES:
 					floor_key = "hull_platform_space" if side == 0 else "hull_enterprise_platform"
 				for x: int in cells:
 					for z: int in cells:
@@ -310,6 +342,30 @@ func _shot_mock(shut: bool, name: String, size: float, target: Vector3 = Vector3
 		_place(stage, _model(_player_dir, "habitat_t3"), Vector3(-1.5, FLOOR_HEIGHT, 2.5))
 		_place(stage, _model(_player_dir, "research_lab"), Vector3(-3.5, FLOOR_HEIGHT, 3.5))
 	_ground(stage, Vector3(3.0, 0.0, 3.5), Vector2(60.0, 60.0), _ground_color())
+	_camera.size = size
+	_aim(target + Vector3(0.0, 0.3, 0.0))
+	await _capture(name)
+
+
+## The civic modules on enterprise hulls (platforms outdoors), the member modules and a player
+## mine on player hulls, from the game's camera at *size* (the game's default zoom: 9).
+func _shot_civic(name: String, size: float, target: Vector3) -> void:
+	var stage := _new_stage()
+	for entry: Array in CIVIC_LAYOUT:
+		var key: String = entry[0]
+		var origin: Vector2i = entry[1]
+		var cells: int = entry[2]
+		var player: bool = entry[3]
+		var outdoor := key in OUTDOOR_MODULES
+		var folder := _player_dir if key == "mine" else _models_dir
+		var floor_key := "hull_enterprise_platform" if outdoor else "hull_enterprise_hull_standard"
+		if player:
+			floor_key = "hull_platform_outdoor" if outdoor else "hull_starter"
+		for x: int in cells:
+			for z: int in cells:
+				_place(stage, _model(_player_dir if player else _models_dir, floor_key), Vector3(origin.x + x + 0.5, 0.0, origin.y + z + 0.5))
+		_place(stage, _model(folder, key), Vector3(origin.x + cells * 0.5, FLOOR_HEIGHT, origin.y + cells * 0.5))
+	_ground(stage, Vector3(4.5, 0.0, 3.0), Vector2(60.0, 60.0), _ground_color())
 	_camera.size = size
 	_aim(target + Vector3(0.0, 0.3, 0.0))
 	await _capture(name)
