@@ -22,10 +22,11 @@ const WATER_BIOMES: PackedStringArray = [
 ## Body types whose cells are ASTEROID instead of SURFACE.
 const ASTEROID_BODIES: PackedStringArray = ["ASTEROID_M", "ASTEROID_C", "ASTEROID_S"]
 ## Hull types the server takes on a body's surface (any other: INVALID_HULL_TYPE). A guest on a
-## dock takes every known hull type.
+## dock takes every known hull type. The six enterprise hulls stand on the ground too (draft.38).
 const SURFACE_HULLS: PackedStringArray = [
 	"STARTER", "STANDARD", "AIRTIGHT", "PRESSURIZED", "REINFORCED", "GLASS_CARBON", "PLATFORM_OUTDOOR",
-	"PLATFORM_UNDERWATER", "DOCK",
+	"PLATFORM_UNDERWATER", "DOCK", "ENTERPRISE_HULL_STANDARD", "ENTERPRISE_HULL_GLASS",
+	"ENTERPRISE_HULL_ARMORED", "ENTERPRISE_PLATFORM", "ENTERPRISE_PLATFORM_ARMORED", "ENTERPRISE_DOCK",
 ]
 ## Height limits of single hull types (inclusive; NO_LIMIT: open upwards). On a guest they apply
 ## to its local level.

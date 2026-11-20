@@ -170,7 +170,7 @@ func _show_hosts() -> void:
 			continue
 		var has_docks := false
 		for cell: Vector3i in layout.hull_cells():
-			if layout.hull_at(cell) == TravelPlan.DOCK:
+			if DockRules.is_dock(layout.hull_at(cell)):
 				has_docks = true
 				break
 		if not has_docks:

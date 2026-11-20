@@ -52,6 +52,8 @@ class ModuleDef:
 	var owners := PackedStringArray([GameDefinitions.OWNER_PLAYER])
 	## The Enterprise Factory may build it.
 	var enterprise_buildable := false
+	## The host that makes its item (`manufacturedBy`: FACTORY, ENTERPRISE_FACTORY …); "" when none.
+	var manufactured_by := ""
 
 	## Whether an owner of `kind` ("player"/"enterprise", any case) may build it.
 	func allows(kind: String) -> bool:
@@ -112,10 +114,26 @@ class HullDef:
 const OWNER_PLAYER := "PLAYER"
 const OWNER_ENTERPRISE := "ENTERPRISE"
 
-## Whether the bundle says who may hold modules and hulls (any `owners` field). The draft.37
-## server keeps `owners` in its game data but leaves it out of `/v2/definitions`; then nothing is
-## filtered by it (the server still refuses with MODULE_NOT_ALLOWED).
+## Players and enterprises may both hold these modules (SPEC-enterprise-flaggschiff 4.2: shared
+## player modules and population basics). Only for the fallback below.
+const SHARED_MODULES: PackedStringArray = [
+	"LIFE_SUPPORT", "SOLAR_PANEL", "FUSION_REACTOR", "STAIRCASE", "ELEVATOR", "HYDROPONIC_BAY",
+	"INTERSTELLAR_NAVIGATION", "BASIC_SCHOOL", "SANITATION_STATION", "GUARD_POST", "RECREATION_CORNER",
+	"BOTANICAL_GARDEN",
+]
+## The host whose items are enterprise items (`manufacturedBy`).
+const ENTERPRISE_HOST := "ENTERPRISE_FACTORY"
+## Prefix of the enterprise's own hulls and modules.
+const ENTERPRISE_PREFIX := "ENTERPRISE_"
+
+## Whether it is known who may hold modules and hulls: from `owners` in the bundle, or derived
+## (`owners_derived`). The draft.37/38 server keeps `owners` in its game data but leaves it out of
+## `/v2/definitions`; then the client derives it (fallback, documented): hulls and modules whose
+## key begins with ENTERPRISE_ or that the Enterprise Factory makes (`manufacturedBy`) are the
+## enterprise's alone, SHARED_MODULES both, everything else the players'. The server decides
+## (MODULE_NOT_ALLOWED).
 var owners_known := false
+var owners_derived := false
 ## SHA-256 of the backend's game data file.
 var data_hash: String = ""
 ## Micro-units per unit (1 000 000).
@@ -156,6 +174,8 @@ static func from_bundle(data: Dictionary) -> GameDefinitions:
 		var hull := _read_hull(hull_row)
 		if not hull.key.is_empty():
 			definitions._hulls[hull.key] = hull
+	if not definitions.owners_known:
+		definitions._derive_owners()
 	for entry: Variant in _list(data.get("resources")):
 		var resource := Wire.as_dict(entry)
 		var key := Wire.as_string(resource.get("key"))
@@ -314,6 +334,7 @@ static func _read_module(data: Dictionary) -> ModuleDef:
 	module.z_prefer_high = level.get("preferHigh") == true
 	module.owners = _owners(data.get("owners"))
 	module.enterprise_buildable = data.get("enterpriseBuildable") == true
+	module.manufactured_by = Wire.as_string(data.get("manufacturedBy"))
 	return module
 
 
@@ -352,6 +373,23 @@ static func _read_hull(data: Dictionary) -> HullDef:
 	hull.owners = _owners(data.get("owners"))
 	hull.enterprise_buildable = data.get("enterpriseBuildable") == true
 	return hull
+
+
+## The fallback when the bundle has no `owners` (see `owners_known`).
+func _derive_owners() -> void:
+	var enterprise_only := PackedStringArray([OWNER_ENTERPRISE])
+	var both := PackedStringArray([OWNER_PLAYER, OWNER_ENTERPRISE])
+	for hull: HullDef in _hulls.values():
+		if hull.key.begins_with(ENTERPRISE_PREFIX):
+			hull.owners = enterprise_only
+	for module_def: ModuleDef in _modules.values():
+		if module_def.key.begins_with(ENTERPRISE_PREFIX) or module_def.manufactured_by == ENTERPRISE_HOST:
+			module_def.owners = enterprise_only
+			module_def.enterprise_buildable = module_def.manufactured_by == ENTERPRISE_HOST
+		elif SHARED_MODULES.has(module_def.key):
+			module_def.owners = both
+	owners_known = true
+	owners_derived = true
 
 
 ## `owners` of a module or hull in upper case; players only when the data leaves it out.
