@@ -174,14 +174,23 @@ static func phase_line(quote: TravelPlan.Quote, ground: bool, translator: Object
 			"speed": AmountFormat.units(quote.speed_cells_per_minute)})
 	var parts := PackedStringArray()
 	if quote.launch_ms() > 0:
-		parts.append(translator.tr("TRAVEL_PHASE_LAUNCH").format({"duration": TimeFormat.duration(quote.launch_ms())}))
+		parts.append(translator.tr("TRAVEL_PHASE_LAUNCH").format({"duration": TimeFormat.duration(quote.launch_ms())})
+			+ _air(quote.air_on_launch(), quote.atmosphere_departure, translator))
 	if quote.cruise_ms() > 0:
 		parts.append(translator.tr("TRAVEL_PHASE_CRUISE").format({"duration": TimeFormat.duration(quote.cruise_ms())}))
 	if quote.landing_ms() > 0:
-		parts.append(translator.tr("TRAVEL_PHASE_LANDING").format({"duration": TimeFormat.duration(quote.landing_ms())}))
+		parts.append(translator.tr("TRAVEL_PHASE_LANDING").format({"duration": TimeFormat.duration(quote.landing_ms())})
+			+ _air(quote.air_on_landing(), quote.atmosphere_arrival, translator))
 	if parts.is_empty():
 		return translator.tr("TRAVEL_PHASE_NONE")
 	return " · ".join(parts)
+
+
+## " (air ×1.25)" after a launch or landing the atmosphere slows; "" without air.
+static func _air(slowed: bool, factor: int, translator: Object) -> String:
+	if not slowed:
+		return ""
+	return " " + translator.tr("TRAVEL_PHASE_AIR").format({"factor": "%.2f" % (factor / float(TravelPlan.ATMOSPHERE_NONE))})
 
 
 ## Nano-light-years as light years: three decimals below 10, one below 1000, whole above.

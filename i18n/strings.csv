@@ -688,6 +688,7 @@ TRAVEL_PHASE_LAUNCH,Launch {duration}
 TRAVEL_PHASE_CRUISE,Flight {duration}
 TRAVEL_PHASE_LANDING,Landing {duration}
 TRAVEL_PHASE_NONE,No time under way.
+TRAVEL_PHASE_AIR,(air ×{factor})
 TRAVEL_PHASE_DRIVE,Drive {duration} at {speed} fields per minute
 TRAVEL_ARRIVAL,Arrives in {duration}
 TRAVEL_DISTANCE,Distance {ly} light years
