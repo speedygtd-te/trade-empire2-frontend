@@ -1040,8 +1040,9 @@ func _fill_palette() -> void:
 				entry.note = _change_text(LevelRules.z_percent(definitions.module(entry.tool.get_slice(":", 1)), _level))
 			kept.append(entry)
 		entries = kept
-	var hint := tr("LEVEL_HULLS_HIDDEN").format({"names": ", ".join(hidden)}) if not hidden.is_empty() else ""
-	_palette.show_entries(entries, _tool, hint)
+	# Hulls this level does not take are simply left out (no list of them: it pushed the
+	# palette and the structure nav off a phone screen, Rudi 2026-11-20).
+	_palette.show_entries(entries, _tool, "")
 	# Shapes only on the home structure: a guest keeps its own stacking on the docks.
 	_palette.show_shapes(_shapes_offered(), _shape, tr("COLONY_SHAPE_HOME_ONLY") if _focus.is_guest() else "")
 
@@ -2331,13 +2332,12 @@ func _refresh_build() -> void:
 	var supply_line := ""
 	if _focus.is_guest():
 		supply_line = "\n" + tr("COLONY_SUPPLY_FROM_HOST").format({"host": _model.structure_name})
+	_info.visible = true
 	if _tool.is_empty():
-		_info.text = tr("COLONY_HINT_BUILD") + supply_line
-		var level_line := _level_path_line()
-		if not level_line.is_empty():
-			_info.text += "\n" + level_line
-		if _uses_levels():
-			_info.text += "\n" + tr("COLONY_PATH_LEGEND")
+		# No help texts under the palette (Rudi 2026-11-20): only a level that is cut off from
+		# the ground is worth a line.
+		_info.text = _level_path_line()
+		_info.visible = not _info.text.is_empty()
 		_primary.disabled = true
 		_view.show_preview([], false)
 		return
