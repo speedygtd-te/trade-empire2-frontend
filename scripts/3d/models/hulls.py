@@ -3,6 +3,8 @@ cell (1 x 1), so neighbouring hulls join without gaps, and is FLOOR_HEIGHT high;
 stands on top of it. Not a model script itself (tools/build-models.ps1 skips it).
 """
 
+import math
+
 import kit
 import parts
 
@@ -266,3 +268,211 @@ def grating_hull(name: str, frame: str, bars: str, count: int = 9):
         x = -inner / 2.0 + (index + 0.5) * inner / count
         model.box((x, 0.0, FLOOR_HEIGHT * 0.75), (inner / count * 0.55, inner, FLOOR_HEIGHT * 0.5), bars)
     return model
+
+
+# --- Enterprise hulls ---------------------------------------------------------------------------
+# The clean enterprise look (kit style "enterprise", parts.ENT_*): white, light grey, carbon and
+# glass with cyan light. Floors meet their neighbours in a fine graphite seam with a cyan point
+# where four cells meet; containers have round white corner posts.
+
+def _corner_dots(model, z: float, color: str = parts.ENT_LIGHT, size: float = 0.014) -> None:
+    """A quarter of a glowing point in every corner of the cell: four neighbours make one."""
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            model.plate((sx * (_HALF - size / 2.0), sy * (_HALF - size / 2.0), z + 2.0 * _HAIR), (size, size), "+z",
+                        color)
+
+
+def _seams(model, z: float, width: float = 0.006, color: str = parts.ENT_GRAPHITE) -> None:
+    """A thin seam along the four edges of the cell's top at *z* (two neighbours make one)."""
+    for sign in (-1, 1):
+        model.plate((0.0, sign * (_HALF - width / 2.0), z + _HAIR), (1.0, width), "+z", color)
+        model.plate((sign * (_HALF - width / 2.0), 0.0, z + _HAIR), (width, 1.0), "+z", color)
+
+
+def enterprise_floor(name: str, kind: str = "standard"):
+    """The open floor of an enterprise hull, FLOOR_HEIGHT high on a carbon edge: light tiles
+    (standard), tiles round a dark glass panel framed in cyan (glass), light grey armour plates
+    in a carbon border with white corner blocks (armored)."""
+    model = kit.Builder(name, style="enterprise")
+    height = FLOOR_HEIGHT
+    model.box((0.0, 0.0, height * 0.3), (1.0, 1.0, height * 0.6), parts.ENT_CARBON)
+    top = height
+    if kind == "armored":
+        model.box((0.0, 0.0, height * 0.8), (1.0, 1.0, height * 0.4), parts.ENT_CARBON)
+        model.rounded_box((0.0, 0.0, height * 0.8 + 0.004), (0.90, 0.90, height * 0.4 + 0.008), 0.03,
+                          parts.ENT_GREY)
+        top = height + 0.008
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                model.rounded_box((sx * 0.462, sy * 0.462, height + 0.01), (0.065, 0.065, 0.012), 0.02,
+                                  parts.ENT_SMOOTH)
+        for sign in (-1, 1):
+            model.plate((0.0, sign * 0.43, top + _HAIR), (0.5, 0.008), "+z", parts.ENT_LIGHT)
+            model.plate((sign * 0.43, 0.0, top + _HAIR), (0.008, 0.5), "+z", parts.ENT_LIGHT)
+        _corner_dots(model, height + 0.016)
+        return model.finish()
+    model.box((0.0, 0.0, height * 0.8), (1.0, 1.0, height * 0.4), parts.ENT_FLOOR)
+    _seams(model, top)
+    if kind == "glass":
+        model.plate((0.0, 0.0, top + 2.0 * _HAIR), (0.62, 0.62), "+z", "ent_glassfloor")
+        for sign in (-1, 1):
+            model.plate((0.0, sign * 0.315, top + 3.0 * _HAIR), (0.64, 0.010), "+z", parts.ENT_LIGHT)
+            model.plate((sign * 0.315, 0.0, top + 3.0 * _HAIR), (0.010, 0.64), "+z", parts.ENT_LIGHT)
+    _corner_dots(model, top)
+    return model.finish()
+
+
+def enterprise_platform(name: str, armored: bool = False):
+    """An open enterprise deck for outdoor modules: a white frame round carbon slats over a dark
+    gap (armored: a heavier light grey frame round four grey armour plates on carbon), cyan
+    marks and chrome tie-down points."""
+    model = kit.Builder(name, style="enterprise")
+    height = FLOOR_HEIGHT
+    rim = 0.075 if armored else 0.05
+    frame = parts.ENT_GREY if armored else parts.ENT_SMOOTH
+    for sign in (-1, 1):
+        model.box((0.0, sign * (_HALF - rim / 2.0), height / 2.0), (1.0, rim, height), frame)
+        model.box((sign * (_HALF - rim / 2.0), 0.0, height / 2.0), (rim, 1.0 - 2.0 * rim, height), frame)
+    inner = 1.0 - 2.0 * rim
+    model.box((0.0, 0.0, height * 0.25), (inner, inner, height * 0.5), parts.ENT_GRAPHITE)
+    if armored:
+        model.box((0.0, 0.0, height * 0.6), (inner, inner, height * 0.2), parts.ENT_CARBON)
+        tile = inner / 2.0 - 0.02
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                model.rounded_box((sx * inner / 4.0, sy * inner / 4.0, height * 0.85), (tile, tile, height * 0.3),
+                                  0.03, parts.ENT_GREY)
+        model.plate((0.0, 0.0, height * 0.7 + _HAIR), (inner, 0.012), "+z", parts.ENT_LIGHT)
+        model.plate((0.0, 0.0, height * 0.7 + _HAIR), (0.012, inner), "+z", parts.ENT_LIGHT)
+    else:
+        count = 7
+        for index in range(count):
+            x = -inner / 2.0 + (index + 0.5) * inner / count
+            model.box((x, 0.0, height * 0.75), (inner / count * 0.7, inner, height * 0.5), parts.ENT_CARBON)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            corner = _HALF - rim / 2.0
+            model.plate((sx * corner, sy * corner, height + _HAIR), (rim * 0.5, rim * 0.5), "+z", parts.ENT_LIGHT)
+            eye = _HALF - rim - 0.05
+            model.cylinder((sx * eye, sy * eye, height * (0.9 if armored else 1.0)),
+                           (sx * eye, sy * eye, height + 0.014), 0.016, parts.ENT_CHROME, segments=8)
+    for sign in (-1, 1):
+        model.plate((0.0, sign * (_HALF - rim / 2.0), height + _HAIR), (0.30, 0.008), "+z", parts.ENT_LIGHT)
+        model.plate((sign * (_HALF - rim / 2.0), 0.0, height + _HAIR), (0.008, 0.30), "+z", parts.ENT_LIGHT)
+    return model.finish()
+
+
+def enterprise_dock(name: str):
+    """The enterprise dock: a white pad on a carbon edge with a glowing cyan landing ring, four
+    chevrons pointing in, cyan landing lights along its edges."""
+    model = kit.Builder(name, style="enterprise")
+    height = FLOOR_HEIGHT
+    model.box((0.0, 0.0, height * 0.3), (1.0, 1.0, height * 0.6), parts.ENT_CARBON)
+    model.box((0.0, 0.0, height * 0.8), (1.0, 1.0, height * 0.4), parts.ENT_GREY)
+    top = height
+    _seams(model, top, width=0.012)
+    parts.torus(model, (0.0, 0.0, top + 0.001), 0.30, 0.008, parts.ENT_LIGHT, segments=32, sides=4)
+    model.cylinder((0.0, 0.0, top - 0.002), (0.0, 0.0, top + 0.002), 0.27, parts.ENT_GREY, segments=32)
+    model.cylinder((0.0, 0.0, top), (0.0, 0.0, top + 0.004), 0.05, parts.ENT_GRAPHITE, segments=16)
+    for quarter in range(4):
+        with model.placed((0.0, 0.0, top + _HAIR), turn=quarter * math.pi / 2.0):
+            for side in (-1, 1):
+                model.box((side * 0.03, -0.40, 0.0015), (0.07, 0.014, 0.003), parts.ENT_LIGHT, turn=side * 0.7)
+    parts.edge_lamps(model, 0.5, height, count=3, size=(0.035, 0.014), margin=0.1, face=False,
+                     color=parts.ENT_LAMP)
+    return model.finish()
+
+
+def enterprise_container(name: str, kind: str = "standard"):
+    """An enterprise hull seen from outside (closed structure): round white corner posts and a
+    white top frame with a cyan line, on a carbon foot.
+    standard: white panelled walls with a dark ribbon window (lit at night) over a cyan line,
+    a sliding door, a roof with a soft-cornered service module.
+    glass: walls and roof of glass between slim white posts, sills with cyan lines; clean props
+    behind the glass (never the modules).
+    armored: heavier light grey posts and armour panels on carbon, a narrow slot window, no
+    door; still clean."""
+    model = kit.Builder(name, style="enterprise")
+    top, bottom = CLOSED_HEIGHT, FLOOR_HEIGHT
+    armored = kind == "armored"
+    glass = kind == "glass"
+    post = 0.06 if armored else 0.05
+    shell = parts.ENT_GREY if armored else parts.ENT_WHITE
+    model.box((0.0, 0.0, bottom / 2.0), (1.0, 1.0, bottom), parts.ENT_CARBON)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            parts.corner_post(model, (sx * (_EDGE - post), sy * (_EDGE - post)), bottom, top, radius=post, segments=2,
+                              outward=None if armored else (sx, sy), color=parts.ENT_SMOOTH if glass else shell)
+    beam = 0.05
+    span = 2.0 * (_EDGE - 2.0 * post)
+    for sign in (-1, 1):
+        model.box((0.0, sign * (_EDGE - beam / 2.0), top - beam / 2.0), (span, beam, beam), parts.ENT_SMOOTH)
+        model.box((sign * (_EDGE - beam / 2.0), 0.0, top - beam / 2.0), (beam, span, beam), parts.ENT_SMOOTH)
+        model.box((0.0, sign * (_EDGE - 0.02), bottom + 0.02), (span, 0.04, 0.04), parts.ENT_CARBON)
+        model.box((sign * (_EDGE - 0.02), 0.0, bottom + 0.02), (0.04, span, 0.04), parts.ENT_CARBON)
+        # The cyan line along the top frame, seen from the side and from above.
+        model.plate((0.0, sign * (_EDGE - beam / 2.0), top + _HAIR), (span * 0.9, 0.018), "+z", parts.ENT_LIGHT)
+        model.plate((sign * (_EDGE - beam / 2.0), 0.0, top + _HAIR), (0.018, span * 0.9), "+z", parts.ENT_LIGHT)
+    low, high = bottom + 0.04, top - beam
+    half = span / 2.0
+    for side in _SIDES:
+        if glass:
+            model.plate(_on_side(side, 0.0, (low + high) / 2.0, _WALL - 0.01), (span, high - low), side, kit.PANE)
+            _slab(model, side, (-half, half), (low, low + 0.035), parts.ENT_SMOOTH, depth=0.05, out=_EDGE)
+            model.plate(_on_side(side, 0.0, low + 0.024, _EDGE + _HAIR), (span * 0.9, 0.008), side, parts.ENT_LIGHT)
+            _slab(model, side, (-0.012, 0.012), (low + 0.035, high), parts.ENT_GRAPHITE, depth=0.02, out=_WALL)
+        elif armored:
+            _slab(model, side, (-half, half), (low, high), parts.ENT_CARBON)
+            for z0, z1 in ((low + 0.02, 0.40), (0.47, high - 0.02)):
+                for a0, a1 in ((-half + 0.02, -0.01), (0.01, half - 0.02)):
+                    _slab(model, side, (a0, a1), (z0, z1), parts.ENT_GREY, depth=0.016, out=_WALL + 0.016)
+            model.plate(_on_side(side, 0.0, 0.435, _WALL + _HAIR), (span * 0.7, 0.03), side, parts.ENT_WINDOW)
+            model.plate(_on_side(side, 0.0, 0.412, _WALL + 2.0 * _HAIR), (span * 0.7, 0.008), side,
+                        parts.ENT_LIGHT)
+        else:
+            _slab(model, side, (-half, half), (low, 0.40), shell)
+            _slab(model, side, (-half, half), (0.40, 0.54), parts.ENT_WINDOW, depth=0.02, out=_WALL - 0.01)
+            _slab(model, side, (-half, half), (0.54, high), shell)
+            model.plate(_on_side(side, 0.0, 0.393, _WALL + _HAIR), (span, 0.010), side, parts.ENT_LIGHT)
+    if not glass and not armored:
+        # A sliding door: a graphite leaf pair outlined in cyan.
+        out = _WALL + _HAIR
+        model.plate(_on_side("-y", 0.0, low + 0.15, out), (0.24, 0.30), "-y", parts.ENT_LIGHT)
+        model.plate(_on_side("-y", 0.0, low + 0.145, out + _HAIR), (0.22, 0.29), "-y", parts.ENT_GRAPHITE)
+        model.plate(_on_side("-y", 0.0, low + 0.145, out + 2.0 * _HAIR), (0.006, 0.29), "-y", parts.ENT_CARBON)
+    inner = _EDGE - beam
+    if glass:
+        model.plate((0.0, 0.0, top - 0.012), (2.0 * inner, 2.0 * inner), "+z", kit.PANE)
+        model.box((0.0, 0.0, top - beam / 2.0), (2.0 * inner, 0.03, beam * 0.5), parts.ENT_SMOOTH)
+        model.box((0.0, 0.0, top - beam / 2.0), (0.03, 2.0 * inner, beam * 0.5), parts.ENT_SMOOTH)
+        _enterprise_props(model)
+    else:
+        model.box((0.0, 0.0, top - 0.02), (2.0 * inner, 2.0 * inner, 0.04), parts.ENT_GREY)
+        if armored:
+            model.rounded_box((0.0, 0.0, top + 0.012), (0.44, 0.44, 0.024), 0.06, parts.ENT_CARBON, segments=2)
+            model.rounded_box((0.0, 0.0, top + 0.03), (0.30, 0.30, 0.012), 0.05, parts.ENT_GREY, segments=2)
+        else:
+            model.rounded_box((0.0, 0.0, top + 0.014), (0.36, 0.36, 0.028), 0.07, parts.ENT_SMOOTH, segments=2)
+            model.rounded_box((0.0, 0.0, top + 0.03), (0.22, 0.22, 0.006), 0.05, parts.ENT_GRAPHITE, segments=2)
+            model.plate((0.0, 0.0, top + 0.033 + _HAIR), (0.12, 0.012), "+z", parts.ENT_LIGHT)
+    parts.edge_lamps(model, _EDGE, top, count=2, size=(0.05, 0.014), color=parts.ENT_LAMP, top=False)
+    return model.finish()
+
+
+def _enterprise_props(model) -> None:
+    """Fixed props seen through an enterprise glass hull (never the modules): a white bench, a
+    round table, two planters, a display on a stand and a ring lamp under the roof."""
+    floor = FLOOR_HEIGHT
+    model.box((0.0, 0.0, floor + 0.002), (0.86, 0.86, 0.004), parts.ENT_FLOOR)
+    floor += 0.004
+    model.rounded_box((-0.20, 0.27, floor + 0.04), (0.34, 0.10, 0.03), 0.03, parts.ENT_SMOOTH)
+    model.rounded_box((-0.20, 0.27, floor + 0.015), (0.30, 0.06, 0.03), 0.02, parts.ENT_CARBON)
+    model.cylinder((0.12, -0.05, floor), (0.12, -0.05, floor + 0.09), 0.015, parts.ENT_CHROME, segments=8)
+    model.cylinder((0.12, -0.05, floor + 0.09), (0.12, -0.05, floor + 0.10), 0.09, parts.ENT_SMOOTH, segments=16)
+    for x, y in ((0.27, 0.27), (-0.27, -0.25)):
+        model.cylinder((x, y, floor), (x, y, floor + 0.08), 0.055, parts.ENT_SMOOTH, segments=12)
+        model.lump((x, y, floor + 0.13), (0.13, 0.13, 0.14), "plant", seed=int(x * 100), rough=0.2)
+    model.box((-0.24, -0.02, floor + 0.10), (0.012, 0.012, 0.20), parts.ENT_GRAPHITE)
+    parts.display(model, (-0.24, -0.026, floor + 0.20), (0.16, 0.10), "-y", seed=3, depth=0.008)
+    parts.torus(model, (0.0, 0.0, CLOSED_HEIGHT - 0.06), 0.12, 0.008, parts.ENT_LAMP, segments=16, sides=4)

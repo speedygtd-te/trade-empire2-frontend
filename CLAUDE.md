@@ -141,6 +141,17 @@ am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine 
 Zelle als 0,06 hohe Bodenplatte (`hulls.py`, `ColonyView.HULL_FLOOR_HEIGHT`), Module stehen
 darauf. Modultypen ohne eigenes Skript entstehen aus Vorlagen in `families.py`; die Dateinamen
 sind die Typ-Schlüssel klein (`academy.glb`).
+Enterprise-Items haben einen eigenen, cleanen Look (Rudi, 2026-11-20: weiße Wände, Cyan-Lichtstreifen,
+Sichtcarbon, Displays, viel Glas — nicht der raue Spieler-Look): `kit.Builder(name, style="enterprise")`
+(Rezept `kit.STYLES`: kein Rost, kein Dreck, keine abgewetzten Kanten), nur Farben `ent_*` bzw.
+`parts.ENT_*` (Paneelfugen, Fliesen, Carbon-Köper als `kit.PROCEDURAL`-Oberflächen) und die
+Enterprise-Teile in `parts.py` (`ent_room`, `plinth`, `display`, `console`, `glass_wall`,
+`corner_post`, `light_strip` …); weiche Kanten über `Builder.rounded_box`. Module in
+`enterprise.py`, Hüllen offen und geschlossen in `enterprise_hulls.py` (`hulls.enterprise_*`);
+Ansicht neben Spielermodellen und als Muster-Flaggschiff: `godot --path . --resolution 1600x1200
+res://smoke/enterprise_models.tscn -- --out=build/enterprise-models [--models=res://game/world/models_hd]`.
+Die Farben sind auf das Licht von `ColonyView` abgestimmt (Weiß ~0,65, Böden ~0,33 sRGB) — hellere
+Werte brennen bei Tag aus.
 
 Serveradresse: überall der Live-Server `https://trade-empire.net` (Rudis Vorgabe vom
 2026-11-17: „Nutz bitte den Server für alles“). Das lokale Backend (`tools\dev-backend.ps1`,
