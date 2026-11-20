@@ -6,7 +6,8 @@ extends Control
 ## With --detail-compare it only compares the normal models (FAST) with the high-detail ones
 ## (ULTRA, game/world/models_hd), close up and from mid distance: pictures detail_<tier>_<zoom>.png
 ## and per view a line PERF with frame time, render time of CPU and GPU, draw calls, primitives and
-## texture memory.
+## texture memory. Before ULTRA it waits for the high-detail package (HdPackageService) and prints
+## its status lines (download test: move game/world/models_hd out of the project first).
 
 const ACCOUNT := "res://.local/showcase-account.json"
 
@@ -90,6 +91,8 @@ func _compare_detail(colony: ColonyScreen) -> void:
 	var centre := colony._model.centre_cell()
 	RenderingServer.viewport_set_measure_render_time(colony._viewport.get_viewport_rid(), true)
 	for tier: DetailGovernor.Tier in [DetailGovernor.Tier.FAST, DetailGovernor.Tier.ULTRA]:
+		if tier == DetailGovernor.Tier.ULTRA:
+			await _wait_for_hd_package()
 		var tier_name := "ultra" if tier == DetailGovernor.Tier.ULTRA else "fast"
 		# Held there: the governor keeps the tier unless the frames get slow.
 		colony._ultra_device = tier == DetailGovernor.Tier.ULTRA
@@ -106,6 +109,23 @@ func _compare_detail(colony: ColonyScreen) -> void:
 			await get_tree().create_timer(1.5).timeout
 			await _measure(colony, "%s zoom %d" % [tier_name, int(zoom)])
 			await _capture("detail_%s_%d" % [tier_name, int(zoom)])
+
+
+## The top tier needs the package of high-detail models: in the project folder it is built in,
+## otherwise (models_hd moved away, as in an export) it is downloaded or taken from user://hd.
+## Prints how it went.
+func _wait_for_hd_package() -> void:
+	var hd := Services.hd_package
+	var started := Time.get_ticks_msec()
+	var last := ""
+	while not hd.is_ready() and Time.get_ticks_msec() - started < 300000:
+		var line := hd.status_text()
+		if line != last:
+			last = line
+			print("HD  %5.1f s  %s" % [(Time.get_ticks_msec() - started) / 1000.0, line])
+		await get_tree().process_frame
+	print("HD  %5.1f s  %s, version %s" % [(Time.get_ticks_msec() - started) / 1000.0, hd.status_text(),
+		hd.package.version])
 
 
 ## Prints the averages of 120 frames.

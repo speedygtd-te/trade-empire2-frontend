@@ -4,6 +4,8 @@ extends Node
 ## Server address: `--server=<url>` after `--` on the command line wins, otherwise the project
 ## setting `trade_empire/server/base_url` (the live server; the export preset "Android Local"
 ## overrides it with the local development backend).
+## The manifest of the high-detail package (HdPackageService): `--hd-manifest=<url>` overrides
+## HdBundle.MANIFEST_URL (e.g. a wrong address to try the start without network).
 
 ## Emitted when game data became available or changed.
 signal definitions_loaded
@@ -20,6 +22,8 @@ var session: SessionController
 var definitions: GameDefinitions
 ## How the server's contract relates to the client's (Contract.compare); 2 until known.
 var contract_status := 2
+## The package of high-detail models (downloaded on devices that may use them).
+var hd_package: HdPackageService
 var _definitions_source: DefinitionsSource
 
 
@@ -45,6 +49,14 @@ func _ready() -> void:
 	_definitions_source.name = "DefinitionsSource"
 	_definitions_source.setup(api, DefinitionsCache.new(), server.base)
 	add_child(_definitions_source)
+
+	hd_package = HdPackageService.new()
+	hd_package.name = "HdPackage"
+	var memory: int = OS.get_memory_info().get("physical", 0)
+	hd_package.setup(_argument("--hd-manifest=", HdBundle.MANIFEST_URL),
+		DetailGovernor.device_allows_ultra(OS.has_feature("mobile"), memory,
+			OS.get_processor_count(), RenderingServer.get_video_adapter_name()))
+	add_child(hd_package)
 
 	api.meta_received.connect(_on_meta_received)
 	events.ready_received.connect(_on_stream_ready)
@@ -87,6 +99,14 @@ func _resolve_server() -> ServerUrl:
 	if from_setting != null:
 		return from_setting
 	return ServerUrl.parse(FALLBACK_SERVER)
+
+
+## The value of a `--name=value` user argument, or `fallback`.
+func _argument(prefix: String, fallback: String) -> String:
+	for argument: String in OS.get_cmdline_user_args():
+		if argument.begins_with(prefix):
+			return argument.trim_prefix(prefix)
+	return fallback
 
 
 func _on_meta_received(_rev: int, game_time_ms: int) -> void:

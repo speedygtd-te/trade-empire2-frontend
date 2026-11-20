@@ -825,6 +825,21 @@ func _capture_profile(shell: MainShell) -> void:
 	for found: Node in profile.find_children("*", "ScrollContainer", true, false):
 		(found as ScrollContainer).scroll_vertical = 100000
 	await _capture("profile_performance")
+	# The status line of the high-detail package while it downloads and after a failure (here
+	# the models are built in, so both are made up).
+	var hd := Services.hd_package
+	var real := hd.package
+	var sample := HdPackage.new()
+	sample.set_eligibility(true, true)
+	sample.check_started()
+	sample.download_started(35062744)
+	sample.progress(14025000)
+	hd.package = sample
+	print("SAMPLE  high-detail package downloading, then failed (made up, models are built in)")
+	await _capture("profile_hd_downloading")
+	sample.failed(Time.get_ticks_msec())
+	await _capture("profile_hd_failed")
+	hd.package = real
 	shell.show_tab(MainShell.Tab.BASE)
 	await get_tree().create_timer(4.0).timeout
 	await _capture("colony_performance")

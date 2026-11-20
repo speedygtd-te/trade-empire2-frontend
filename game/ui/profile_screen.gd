@@ -38,6 +38,8 @@ var _performance: Button
 var _copy: Button
 var _performance_status: Label
 var _high_detail: Button
+var _hd_status: Label
+var _hd_retry: Button
 
 
 func _ready() -> void:
@@ -194,6 +196,12 @@ func _build() -> void:
 	_high_detail = Ui.secondary_button("PROFILE_HD_OFF")
 	_high_detail.pressed.connect(_on_high_detail)
 	performance_rows.add_child(_high_detail)
+	# Their package, downloaded on devices that may use them (HdPackageService).
+	_hd_status = _row(performance_rows, "PROFILE_HD_PACKAGE")
+	_hd_retry = Ui.secondary_button("PROFILE_HD_PACKAGE_RETRY")
+	_hd_retry.pressed.connect(_on_hd_retry)
+	performance_rows.add_child(_hd_retry)
+	Services.hd_package.changed.connect(_show_hd_package)
 	_show_high_detail()
 
 	_sign_out = Ui.secondary_button("HOME_SIGN_OUT")
@@ -293,6 +301,27 @@ func _on_high_detail() -> void:
 
 func _show_high_detail() -> void:
 	_high_detail.text = tr("PROFILE_HD_OFF") if AppSettings.high_detail_models() else tr("PROFILE_HD_ON")
+	_show_hd_package()
+
+
+## The status line of the high-detail package; red with a retry button after a failure.
+func _show_hd_package() -> void:
+	var package := Services.hd_package
+	_hd_status.text = package.status_text()
+	var failed := package.package.state == HdPackage.State.FAILED and package.package.is_eligible()
+	if failed:
+		_hd_status.add_theme_color_override("font_color", AppTheme.COLOR_DANGER)
+	elif package.is_ready():
+		_hd_status.add_theme_color_override("font_color", AppTheme.COLOR_OK)
+	elif package.package.state in [HdPackage.State.CHECKING, HdPackage.State.DOWNLOADING, HdPackage.State.VERIFYING]:
+		_hd_status.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	else:
+		_hd_status.remove_theme_color_override("font_color")
+	_hd_retry.visible = package.can_retry()
+
+
+func _on_hd_retry() -> void:
+	Services.hd_package.retry()
 
 
 ## Copies the report of the last minute (device, frame times, draw calls …) to the clipboard.
