@@ -1077,7 +1077,9 @@ func _level_range() -> Vector2i:
 	if _cell != null:
 		var at: Vector3i = _cell
 		columns.append(Vector2i(at.x, at.y))
-	return LevelRules.level_range(_model.layout.absolute_levels(), _model.site(), columns)
+	var bounds := LevelRules.level_range(_model.layout.absolute_levels(), _model.site(), columns)
+	# The active level stays in the range when the view moves off the water column it followed.
+	return Vector2i(mini(bounds.x, _level), bounds.y)
 
 
 ## The absolute column in the middle of the view.

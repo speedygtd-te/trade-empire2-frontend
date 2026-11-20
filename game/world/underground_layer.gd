@@ -28,7 +28,7 @@ const FLOOR_DROP := 0.004
 ## The water lies this much above the level (under the hull floor plates, over the floor).
 const WATER_LIFT := 0.03
 ## Cover of the blue wash on the sea floor right under a water column (water: 1).
-const SEA_FLOOR_WASH := 0.32
+const SEA_FLOOR_WASH := 0.45
 const WATER_SHADER := preload("res://game/world/water_column.gdshader")
 const NOISE := preload("res://game/world/ground/ground_noise.png")
 

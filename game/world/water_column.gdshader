@@ -10,12 +10,12 @@ render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabl
 uniform sampler2D noise : filter_linear, repeat_enable;
 // Levels below the ground (1 at z = -1).
 uniform float depth = 1.0;
-uniform vec3 shallow = vec3(0.10, 0.46, 0.66);
-uniform vec3 deep = vec3(0.015, 0.06, 0.17);
+uniform vec3 shallow = vec3(0.06, 0.30, 0.48);
+uniform vec3 deep = vec3(0.01, 0.035, 0.11);
 // Levels over which the water turns from `shallow` to `deep`.
-uniform float darkening = 24.0;
+uniform float darkening = 16.0;
 // Cover of a water cell (the instance colour's alpha scales it).
-uniform float cover = 0.78;
+uniform float cover = 0.84;
 
 varying vec3 world;
 
@@ -31,6 +31,10 @@ void fragment() {
 	float b = texture(noise, p * 0.17 - vec2(TIME * 0.009, -TIME * 0.011)).g;
 	// Bright where the two layers meet: thin moving lines, fading with depth.
 	float caustic = pow(1.0 - abs(a - b), 10.0) * (1.0 - 0.75 * d);
-	ALBEDO = water * COLOR.rgb + vec3(0.30, 0.55, 0.65) * caustic * 0.35;
+	// The wash on the sea floor (alpha below 1) stays a clear blue, so it reads as wet, not grey.
+	if (COLOR.a < 0.99) {
+		water = mix(water, shallow * 1.3, 0.6);
+	}
+	ALBEDO = water * COLOR.rgb + vec3(0.25, 0.50, 0.60) * caustic * 0.16;
 	ALPHA = cover * COLOR.a;
 }
