@@ -106,6 +106,8 @@ const SHAFT_UP_ICON := preload("res://game/ui/icons/shaft_up.svg")
 const SHAFT_DOWN_ICON := preload("res://game/ui/icons/shaft_down.svg")
 ## Deposits below this richness (percent) count as traces: the inspect card only counts them.
 const DEPOSIT_TRACE := 10
+## Cells around the middle of the view whose environment decides the level's (no field selected).
+const LEVEL_ENV_RADIUS := 4
 
 ## The structure to show when the screen opens; 0 for the home colony. Set before adding it.
 var start_structure := 0
@@ -277,6 +279,9 @@ func _ready() -> void:
 	_model.inventory_changed.connect(_on_inventory_changed)
 	_model.production_changed.connect(_on_production_changed)
 	_model.deposits_loaded.connect(_refresh)
+	_model.level_surface_loaded.connect(func(_z: int, _request: SurfaceBlocks.Request) -> void: _on_level_ground())
+	_model.surface_loaded.connect(func(_request: SurfaceBlocks.Request, _patch: SurfacePatch) -> void: _on_level_ground())
+	_view.origin_moved.connect(_on_level_ground)
 	_model.telescopes_changed.connect(_refresh)
 	_model.ready_to_show.connect(_on_ready_to_show)
 	_model.structures_founded.connect(_on_structures_founded)
@@ -1065,17 +1070,41 @@ func _uses_levels() -> bool:
 	return _opened and _focus == _model and not _model.detached and _model.has_grid
 
 
-## The levels the selector offers (absolute z, inclusive).
+## The levels the selector offers (absolute z, inclusive): down a water column as far as the
+## loaded levels under the selected field or the middle of the view show water (draft.39).
 func _level_range() -> Vector2i:
-	return LevelRules.level_range(_model.layout.absolute_levels(), _model.site())
+	var columns: Array[Vector2i] = [_view_column()]
+	if _cell != null:
+		var at: Vector3i = _cell
+		columns.append(Vector2i(at.x, at.y))
+	var bounds := LevelRules.level_range(_model.layout.absolute_levels(), _model.site(), columns)
+	# The active level stays in the range when the view moves off the water column it followed.
+	return Vector2i(mini(bounds.x, _level), bounds.y)
 
 
-## Environment of the active level: of the selected field, or of the level as such.
+## The absolute column in the middle of the view.
+func _view_column() -> Vector2i:
+	var focus := _view.focus_cell()
+	return Vector2i(focus.x, focus.y)
+
+
+## Environment of the active level: of the selected field, or what most of the level around the
+## middle of the view is (the biome of each cell at the level decides: water column or rock).
 func _level_environment() -> String:
 	if _cell != null:
 		var at: Vector3i = _cell
 		return LevelRules.environment_of(_model.site(), Vector3i(at.x, at.y, _level))
-	return LevelRules.environment_at(_level, "", _model.deep_threshold, _model.body_type)
+	return LevelRules.level_environment(_model.site(), _view_column(), _level, LEVEL_ENV_RADIUS)
+
+
+## The ground of a level arrived (or the view moved on): the selector's range and environment and
+## the hulls the palette offers may change with it (a water column below the ground).
+func _on_level_ground() -> void:
+	if not _uses_levels():
+		return
+	_update_levels()
+	if _mode == Mode.BUILD:
+		_fill_palette()
 
 
 ## Whether a hull type can stand on the active level in `environment` (type, height limit, environment).
@@ -1120,7 +1149,7 @@ func _update_levels() -> void:
 		return
 	var bounds := _level_range()
 	_level_name.text = str(_level)
-	_level_env.text = tr("LEVEL_ENV_" + LevelRules.environment_at(_level, "", _model.deep_threshold, _model.body_type))
+	_level_env.text = tr("LEVEL_ENV_" + _level_environment())
 	_level_up.disabled = _level >= bounds.y
 	_level_down.disabled = _level <= bounds.x
 
@@ -1571,8 +1600,9 @@ func _select(cell: Variant) -> void:
 	elif _focus.telescopes_error != null:
 		# A telescope that failed to load is asked for again with the next tap.
 		_focus.reload_telescopes()
-	# The field's environment decides which hulls fit (under water on the ground level).
-	if _mode == Mode.BUILD and _uses_levels() and _level == 0:
+	# The field's environment decides which hulls fit (under water on the ground level and in a
+	# water column below it).
+	if _mode == Mode.BUILD and _uses_levels() and _level <= 0:
 		_fill_palette()
 	_refresh()
 	_show_names()
@@ -2148,8 +2178,9 @@ func _ground_text(cell: Vector3i) -> String:
 	if not ground.biome.is_empty() and biome != biome_key:
 		lines.append(tr("COLONY_GROUND_TERRAIN").format({"biome": biome}))
 	var found: Array[Array] = []
+	var depth := _model.water_depth(cell.x, cell.y)
 	for resource: String in ground.deposits.keys():
-		var richness := ExtractionYield.tile_richness(ground.deposits, resource, cell.z)
+		var richness := ExtractionYield.tile_richness(ground.deposits, resource, cell.z, depth)
 		if richness > 0:
 			found.append([_resource_name(resource), richness])
 	if found.is_empty():
@@ -2232,6 +2263,15 @@ func _deposits_under(cells: Array[Vector3i]) -> Array[Dictionary]:
 	return result
 
 
+## The known water depth of the column under each of `cells` (ColonyModel.water_depth): the depth
+## bonus of a deposit counts from the sea floor.
+func _water_depths(cells: Array[Vector3i]) -> Array[int]:
+	var result: Array[int] = []
+	for cell: Vector3i in cells:
+		result.append(_model.water_depth(cell.x, cell.y))
+	return result
+
+
 ## What an extracting module type yields over `cells` (absolute footprint) with its lowest floor at
 ## level `z`: for the recipe `blueprint`, or without one the best recipes the player may run. A
 ## standing module (`built`) also gets what the rate solution says it yields now. "" for a module
@@ -2247,10 +2287,11 @@ func _yield_text(module_type: String, cells: Array[Vector3i], z: int, blueprint:
 	var chosen: Array[ExtractionYield.Estimate] = []
 	var recipe: GameDefinitions.BlueprintDef = definitions.blueprint(blueprint) if not blueprint.is_empty() else null
 	if ExtractionYield.is_extraction(recipe):
-		chosen.append(ExtractionYield.estimate(recipe, module_def, z, deposits, _model.atmosphere, _model.atmosphere_density))
+		chosen.append(ExtractionYield.estimate(recipe, module_def, z, deposits, _model.atmosphere, _model.atmosphere_density,
+			_water_depths(cells)))
 	else:
 		for found: ExtractionYield.Estimate in ExtractionYield.estimates(definitions, module_type, z, deposits,
-				_model.atmosphere, _model.atmosphere_density, _focus.usable_blueprints):
+				_model.atmosphere, _model.atmosphere_density, _focus.usable_blueprints, _water_depths(cells)):
 			if found.works() and chosen.size() < YIELD_LINE_MAX:
 				chosen.append(found)
 	var parts := PackedStringArray()
@@ -2267,13 +2308,14 @@ func _yield_text(module_type: String, cells: Array[Vector3i], z: int, blueprint:
 ## ExtractionYield.Estimate); empty while the ground loads.
 func _recipe_yields(placed: StructureLayout.Module) -> Dictionary:
 	var result: Dictionary = {}
-	var deposits := _deposits_under(_absolute_cells(placed))
+	var cells := _absolute_cells(placed)
+	var deposits := _deposits_under(cells)
 	if deposits.is_empty():
 		return result
 	var definitions := Services.definitions
 	var z := _focus.layout.to_absolute(placed.origin).z
 	for found: ExtractionYield.Estimate in ExtractionYield.estimates(definitions, placed.module_type, z, deposits,
-			_model.atmosphere, _model.atmosphere_density):
+			_model.atmosphere, _model.atmosphere_density, {}, _water_depths(cells)):
 		result[found.blueprint] = found
 	return result
 

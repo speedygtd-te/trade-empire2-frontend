@@ -39,7 +39,7 @@ func before_test() -> void:
 	_site.max_z = 100
 	_site.deep_threshold = -6
 	_site.body_type = "EARTH_LIKE"
-	_site.biome_at = func(x: int, _y: int) -> String: return "OCEAN" if x >= 110 else "PLAINS"
+	_site.biome_at = func(x: int, _y: int, z: int) -> String: return "OCEAN" if x >= 110 and z == 0 else "PLAINS"
 
 
 func _plan(start: Vector3i, end: Vector3i, shape: HullShapes.Shape = HullShapes.Shape.RECTANGLE,

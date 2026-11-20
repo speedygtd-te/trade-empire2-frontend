@@ -45,6 +45,8 @@ var _impact_cells: Dictionary = {}
 ## Elevation of every cell, row by row from (x0, y0); -1 where unexplored or not sent. For the
 ## relief, which reads hundreds of cells per block (TerrainRelief).
 var _elevations := PackedInt32Array()
+## 1 where the cell carries a water biome (LevelRules.is_water_biome), row by row like _elevations.
+var _water := PackedByteArray()
 
 
 ## Reads a finished surface stream; null when the first line is no surface header.
@@ -64,6 +66,8 @@ static func from_stream(stream: Ndjson) -> SurfacePatch:
 	patch.include_deposits = header.get("includeDeposits") == true
 	patch._elevations.resize(maxi(patch.width(), 0) * maxi(patch.height(), 0))
 	patch._elevations.fill(-1)
+	patch._water.resize(patch._elevations.size())
+	patch._water.fill(0)
 	var announced := Wire.as_int(header.get("rows"))
 	var rows := 0
 	for index: int in range(1, stream.objects.size()):
@@ -97,6 +101,13 @@ func elevation(x: int, y: int) -> int:
 	if x < x0 or x > x1 or y < y0 or y > y1:
 		return -1
 	return _elevations[(y - y0) * (x1 - x0 + 1) + x - x0]
+
+
+## Whether the cell at absolute (x, y) carries a water biome; false when unexplored or outside.
+func is_water(x: int, y: int) -> bool:
+	if x < x0 or x > x1 or y < y0 or y > y1:
+		return false
+	return _water[(y - y0) * (x1 - x0 + 1) + x - x0] == 1
 
 
 func cell_count() -> int:
@@ -148,3 +159,4 @@ func _read_row(line: Dictionary) -> void:
 		_cells[Vector2i(x0 + offset, y)] = entry
 		if y >= y0 and y <= y1 and offset < width():
 			_elevations[(y - y0) * width() + offset] = entry.elevation
+			_water[(y - y0) * width() + offset] = 1 if LevelRules.is_water_biome(entry.biome) else 0

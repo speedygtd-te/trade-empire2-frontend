@@ -26,15 +26,25 @@ func before_test() -> void:
 	_site.max_z = 100
 	_site.deep_threshold = -6
 	_site.body_type = "EARTH_LIKE"
-	# Water east of x = 10.
-	_site.biome_at = func(x: int, _y: int) -> String: return "OCEAN" if x >= 10 else "PLAINS"
+	# Water east of x = 10; from x = 20 a water column three levels deep (z = 0 … −2, draft.39).
+	_site.biome_at = func(x: int, _y: int, z: int) -> String:
+		if x >= 20 and z >= -2:
+			return "DEEP_OCEAN"
+		if x >= 10 and z == 0:
+			return "OCEAN"
+		return "PLAINS" if z == 0 else "ROCK_LAYER"
 
 
 func test_environment_by_depth_and_biome() -> void:
 	assert_str(LevelRules.environment_at(0, "PLAINS", -6, "EARTH_LIKE")).is_equal(LevelRules.SURFACE)
 	assert_str(LevelRules.environment_at(5, "OCEAN", -6, "EARTH_LIKE")).is_equal(LevelRules.SURFACE)
 	assert_str(LevelRules.environment_at(0, "OCEAN", -6, "EARTH_LIKE")).is_equal(LevelRules.UNDERWATER)
-	assert_str(LevelRules.environment_at(-1, "OCEAN", -6, "EARTH_LIKE")).is_equal(LevelRules.UNDERGROUND)
+	# The biome at the level decides: a water biome below the ground is a water column (draft.39),
+	# even below the deep threshold; rock there is the sea floor.
+	assert_str(LevelRules.environment_at(-1, "OCEAN", -6, "EARTH_LIKE")).is_equal(LevelRules.UNDERWATER)
+	assert_str(LevelRules.environment_at(-12, "DEEP_OCEAN", -6, "EARTH_LIKE")).is_equal(LevelRules.UNDERWATER)
+	assert_str(LevelRules.environment_at(-1, "ROCK_LAYER", -6, "EARTH_LIKE")).is_equal(LevelRules.UNDERGROUND)
+	assert_str(LevelRules.environment_at(-13, "ROCK_LAYER", -6, "EARTH_LIKE")).is_equal(LevelRules.DEEP_UNDERGROUND)
 	assert_str(LevelRules.environment_at(-5, "", -6, "EARTH_LIKE")).is_equal(LevelRules.UNDERGROUND)
 	assert_str(LevelRules.environment_at(-6, "", -6, "EARTH_LIKE")).is_equal(LevelRules.DEEP_UNDERGROUND)
 	assert_str(LevelRules.environment_at(2, "", -6, "ASTEROID_C")).is_equal(LevelRules.ASTEROID)
@@ -42,17 +52,40 @@ func test_environment_by_depth_and_biome() -> void:
 	assert_str(LevelRules.environment_at(-1, "", 0, "VOLCANIC")).is_equal(LevelRules.DEEP_UNDERGROUND)
 
 
-func test_environment_of_a_cell_reads_the_ground_biome_only_at_level_zero() -> void:
+func test_environment_of_a_cell_reads_the_biome_at_its_level() -> void:
 	assert_str(LevelRules.environment_of(_site, Vector3i(12, 0, 0))).is_equal(LevelRules.UNDERWATER)
 	assert_str(LevelRules.environment_of(_site, Vector3i(12, 0, 1))).is_equal(LevelRules.SURFACE)
 	assert_str(LevelRules.environment_of(_site, Vector3i(2, 0, 0))).is_equal(LevelRules.SURFACE)
-	# Without a biome source the ground level counts as dry.
+	# A one-level ocean (draft.38 and shallow water): rock right below the ground level.
+	assert_str(LevelRules.environment_of(_site, Vector3i(12, 0, -1))).is_equal(LevelRules.UNDERGROUND)
+	# The water column of the deep ocean, then its sea floor.
+	assert_str(LevelRules.environment_of(_site, Vector3i(25, 0, -2))).is_equal(LevelRules.UNDERWATER)
+	assert_str(LevelRules.environment_of(_site, Vector3i(25, 0, -3))).is_equal(LevelRules.UNDERGROUND)
+	# Without a biome source the ground level counts as dry, the levels below as rock (deep: the
+	# threshold of an empty site is 0).
 	assert_str(LevelRules.environment_of(LevelRules.Site.new(), Vector3i(12, 0, 0))).is_equal(LevelRules.SURFACE)
+	assert_str(LevelRules.environment_of(LevelRules.Site.new(), Vector3i(12, 0, -2))).is_equal(LevelRules.DEEP_UNDERGROUND)
+
+
+func test_water_biomes() -> void:
+	for biome: String in ["OCEAN", "DEEP_OCEAN", "SHALLOW_WATER", "REEF", "KELP_FOREST", "VOLCANIC_VENT", "FROZEN_LAKE", "ACID_LAKE"]:
+		assert_bool(LevelRules.is_water_biome(biome)).is_true()
+	for biome: String in ["PLAINS", "BEACH", "ROCK_LAYER", "CHEMICAL_VENT", ""]:
+		assert_bool(LevelRules.is_water_biome(biome)).is_false()
+
+
+func test_level_environment_follows_most_cells_around_the_middle() -> void:
+	# x 16 … 24 at level −1: five columns of water (20 … 24), four of rock.
+	assert_str(LevelRules.level_environment(_site, Vector2i(20, 0), -1, 4)).is_equal(LevelRules.UNDERWATER)
+	assert_str(LevelRules.level_environment(_site, Vector2i(19, 0), -1, 4)).is_equal(LevelRules.UNDERGROUND)
+	assert_str(LevelRules.level_environment(_site, Vector2i(5, 0), 0, 2)).is_equal(LevelRules.SURFACE)
+	assert_str(LevelRules.level_environment(_site, Vector2i(30, 0), -3, 1)).is_equal(LevelRules.UNDERGROUND)
 
 
 func test_site_biome_is_empty_without_a_source() -> void:
 	assert_str(LevelRules.Site.new().biome(1, 2)).is_empty()
 	assert_str(_site.biome(11, 0)).is_equal("OCEAN")
+	assert_str(_site.biome(21, 0, -2)).is_equal("DEEP_OCEAN")
 
 
 func test_height_limits_of_single_hull_types() -> void:
@@ -134,6 +167,18 @@ func test_level_range_reaches_one_beyond_the_structure_within_the_grid() -> void
 	assert_that(LevelRules.level_range(tall, _site)).is_equal(Vector2i(0, 2))
 	# Without a site there is no grid to clamp to.
 	assert_that(LevelRules.level_range(flat, null)).is_equal(Vector2i(-1, 1))
+
+
+func test_level_range_follows_a_water_column_down_to_its_floor() -> void:
+	var flat: Array[int] = [0]
+	var deep: Array[Vector2i] = [Vector2i(3, 0), Vector2i(25, 0)]
+	var dry: Array[Vector2i] = [Vector2i(3, 0)]
+	# Water at −1 and −2 under x = 25: down to the first level of its floor.
+	assert_that(LevelRules.level_range(flat, _site, deep)).is_equal(Vector2i(-3, 1))
+	assert_that(LevelRules.level_range(flat, _site, dry)).is_equal(Vector2i(-1, 1))
+	# Never below the grid.
+	_site.min_z = -2
+	assert_that(LevelRules.level_range(flat, _site, deep)).is_equal(Vector2i(-2, 1))
 
 
 func test_z_factor_rewards_the_preferred_direction() -> void:

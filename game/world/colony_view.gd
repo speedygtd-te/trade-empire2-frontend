@@ -233,6 +233,7 @@ var _drive_centres: Dictionary = {}
 func setup(colony: ColonyModel) -> void:
 	model = colony
 	relief = TerrainRelief.new(colony.surface, colony.size_x)
+	relief.water_level = WaterColumn.sea_level(colony.body_type)
 	model.layout_changed.connect(_rebuild_structure)
 	model.guests_changed.connect(_rebuild_structure)
 	model.surface_loaded.connect(_on_surface_loaded)
@@ -496,15 +497,20 @@ static func footprint_of(layout: StructureLayout) -> Array[Vector2i]:
 	return result
 
 
-## The relief follows the model's surface (a new one comes with the body).
+## The relief follows the model's surface (a new one comes with the body) and its sea level.
 func _sync_relief() -> void:
 	if relief == null:
 		relief = TerrainRelief.new(model.surface if model != null else SurfaceBlocks.new())
 		if _ground != null:
 			_ground.relief = relief
-	if model != null and (relief.surface != model.surface or relief.size_x != model.size_x):
+	if model == null:
+		return
+	var level := WaterColumn.sea_level(model.body_type)
+	var level_changed := is_nan(level) != is_nan(relief.water_level) or (not is_nan(level) and level != relief.water_level)
+	if relief.surface != model.surface or relief.size_x != model.size_x or level_changed:
 		relief.surface = model.surface
 		relief.size_x = model.size_x
+		relief.water_level = level
 		relief.clear()
 
 

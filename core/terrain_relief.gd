@@ -19,6 +19,11 @@ extends RefCounted
 ## which runs on at its own height right up to the wall's top (cut_walls). Lower edges keep the
 ## plain foundation and the soft cut.
 ##
+## Water (a water biome, LevelRules.is_water_biome) lies flat at the body's sea level
+## (`water_level`, WaterColumn.sea_level) instead of following the hills of its elevation, which
+## describe the sea floor; the corners along a shore take the mean of water and land, so the bank
+## blends. NAN keeps every cell at its own elevation.
+##
 ## Unexplored (fog) and unloaded cells have no elevation: a corner without any known cell around it
 ## takes the mean elevation of the blocks nearby (bilinear between block centres), or the reference
 ## where a block knows nothing. Heights are cached per block (block_heights) and dropped when the
@@ -92,6 +97,9 @@ var walls := true
 var size_x := 0
 ## Elevation at scene height 0, and whether it was set (the fog's level until then).
 var reference := 500.0
+## Elevation water is drawn at (WaterColumn.sea_level); NAN: water keeps its own. Takes effect for
+## heights computed after it is set (clear() drops the cache).
+var water_level := NAN
 var _has_reference := false
 ## Block → PackedFloat32Array of SIDE × SIDE corner heights (displayed, elevation units).
 var _cache: Dictionary = {}
@@ -156,9 +164,14 @@ func base_of(cells: Array[Vector2i]) -> float:
 	for cell: Vector2i in cells:
 		var found := surface.cell(cell.x, cell.y)
 		if found != null:
-			sum += found.elevation
+			sum += _drawn(found)
 			count += 1
 	return sum / count if count > 0 else NAN
+
+
+## The elevation a loaded cell is drawn at: water flat at the sea level (WaterColumn.drawn_elevation).
+func _drawn(found: SurfacePatch.Cell) -> float:
+	return WaterColumn.drawn_elevation(found.elevation, LevelRules.is_water_biome(found.biome), water_level)
 
 
 ## Sets the structures standing on the ground. Returns the blocks whose heights changed (block →
@@ -447,6 +460,7 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 	var b := SurfaceBlocks.BLOCK
 	var last_key := Vector2i(0x7FFFFFFF, 0)
 	var patch: SurfacePatch = null
+	var flatten := not is_nan(water_level)
 	for j: int in span:
 		var y := y0 - 2 + j
 		var by := floori(float(y) / b)
@@ -457,7 +471,12 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 				last_key = key
 				patch = surface.patch(key)
 			var value := patch.elevation(x, y) if patch != null else -1
-			cells[j * span + i] = float(value) if value >= 0 else NAN
+			if value < 0:
+				cells[j * span + i] = NAN
+			elif flatten and patch.is_water(x, y):
+				cells[j * span + i] = WaterColumn.drawn_elevation(value, true, water_level)
+			else:
+				cells[j * span + i] = float(value)
 	var heights := PackedFloat32Array()
 	heights.resize(SIDE * SIDE)
 	var padded := _pad_blocks.has(block)
@@ -537,7 +556,7 @@ func _block_mean(block: Vector2i) -> float:
 		for i: int in SurfaceBlocks.BLOCK:
 			var value := patch.elevation(x0 + i, y0 + j)
 			if value >= 0:
-				sum += value
+				sum += WaterColumn.drawn_elevation(value, patch.is_water(x0 + i, y0 + j), water_level)
 				count += 1
 	return sum / count if count > 0 else NAN
 
@@ -704,7 +723,7 @@ func _natural_corner(x: int, y: int) -> float:
 	for offset: Vector2i in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(0, 0)]:
 		var found := surface.cell(x + offset.x, y + offset.y)
 		if found != null:
-			sum += found.elevation
+			sum += _drawn(found)
 			count += 1
 	return sum / count if count > 0 else _fog(x, y)
 
