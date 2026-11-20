@@ -446,6 +446,19 @@ func cell_wet(x: int, y: int) -> bool:
 	return relief != null and model != null and relief.is_water(x, y)
 
 
+## What an absolute cell is as ground for piers and caissons (water, lava, swamp; NONE: solid).
+func cell_pier(x: int, y: int) -> LevelRules.PierGround:
+	if relief == null or model == null:
+		return LevelRules.PierGround.NONE
+	return relief.pier_ground(x, y)
+
+
+## The scene height a caisson on a pier ground meets it at: the water surface on water, the ground
+## (`ground`, as drawn there) on lava and swamp.
+func pier_surface(pier: LevelRules.PierGround, ground: float) -> float:
+	return water_height() if pier == LevelRules.PierGround.WATER else ground
+
+
 ## A scene point (x, z) put on the ground as drawn.
 func on_ground(point: Vector3) -> Vector3:
 	return Vector3(point.x, ground_height(point), point.z)

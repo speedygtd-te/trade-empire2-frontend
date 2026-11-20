@@ -11,8 +11,8 @@ extends Node3D
 ## fence_mesh.gdshader. The concrete is one mesh of slabs, one per cell, a hair above the ground
 ## and following its relief (paving.gdshader, paving.webp from the models' concrete texture).
 ## Posts stand upright on the ground as drawn; the pieces between them are sheared along its slope.
-## A post on a water cell stands on a small caisson (Piers; drawn by PerimeterLayer, `caissons`),
-## and no concrete is laid on water.
+## A post on water, lava or swamp stands on a small caisson (Piers; drawn by PerimeterLayer,
+## `caissons`), and no concrete is laid there.
 
 const MODELS := "res://game/world/models/grounds/"
 const PAVING_SHADER := preload("res://game/world/grounds/paving.gdshader")
@@ -67,14 +67,13 @@ func rebuild(plans: Array[BaseGrounds.Plan]) -> void:
 	if _view == null or _view.model == null:
 		return
 	var model := _view.model
-	var water := _view.water_height()
 	# "file chunk" → transforms.
 	var pieces: Dictionary = {}
 	var paved: Dictionary = {}
 	for plan: BaseGrounds.Plan in plans:
 		for index: int in plan.paved.size():
 			var cell := plan.paved[index]
-			if _view.cell_wet(cell.x, cell.y):
+			if _view.cell_pier(cell.x, cell.y) != LevelRules.PierGround.NONE:
 				continue
 			# Where two bases pave the same cell, the concrete runs on unless both stop there.
 			var sides: int = paved.get(cell, 0xFF)
@@ -88,11 +87,13 @@ func rebuild(plans: Array[BaseGrounds.Plan]) -> void:
 		for post: BaseGrounds.Post in plan.posts:
 			# Posts stand upright on the ground as drawn (TerrainRelief).
 			var at := _view.on_ground(WorldGrid.to_scene(Vector3i(post.cell.x, post.cell.y, 0), _view.origin, model.size_x))
-			if _view.cell_wet(post.cell.x, post.cell.y):
-				# In the water on a caisson.
-				caissons.append(Piers.caisson(at, water,
-					Piers.CAISSON_WALL if plan.barrier == BaseGrounds.Barrier.WALL else Piers.CAISSON_POST))
-				at.y = Piers.standing_height(at.y, water, true)
+			var pier := _view.cell_pier(post.cell.x, post.cell.y)
+			if pier != LevelRules.PierGround.NONE:
+				# In water, lava or swamp on a caisson.
+				var surface := _view.pier_surface(pier, at.y)
+				caissons.append(Piers.caisson(at, surface,
+					Piers.CAISSON_WALL if plan.barrier == BaseGrounds.Barrier.WALL else Piers.CAISSON_POST, pier))
+				at.y = Piers.standing_height(at.y, surface, true)
 			var chunk := Vector2i(floori(float(post.cell.x) / CHUNK), floori(float(post.cell.y) / CHUNK))
 			_add(pieces, gate_file if post.gate else post_file, chunk, Transform3D(Basis.IDENTITY, at))
 			for bit: int in LINKS.keys():
@@ -103,7 +104,10 @@ func rebuild(plans: Array[BaseGrounds.Plan]) -> void:
 					# Sheared along the slope (posts stay upright): it ends half way up or down to
 					# the neighbour's post, where the neighbour's half piece meets it.
 					var next := post.cell + Vector2i(int(towards.x), int(towards.y))
-					var beside := Piers.standing_height(_view.cell_ground(next.x, next.y), water, _view.cell_wet(next.x, next.y))
+					var next_ground := _view.cell_ground(next.x, next.y)
+					var next_pier := _view.cell_pier(next.x, next.y)
+					var beside := Piers.standing_height(next_ground, _view.pier_surface(next_pier, next_ground),
+						next_pier != LevelRules.PierGround.NONE)
 					# Half the difference over half a cell.
 					var rise := beside - at.y
 					var shear := Basis(Vector3.RIGHT, Vector3.UP, Vector3(0.0, rise, 1.0))

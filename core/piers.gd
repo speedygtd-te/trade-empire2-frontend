@@ -16,6 +16,14 @@ extends RefCounted
 ## concrete foundation from below the waterline up to CAISSON_SHOWS above it; the prop stands on
 ## its top (standing_height).
 ##
+## Lava and swamp (LevelRules.PierGround, Rudi 2026-11-20: "für Vulkan-Biome und Sumpf ebenfalls")
+## carry piers and caissons the same way, but their ground keeps its relief: an edge stands on
+## piers where both its ends lie on corners touching water, lava or swamp (TerrainRelief.corner_pier),
+## and every pillar reaches from the floor to PILLAR_SINK below the ground at its own corner (the
+## wall's foot there). Caissons stand at the ground's height. The band where a pillar or caisson
+## meets the ground shows what it stands in: wet and overgrown in water, scorched with soot on
+## lava, mud-stained in a swamp (TINTS: instance colours of the same pieces).
+##
 ## Pieces are RetainingWalls.Piece (drawn by RetainingLayer, models from retaining.py); positions
 ## and heights as there: scene coordinates as ColonyView puts cells, the relief's scene heights.
 
@@ -50,26 +58,51 @@ const CAISSON_SIZES := {
 }
 const CAISSON_POST := 0.6
 const CAISSON_WALL := 0.85
+## Colour of the pieces per ground (multiplied with the model's): [pillar, collar, caisson].
+const TINTS := {
+	LevelRules.PierGround.WATER: [Color(1.0, 1.0, 1.0), Color(1.0, 1.0, 1.0), Color(1.0, 1.0, 1.0)],
+	LevelRules.PierGround.LAVA: [Color(0.86, 0.82, 0.8), Color(0.34, 0.3, 0.29), Color(0.62, 0.57, 0.54)],
+	LevelRules.PierGround.SWAMP: [Color(0.95, 0.93, 0.86), Color(0.64, 0.56, 0.38), Color(0.82, 0.76, 0.62)],
+}
 
 
-## Whether a foundation wall stands over water: both its ends on corners touching water.
+## Whether a foundation wall stands on piers: both its ends on corners touching water, lava or
+## swamp (TerrainRelief.corner_pier).
 static func is_wet(wall: TerrainRelief.Wall, relief: TerrainRelief) -> bool:
 	if wall.cut:
 		return false
-	return relief.corner_wet(wall.a.x, wall.a.y) and relief.corner_wet(wall.b.x, wall.b.y)
+	return relief.corner_pier(wall.a.x, wall.a.y) != LevelRules.PierGround.NONE 		and relief.corner_pier(wall.b.x, wall.b.y) != LevelRules.PierGround.NONE
+
+
+## The colour of a piece (PILLAR, COLLAR or CAISSON) on a ground (TINTS); white elsewhere.
+static func tint(file: String, ground: LevelRules.PierGround) -> Color:
+	var found: Array = TINTS.get(ground, [])
+	if found.is_empty():
+		return Color.WHITE
+	match file:
+		PILLAR:
+			return found[0]
+		COLLAR:
+			return found[1]
+		CAISSON:
+			return found[2]
+	return Color.WHITE
 
 
 ## The pier pieces of the wet walls among `walls` (is_wet): beams, heads, pillars, collars and
 ## braces. `relief` gives the heights, `origin` and `size_x` the place, as RetainingWalls.pieces.
 static func pieces(walls: Array[TerrainRelief.Wall], relief: TerrainRelief, origin: Vector3i, size_x: int) -> Array[RetainingWalls.Piece]:
 	var result: Array[RetainingWalls.Piece] = []
-	# Corner → [scene point, top, water, along, face] of the first wet wall ending there.
+	# Corner → [scene point, top, ground, along, face] of the first wet wall ending there.
 	var corners := {}
 	for wall: TerrainRelief.Wall in walls:
 		if not is_wet(wall, relief):
 			continue
 		var top := relief.scene_height(wall.top) - origin.z
-		var water := relief.scene_height(minf(wall.bottom_a, wall.bottom_b)) - origin.z
+		# The ground under either end (the water, or lava and swamp at their own height).
+		var ground_a := relief.scene_height(wall.bottom_a) - origin.z
+		var ground_b := relief.scene_height(wall.bottom_b) - origin.z
+		var water := minf(ground_a, ground_b)
 		if top - water < MIN_PIER:
 			continue
 		var a := RetainingWalls.corner_point(wall.a, origin, size_x)
@@ -83,10 +116,10 @@ static func pieces(walls: Array[TerrainRelief.Wall], relief: TerrainRelief, orig
 		for height: float in brace_heights(top - HEAD_HEIGHT, water):
 			result.append(RetainingWalls.Piece.new(BEAM, Transform3D(turn, Vector3(middle.x, height, middle.z)),
 				shade * RetainingWalls.FOOT_SHADE))
-		for end: Array in [[wall.a, a], [wall.b, b]]:
+		for end: Array in [[wall.a, a, ground_a], [wall.b, b, ground_b]]:
 			var key: Vector2i = end[0]
 			if not corners.has(key):
-				corners[key] = [end[1], top, water, along, face]
+				corners[key] = [end[1], top, end[2], along, face]
 	for key: Vector2i in corners.keys():
 		var corner: Array = corners[key]
 		var point: Vector3 = corner[0]
@@ -98,10 +131,15 @@ static func pieces(walls: Array[TerrainRelief.Wall], relief: TerrainRelief, orig
 		var shade := _shade(key * 3)
 		var foot := water - PILLAR_SINK
 		var stretch := pillar_stretch(top, water)
-		result.append(RetainingWalls.Piece.new(PILLAR, Transform3D(Basis(along, Vector3(0.0, stretch, 0.0), face),
-			Vector3(point.x, foot, point.z)), shade))
+		var ground := relief.corner_pier(key.x, key.y)
+		var pillar := RetainingWalls.Piece.new(PILLAR, Transform3D(Basis(along, Vector3(0.0, stretch, 0.0), face),
+			Vector3(point.x, foot, point.z)), shade)
+		pillar.tint = tint(PILLAR, ground)
+		result.append(pillar)
 		result.append(RetainingWalls.Piece.new(HEAD, Transform3D(turn, Vector3(point.x, top - HEAD_HEIGHT, point.z)), shade))
-		result.append(RetainingWalls.Piece.new(COLLAR, Transform3D(turn, Vector3(point.x, water - COLLAR_WATERLINE, point.z)), 1.0))
+		var collar := RetainingWalls.Piece.new(COLLAR, Transform3D(turn, Vector3(point.x, water - COLLAR_WATERLINE, point.z)), 1.0)
+		collar.tint = tint(COLLAR, ground)
+		result.append(collar)
 	return result
 
 
@@ -122,12 +160,16 @@ static func brace_heights(under: float, water: float) -> PackedFloat32Array:
 	return result
 
 
-## The caisson under a prop standing in the water at scene point `at` (x, z); `water` is the scene
-## height of the water there, `size` the caisson's size (caisson_size, CAISSON_POST …).
-static func caisson(at: Vector3, water: float, size: float) -> RetainingWalls.Piece:
+## The caisson under a prop standing in water, lava or swamp (`ground`) at scene point `at` (x,
+## z); `water` is the scene height of the water or the ground there, `size` the caisson's size
+## (caisson_size, CAISSON_POST …).
+static func caisson(at: Vector3, water: float, size: float,
+		ground: LevelRules.PierGround = LevelRules.PierGround.WATER) -> RetainingWalls.Piece:
 	var cell := Vector2i(floori(at.x * 4.0), floori(at.z * 4.0))
-	return RetainingWalls.Piece.new(CAISSON, Transform3D(Basis.from_scale(Vector3(size, 1.0, size)),
+	var piece := RetainingWalls.Piece.new(CAISSON, Transform3D(Basis.from_scale(Vector3(size, 1.0, size)),
 		Vector3(at.x, water - CAISSON_SINK, at.z)), _shade(cell))
+	piece.tint = tint(CAISSON, ground)
+	return piece
 
 
 ## The caisson's size under a perimeter item (CAISSON_SIZES).

@@ -74,6 +74,22 @@ func test_water_biomes() -> void:
 		assert_bool(LevelRules.is_water_biome(biome)).is_false()
 
 
+func test_structures_stand_on_piers_over_water_lava_and_swamp() -> void:
+	for biome: String in LevelRules.WATER_BIOMES:
+		assert_bool(LevelRules.is_pier_biome(biome)).is_true()
+		assert_int(LevelRules.pier_ground(biome)).is_equal(LevelRules.PierGround.WATER)
+	for biome: String in ["LAVA_FLOW", "CALDERA", "FUMAROLE"]:
+		assert_bool(LevelRules.is_pier_biome(biome)).is_true()
+		assert_int(LevelRules.pier_ground(biome)).is_equal(LevelRules.PierGround.LAVA)
+	for biome: String in ["SWAMP", "TOXIC_MARSH"]:
+		assert_bool(LevelRules.is_pier_biome(biome)).is_true()
+		assert_int(LevelRules.pier_ground(biome)).is_equal(LevelRules.PierGround.SWAMP)
+	# Solid volcanic ground keeps normal foundations.
+	for biome: String in ["BASALT_PLAIN", "ASH_FIELD", "OBSIDIAN_RIDGE", "PLAINS", ""]:
+		assert_bool(LevelRules.is_pier_biome(biome)).is_false()
+		assert_int(LevelRules.pier_ground(biome)).is_equal(LevelRules.PierGround.NONE)
+
+
 func test_level_environment_follows_most_cells_around_the_middle() -> void:
 	# x 16 … 24 at level −1: five columns of water (20 … 24), four of rock.
 	assert_str(LevelRules.level_environment(_site, Vector2i(20, 0), -1, 4)).is_equal(LevelRules.UNDERWATER)

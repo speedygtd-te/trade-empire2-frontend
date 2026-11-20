@@ -25,6 +25,8 @@ extends RefCounted
 ## a pad. A structure counts a water cell of its footprint DECK above the sea (base_of), so it
 ## stands clear of the water on a pier (Piers) where its edge lies over water (corner_wet). NAN
 ## keeps every cell at its own elevation.
+## Lava and swamp (LevelRules.LAVA_BIOMES, SWAMP_BIOMES) keep their relief, but like water count
+## DECK higher for a base, are never shaped by a pad and carry piers (corner_pier).
 ##
 ## Unexplored (fog) and unloaded cells have no elevation: a corner without any known cell around it
 ## takes the mean elevation of the blocks nearby (bilinear between block centres), or the reference
@@ -171,7 +173,7 @@ func base_of(cells: Array[Vector2i]) -> float:
 		var found := surface.cell(cell.x, cell.y)
 		if found != null:
 			sum += _drawn(found)
-			if not is_nan(water_level) and LevelRules.is_water_biome(found.biome):
+			if _pier_ground_of(found) != LevelRules.PierGround.NONE:
 				sum += DECK
 			count += 1
 	return sum / count if count > 0 else NAN
@@ -189,6 +191,31 @@ func is_water(x: int, y: int) -> bool:
 ## sea level.
 func corner_wet(x: int, y: int) -> bool:
 	return is_water(x - 1, y - 1) or is_water(x, y - 1) or is_water(x - 1, y) or is_water(x, y)
+
+
+## The pier ground of a loaded cell (LevelRules.pier_ground): water only with a sea level (without,
+## water keeps its elevation and is ground like any other); NONE for solid ground or unloaded cells.
+func pier_ground(x: int, y: int) -> LevelRules.PierGround:
+	var found := surface.cell(WorldGrid.wrap_x(x, size_x), y)
+	return _pier_ground_of(found) if found != null else LevelRules.PierGround.NONE
+
+
+## The pier ground of corner (x, y) from the four cells around it: water before lava before swamp;
+## NONE when all four are solid. A structure's edge between two such corners stands on piers.
+func corner_pier(x: int, y: int) -> LevelRules.PierGround:
+	var best := LevelRules.PierGround.NONE
+	for offset: Vector2i in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(0, 0)]:
+		var ground := pier_ground(x + offset.x, y + offset.y)
+		if ground != LevelRules.PierGround.NONE and (best == LevelRules.PierGround.NONE or ground < best):
+			best = ground
+	return best
+
+
+func _pier_ground_of(found: SurfacePatch.Cell) -> LevelRules.PierGround:
+	var ground := LevelRules.pier_ground(found.biome)
+	if ground == LevelRules.PierGround.WATER and is_nan(water_level):
+		return LevelRules.PierGround.NONE
+	return ground
 
 
 ## The elevation a loaded cell is drawn at: water flat at the sea level (WaterColumn.drawn_elevation).
@@ -504,6 +531,10 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 				wet[j * span + i] = 1
 			else:
 				cells[j * span + i] = float(value)
+				# Lava and swamp keep their relief but are never shaped by a pad either (piers).
+				var ground := patch.pier_ground(x, y)
+				if ground == LevelRules.PierGround.LAVA or ground == LevelRules.PierGround.SWAMP:
+					wet[j * span + i] = 2
 	var heights := PackedFloat32Array()
 	heights.resize(SIDE * SIDE)
 	var padded := _pad_blocks.has(block)
@@ -532,10 +563,12 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 			# A corner touching water lies at the sea level, so the water surface stays flat up to
 			# the shore (no rise towards the land); the bank climbs from there. Never shaped by a pad,
 			# or a structure reaching into the sea would raise a hill of water.
-			var touches_water := wet[row + i] + wet[row + i + 1] + wet[row + span + i] + wet[row + span + i + 1] > 0
+			var touches_water := wet[row + i] == 1 or wet[row + i + 1] == 1 or wet[row + span + i] == 1 				or wet[row + span + i + 1] == 1
 			if touches_water:
 				natural = water_level
-			if padded and not touches_water:
+			# Lava and swamp are not filled or cut either.
+			var soft := wet[row + i] + wet[row + i + 1] + wet[row + span + i] + wet[row + span + i + 1] > 0
+			if padded and not soft:
 				var found_pad: Variant = _pad_corners.get(Vector2i(WorldGrid.wrap_x(x0 - 1 + i, size_x), y0 - 1 + j))
 				if found_pad != null:
 					var pad: Vector2 = found_pad
@@ -675,7 +708,8 @@ func _terraces(corners: Dictionary) -> Dictionary:
 				if not owners.has(ring):
 					rings[ring] = side
 		for ring: Vector2i in rings.keys():
-			if levelled.has(ring) or _beside_other(owners, ring, pad):
+			# Water, lava and swamp are never levelled (piers stand there).
+			if levelled.has(ring) or _beside_other(owners, ring, pad) or pier_ground(ring.x, ring.y) != LevelRules.PierGround.NONE:
 				continue
 			if rings[ring] == true:
 				edge_ring.append(ring)

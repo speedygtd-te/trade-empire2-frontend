@@ -132,7 +132,11 @@ Wasser liegt flach auf Meereshöhe; Wasserzellen zählen für die Basis einer St
 `TerrainRelief.DECK` darüber. Über Wasser (beide Enden einer Kante `corner_wet`) steht statt der
 Wand ein Pier aus Betonsäulen (`core/piers.gd`, Modelle `pier_*` in `retaining.py`, gezeichnet
 von `RetainingLayer`); Masten, Radar und Zaunpfosten auf Wasserzellen stehen auf einem Caisson,
-Beton wird nicht aufs Wasser gelegt. Ansehen: `smoke/pier_view.tscn` (`-- --out=build/piers [--small]`).
+Beton wird nicht aufs Wasser gelegt. Dasselbe gilt für Lava und Sumpf (`LevelRules.PIER_BIOMES`,
+`pier_ground`; festes Vulkangestein nicht): Der Boden behält dort sein Relief, wird vom Sockel nie
+abgetragen oder aufgefüllt, Säulen reichen bis unter den Boden an ihrer Ecke; Ring und Caisson
+bekommen je Boden eine Tönung (`Piers.TINTS`). Ansehen: `smoke/pier_view.tscn`
+(`-- --out=build/piers [--small]`, mit Lava- und Sumpfstreifen).
 Module und Hüllen gibt es zusätzlich in HD (`TE_DETAIL=hd`, `kit.HD_*`: doppelte Segmente, gerundete
 Kanten, 1024-px-Texturen, verlustbehaftet importiert) unter `game/world/models_hd`; `ColonyView`
 zeigt sie auf der obersten Detailstufe `DetailGovernor.Tier.ULTRA` (nur starke Geräte, Schalter im
