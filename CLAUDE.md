@@ -64,6 +64,7 @@ verschärft, wenn es nötig wird.
 | Fahrt-Bildschirme ansehen (Konto `travel`, startet nichts) | `godot --path . --resolution 720x1280 res://smoke/travel_view.tscn -- --out=build/travel` |
 | Alle Module in eine Kolonie setzen (eigenes Showcase-Konto) | `node tools/showcase.cjs` (`--dry-run` zeigt nur den Plan; braucht den Test-Grant; einmal je frischem Konto) |
 | Showcase-Kolonie ansehen | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase` |
+| Normale gegen HD-Modelle vergleichen (Showcase-Konto; Bilder nah/mittel/fern, Frame-, CPU-/GPU-Zeit, Draw Calls, Primitive, Texturspeicher) | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase-detail --detail-compare` |
 | Masten, Radar und Lichtkegel um die Basis ansehen | `godot --path . --resolution 720x1280 res://smoke/perimeter_view.tscn -- --out=build/perimeter` (Modelle: `tools\build-models.ps1 -Only perimeter`) |
 | Bewegte Modulteile ansehen (Rotoren, Lüfter, Schüsseln, Solarpanels; Showcase-Konto) | `godot --path . --resolution 720x1280 res://smoke/motion_view.tscn -- --out=build/motion` (Bildfolgen je Typ, Kosten je Frame) |
 | Gelände um wachsende Basen ansehen (Rodung, Zaun, Beton, Mauer; nur im Client vergrößert) | `godot --path . --resolution 720x1280 res://smoke/grounds_view.tscn -- --out=build/grounds` (Schwellen in `core/base_grounds.gd`; Modelle: `tools\build-models.ps1 -Only grounds`; Beton: `python -I tools/paving_texture.py`) |
@@ -76,6 +77,7 @@ verschärft, wenn es nötig wird.
 | Android-Release-APK zum Testen (Live-Server, eigener Schlüssel in `.local/`) | `powershell -File tools\android-release.ps1` → `build\android\trade-empire.apk` (Schlüssel aufheben: Updates brauchen denselben) |
 | Spiel starten | `F:\Tools\Godot\godot.exe --path .` |
 | 3D-Modelle bauen (Blender ohne Fenster) | `powershell -File tools\build-models.ps1` → `game\world\models\` (`-Only pump`; `-Only families -Types academy,rtg`) |
+| HD-Modelle bauen (nur Module und Hüllen, oberste Detailstufe) | `powershell -File tools\build-models.ps1 -Detail hd` → `game\world\models_hd\` (gleiche Dateinamen, `-Only`/`-Types` wie oben; stellt danach per Godot-Import die Texturen auf verlustbehaftet) |
 | Ressourcen-Modelle bauen (eins je Ressource, Quelle der Icons) | `powershell -File tools\build-models.ps1 -Only resources [-Types iron,robot_t3]` → `game\world\models\resources\` (trägt `.gdignore`: nicht importiert, nicht im APK; für eine spätere 3D-Detailansicht entfernen) |
 | Ressourcen-Icons rendern (+ Kontaktbogen) | `godot --path . --resolution 720x1280 res://smoke/resource_icons.tscn [-- --only=iron,water]` → `game/ui/resource_icons/<key>.png` (128 px, Import verlustbehaftet mit Mipmaps) und `build/resource_icons/sheet_44.png`, `sheet_128.png`; Nachschlagen im Spiel: `ResourceIcon`, Zeilen über `Ui.resource_icon` / `Ui.add_resource_icon` |
 | Modul- und Hüllen-Icons rendern (Lager, Bau-Palette) | `godot --path . --resolution 720x1280 res://smoke/resource_icons.tscn -- --items [--only=pump_module,hull_dock]` → `game/ui/item_icons/<item>.png` aus dem Modell, das die Kolonie zeigt (Zuordnung Item → Modul/Hülle aus `/v2/definitions`, noch nicht ausgelieferte in `COMING_ITEMS`), Kontaktbogen `build/item_icons/`; schreibt die `.import` gleich mit; neues Modul: Modell bauen, Befehl laufen lassen, Schlüssel in `tests/game/test_item_icons.gd` |
@@ -118,6 +120,10 @@ Betonfundament. Ab 0,75 Zelle Höhenunterschied (`TerrainRelief.WALL_HEIGHT`) st
 ebenen Terrasse auf Basishöhe (`TerrainRelief.levelled_base`), und eine Wand hält den natürlichen
 Boden dahinter, der bis an ihre Krone reicht. Alles auf dem Boden folgt `ColonyView.ground_height`,
 nie y = 0.
+Module und Hüllen gibt es zusätzlich in HD (`TE_DETAIL=hd`, `kit.HD_*`: doppelte Segmente, gerundete
+Kanten, 1024-px-Texturen, verlustbehaftet importiert) unter `game/world/models_hd`; `ColonyView`
+zeigt sie auf der obersten Detailstufe `DetailGovernor.Tier.ULTRA` (nur starke Geräte, Schalter im
+Profil), ein fehlendes HD-Modell fällt auf das normale zurück — neue Modelle in beiden Varianten bauen.
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
 am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine Hülle füllt ihre
