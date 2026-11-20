@@ -14,6 +14,8 @@ const KNOWN: Array[String] = [
 	"SENSOR_ARRAY", "SHIELD_EMITTER", "SILICON_WAFER", "STRUCTURAL_FRAME", "TITANIUM_PLATE",
 	"WEAPON_COMPONENT",
 	"PROBE",
+	# Coming: ammunition of the enterprise rocket launcher (SPEC-enterprise-flaggschiff.md 5.4).
+	"ENTERPRISE_ROCKET",
 ]
 
 

@@ -26,6 +26,23 @@ const MODULE_PAIRS: Array = [
 	["trade_module", "enterprise_supply_hub", 2], ["fusion_reactor", "enterprise_generator", 1],
 	["habitat_t3", "enterprise_habitat_t3", 1], ["fusion_drive", "enterprise_sublight_thruster", 1],
 ]
+## The habitats, drives, weapons, protection and running gear (enterprise_systems.py) beside
+## theirs, in two shots.
+const SYSTEM_PAIRS_LIVING: Array = [
+	["habitat", "enterprise_habitat_t1", 1], ["habitat_t2", "enterprise_habitat_t2", 1],
+	["habitat_t3", "enterprise_habitat_t3", 1], ["habitat_t4", "enterprise_habitat_t4", 1],
+	["habitat_t5", "enterprise_habitat_t5", 1], ["epstein_drive", "enterprise_warp_drive", 1],
+]
+const SYSTEM_PAIRS_COMBAT: Array = [
+	["missile_launcher", "enterprise_rocket_launcher", 2], ["beam_laser", "enterprise_laser", 1],
+	["shield_generator", "enterprise_shield_generator", 1], ["armor_plating", "enterprise_armor", 1],
+	["heavy_wheel", "enterprise_wheel", 1], ["tracks", "enterprise_tracks", 1],
+]
+## Modules that stand on a platform (outdoor), not on a hull floor.
+const OUTDOOR: Array[String] = [
+	"fusion_drive", "epstein_drive", "beam_laser", "enterprise_sublight_thruster", "enterprise_warp_drive",
+	"enterprise_laser",
+]
 const HULL_PAIRS: Array = [
 	["hull_standard_closed", "hull_enterprise_hull_standard_closed"],
 	["hull_glass_carbon_closed", "hull_enterprise_hull_glass_closed"],
@@ -75,6 +92,8 @@ func _ready() -> void:
 		await _shot_pairs(MODULE_PAIRS, true, "compare_modules_" + time)
 		await _shot_pairs(HULL_PAIRS, false, "compare_hulls_" + time)
 		await _shot_overview("overview_" + time)
+		await _shot_pairs(SYSTEM_PAIRS_LIVING, true, "compare_systems_living_" + time)
+		await _shot_pairs(SYSTEM_PAIRS_COMBAT, true, "compare_systems_combat_" + time)
 		await _shot_mock(true, "mock_closed_" + time, 9.5)
 		await _shot_mock(false, "mock_open_" + time, 9.5)
 		await _shot_mock(false, "mock_open_zoom_" + time, 4.2, Vector3(1.6, 0.0, 1.6))
@@ -216,7 +235,7 @@ func _shot_pairs(pairs: Array, modules: bool, name: String) -> void:
 			var lift := FLOOR_HEIGHT if modules else 0.0
 			if modules:
 				var floor_key := "hull_starter" if side == 0 else "hull_enterprise_hull_standard"
-				if key.ends_with("thruster") or key == "fusion_drive":
+				if key in OUTDOOR:
 					floor_key = "hull_platform_space" if side == 0 else "hull_enterprise_platform"
 				for x: int in cells:
 					for z: int in cells:
