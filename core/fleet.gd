@@ -317,6 +317,25 @@ func movables() -> Array[Entry]:
 	return result
 
 
+## The ships (a space drive), in `entries` order.
+func ships() -> Array[Entry]:
+	var result: Array[Entry] = []
+	for value: Entry in entries():
+		if value.can_fly():
+			result.append(value)
+	return result
+
+
+## The vehicles (a ground drive and no space drive: a ship that also drives counts as a ship),
+## in `entries` order.
+func vehicles() -> Array[Entry]:
+	var result: Array[Entry] = []
+	for value: Entry in entries():
+		if value.can_drive() and not value.can_fly():
+			result.append(value)
+	return result
+
+
 static func _better_main(a: Entry, b: Entry) -> bool:
 	if (a.kind == "base") != (b.kind == "base"):
 		return a.kind == "base"

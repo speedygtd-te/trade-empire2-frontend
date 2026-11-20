@@ -94,6 +94,25 @@ func test_movables_are_the_structures_with_a_drive() -> void:
 	assert_array(ids).contains_exactly_in_any_order([2, 3, 5])
 
 
+func test_ships_and_vehicles_apart_without_bases() -> void:
+	var fleet := Fleet.new()
+	var list := _list()
+	# A ship that can also drive counts as a ship.
+	list.append({"structureId": 6, "name": "Hopper", "favorite": false, "kind": "ship",
+		"capabilities": ["SPACE_DRIVE", "GROUND_DRIVE"], "anchor": {"type": "surface", "bodyId": "p1"}})
+	fleet.apply_list(list)
+
+	var ships: Array[int] = []
+	for entry: Fleet.Entry in fleet.ships():
+		ships.append(entry.structure_id)
+	var vehicles: Array[int] = []
+	for entry: Fleet.Entry in fleet.vehicles():
+		vehicles.append(entry.structure_id)
+
+	assert_array(ships).contains_exactly_in_any_order([2, 5, 6])
+	assert_array(vehicles).contains_exactly_in_any_order([3])
+
+
 func test_favourites_come_first_then_by_name() -> void:
 	var fleet := Fleet.new()
 	fleet.apply_list(_list())

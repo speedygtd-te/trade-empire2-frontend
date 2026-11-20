@@ -247,22 +247,21 @@ func _rebuild() -> void:
 		_state.text = tr("FLEET_LOADING")
 		_state.visible = true
 		return
-	_state.visible = _fleet.fleet.size() == 0
+	# Only what can travel, ships and vehicles apart (Rudi 2026-11-20); bases and stations are
+	# reached through Base and the places list.
+	var ships := _fleet.fleet.ships()
+	var vehicles := _fleet.fleet.vehicles()
+	_state.visible = ships.is_empty() and vehicles.is_empty() and _fleet.fleet.enterprise_entries().is_empty()
 	_state.text = tr("FLEET_EMPTY")
-	var movables := _fleet.fleet.movables()
-	var others: Array[Fleet.Entry] = []
-	for entry: Fleet.Entry in _fleet.fleet.entries():
-		if not movables.has(entry):
-			others.append(entry)
 	_add_groups()
-	if not movables.is_empty():
-		_list.add_child(Ui.label("FLEET_SECTION_MOVABLE", AppTheme.VARIATION_MUTED))
-		for entry: Fleet.Entry in movables:
+	if not ships.is_empty():
+		_list.add_child(Ui.label("FLEET_SECTION_SHIPS", AppTheme.VARIATION_MUTED))
+		for entry: Fleet.Entry in ships:
 			_add_row(entry)
-	if not others.is_empty():
+	if not vehicles.is_empty():
 		_list.add_child(Ui.spacer(8))
-		_list.add_child(Ui.label("FLEET_SECTION_STATIONARY", AppTheme.VARIATION_MUTED))
-		for entry: Fleet.Entry in others:
+		_list.add_child(Ui.label("FLEET_SECTION_VEHICLES", AppTheme.VARIATION_MUTED))
+		for entry: Fleet.Entry in vehicles:
 			_add_row(entry)
 	# The enterprise's structures (draft.37): every member sees them; travel needs a right.
 	var enterprise := _fleet.fleet.enterprise_entries()

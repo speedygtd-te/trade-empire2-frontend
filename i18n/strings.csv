@@ -532,9 +532,9 @@ LOG_INTENT_FALLBACK,"Without cargo space nothing can be captured; the structure 
 ERROR_NO_CARGO_SPACE,"Capturing needs cargo space: set a storage module to cargo first."
 GALAXY_SUBTITLE_SPIRAL,"Spiral galaxy · {arms} arms · {across} ly across"
 GALAXY_SUBTITLE,"{across} ly across"
-FLEET_TITLE,Your structures
+FLEET_TITLE,Your fleet
 FLEET_LOADING,Loading your structures…
-FLEET_EMPTY,You have no structures.
+FLEET_EMPTY,"No ships or vehicles yet. Build a drive into a structure to make it travel."
 FLEET_LOAD_FAILED,Your structures could not be loaded.
 FLEET_KIND_BASE,Base
 FLEET_KIND_SHIP,Ship
@@ -552,7 +552,7 @@ FLEET_ON_ROUTE,on a route
 COLONY_NEIGHBOUR,Another of your structures on this body.
 COLONY_GO_THERE,Go there
 ROUTE_TAB,Routes
-ROUTE_TAB_STRUCTURES,Structures
+ROUTE_TAB_STRUCTURES,Ships
 ROUTE_NEW,New route
 ROUTE_LOADING,Loading your routes…
 ROUTE_LOAD_FAILED,Your routes could not be loaded.
@@ -1080,8 +1080,8 @@ DETAILS_BLUEPRINTS_UNCHANGED,Nothing to change – they already run it.
 PLACES_TITLE,Your places
 PLACES_EMPTY,None of your structures stands on a surface right now.
 PLACES_ROW,{body} · {count} structure(s)
-FLEET_SECTION_MOVABLE,Ships and vehicles
-FLEET_SECTION_STATIONARY,Bases and stations
+FLEET_SECTION_SHIPS,Ships
+FLEET_SECTION_VEHICLES,Vehicles
 FLEET_PROGRESS,{percent} %
 FLEET_SHOW_IN_BASE,Show in Base
 FLEET_ROUTES,Routes
