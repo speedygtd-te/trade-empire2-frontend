@@ -94,6 +94,7 @@ const CORE_MODULE := "CORE_MODULE"
 const DETAIL_PATH := "user://detail.json"
 ## How often the sun is moved along its path (seconds); it crawls, so this is plenty.
 const SUN_SECONDS := 1.0
+const HEAT_SHADER: Shader = preload("res://game/world/heat_shimmer.gdshader")
 ## How long a notice stays (seconds).
 const NOTICE_SECONDS := 12.0
 ## How many recipes the yield line of an extracting module names at most when none is set.
@@ -123,6 +124,10 @@ var _focus: ColonyModel
 var _view: ColonyView
 var _container: SubViewportContainer
 var _viewport: SubViewport
+## Shimmering hot air on hot bodies: the shader the 3D picture is drawn with (HeatShimmer); on the
+## container only while it shows something.
+var _heat: ShaderMaterial
+var _heat_strength := -1.0
 
 ## The head: the body outside, the structure inside (tappable), "×" inside.
 var _top: PanelContainer
@@ -320,6 +325,7 @@ func _process(delta: float) -> void:
 		if _notice_left <= 0.0:
 			_notice.visible = false
 			_update_layout()
+	_update_heat()
 	_place_cards()
 	_refresh_left -= delta
 	if _refresh_left <= 0.0:
@@ -370,6 +376,31 @@ func _apply_rendering() -> void:
 		return
 	var draw := _rendering and not _model.detached
 	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE if draw else SubViewport.UPDATE_DISABLED
+	_update_heat()
+
+
+## Hot air shimmers over a hot body's ground (HeatShimmer): the 3D picture is drawn through the
+## shimmer shader. No shader at all while it is too faint, on the slowest tier, underground, in
+## orbit and while the 3D view does not draw (paused, covered, another tab).
+func _update_heat() -> void:
+	if _container == null:
+		return
+	var value := 0.0
+	if _rendering and not _model.detached and not _model.in_orbit and _model.structure_id != 0:
+		value = HeatShimmer.shown(HeatShimmer.strength(_model.surface_celsius, _view.daylight()),
+			_view.applied_tier(), _view.cutaway())
+	if value <= 0.0:
+		if _container.material != null:
+			_container.material = null
+		return
+	if _heat == null:
+		_heat = ShaderMaterial.new()
+		_heat.shader = HEAT_SHADER
+	if not is_equal_approx(_heat_strength, value):
+		_heat_strength = value
+		_heat.set_shader_parameter("strength", value)
+	if _container.material != _heat:
+		_container.material = _heat
 
 
 ## Whether a structure is open with its own navigation.
