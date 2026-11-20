@@ -128,6 +128,11 @@ Betonfundament. Ab 0,75 Zelle Höhenunterschied (`TerrainRelief.WALL_HEIGHT`) st
 ebenen Terrasse auf Basishöhe (`TerrainRelief.levelled_base`), und eine Wand hält den natürlichen
 Boden dahinter, der bis an ihre Krone reicht. Alles auf dem Boden folgt `ColonyView.ground_height`,
 nie y = 0.
+Wasser liegt flach auf Meereshöhe; Wasserzellen zählen für die Basis einer Struktur
+`TerrainRelief.DECK` darüber. Über Wasser (beide Enden einer Kante `corner_wet`) steht statt der
+Wand ein Pier aus Betonsäulen (`core/piers.gd`, Modelle `pier_*` in `retaining.py`, gezeichnet
+von `RetainingLayer`); Masten, Radar und Zaunpfosten auf Wasserzellen stehen auf einem Caisson,
+Beton wird nicht aufs Wasser gelegt. Ansehen: `smoke/pier_view.tscn` (`-- --out=build/piers [--small]`).
 Module und Hüllen gibt es zusätzlich in HD (`TE_DETAIL=hd`, `kit.HD_*`: doppelte Segmente, gerundete
 Kanten, 1024-px-Texturen, verlustbehaftet importiert) unter `game/world/models_hd`; `ColonyView`
 zeigt sie auf der obersten Detailstufe `DetailGovernor.Tier.ULTRA` (nur starke Geräte, Schalter im
