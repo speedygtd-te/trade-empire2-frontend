@@ -8,7 +8,8 @@ extends Node3D
 ##
 ## The ground has relief (TerrainRelief, display only): every structure stands flat at the mean
 ## elevation of its ground footprint (lift_of), cuts the ground down where it is higher and stands
-## on a concrete foundation where it is lower; whatever stands on the ground follows its height
+## on a concrete foundation where it is lower, with retaining walls where either reaches
+## TerrainRelief.WALL_HEIGHT (RetainingLayer); whatever stands on the ground follows its height
 ## (ground_height), and taps on the ground hit the relief (cell_at). The home structure's base is
 ## the reference: it keeps scene height 0 (for levels, camera and picking).
 
@@ -208,6 +209,8 @@ var _bases: Dictionary = {}
 ## The concrete foundations under the structures standing on a slope.
 var _foundations: Node3D
 var _foundation_material: StandardMaterial3D
+## The retaining walls where the ground beside a structure lies WALL_HEIGHT or more above or below it.
+var _retaining: RetainingLayer
 ## Ground blocks whose relief mesh waits to be built again (block → true).
 var _relief_queue: Dictionary = {}
 ## Loaded blocks waiting for the blocks beside them (settled): block → since when (ms).
@@ -246,6 +249,10 @@ func _ready() -> void:
 	_hulls = _child("Hulls")
 	_modules = _child("Modules")
 	_foundations = _child("Foundations")
+	_retaining = RetainingLayer.new()
+	_retaining.name = "RetainingWalls"
+	_retaining.setup(self)
+	add_child(_retaining)
 	_preview = _child("Preview")
 	_shape = _child("Shape")
 	_paths = _child("Paths")
@@ -433,10 +440,12 @@ func cell_ground(x: int, y: int) -> float:
 func ground_quad(x: int, y: int, inset: float = 0.0, lift: float = MARK_LIFT) -> PackedVector3Array:
 	var centre := WorldGrid.to_scene(Vector3i(x, y, origin.z), origin, model.size_x)
 	var half := 0.5 - inset
+	# Heights are read a hair inside the cell: at a terrace's edge the ground steps (a retaining wall).
+	var inside := maxf(half - 0.002, 0.0) / maxf(half, 0.0001)
 	var result := PackedVector3Array()
 	for offset: Vector2 in [Vector2(-half, half), Vector2(half, half), Vector2(half, -half), Vector2(-half, -half)]:
 		var point := centre + Vector3(offset.x, 0.0, offset.y)
-		point.y = ground_height(point) + lift
+		point.y = ground_height(centre + Vector3(offset.x, 0.0, offset.y) * inside) + lift
 		result.append(point)
 	return result
 
@@ -637,6 +646,7 @@ func _apply_cutaway(was_cutaway: bool) -> void:
 	var below := cutaway()
 	_ground.visible = not below
 	_foundations.visible = not below
+	_retaining.visible = not below
 	_props.visible = not below
 	_perimeter.visible = not below
 	_travel.visible = not below
@@ -1374,20 +1384,21 @@ func _build_structure(structure: ColonyModel) -> void:
 
 ## The concrete foundations of the structures standing on the ground (resting, or launching from
 ## it): a wall along every side of a footprint whose ground lies lower than its floor, from the
-## floor down to the ground as drawn (TerrainRelief.foundation); one mesh for all.
+## floor down to the ground as drawn (TerrainRelief.foundation); one mesh for all. Where the ground
+## lies TerrainRelief.WALL_HEIGHT or more below the floor, or above it beside a terrace
+## (TerrainRelief.cut_walls), retaining walls stand instead (RetainingLayer).
 func _build_foundations() -> void:
 	if _foundations == null:
 		return
 	for child: Node in _foundations.get_children():
 		child.queue_free()
+	var retaining: Array[TerrainRelief.Wall] = []
 	if model == null or relief == null or not relief.has_reference():
+		_retaining.rebuild(RetainingWalls.pieces(retaining, relief, origin, 0))
 		return
-	var vertices := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	var colors := PackedColorArray()
+	var walls: Array[TerrainRelief.Wall] = []
 	var now := Services.clock.now_ms()
-	var to_corner := Vector3(-0.5, 0.0, 0.5)
+	var pieces := _retaining.ready_to_draw()
 	for structure: ColonyModel in _structures():
 		if structure.is_guest() or not _bases.has(structure.structure_id):
 			continue
@@ -1395,30 +1406,45 @@ func _build_foundations() -> void:
 		var base: float = _bases[structure.structure_id]
 		if (trip != Trip.RESTING and trip != Trip.LAUNCHING) or is_nan(base):
 			continue
-		for wall: TerrainRelief.Wall in relief.foundation(footprint_of(structure.layout), base):
-			var a := WorldGrid.to_scene(Vector3i(wall.a.x, wall.a.y, origin.z), origin, model.size_x) + to_corner
-			var b := WorldGrid.to_scene(Vector3i(wall.b.x, wall.b.y, origin.z), origin, model.size_x) + to_corner
-			var top := relief.scene_height(wall.top) - origin.z
-			# A hair into the ground, so no seam shows along the foot.
-			var foot_a := relief.scene_height(wall.bottom_a) - origin.z - 0.01
-			var foot_b := relief.scene_height(wall.bottom_b) - origin.z - 0.01
-			var normal := Vector3(wall.outward.x, 0.0, -wall.outward.y)
-			# Along the wall the texture runs on from cell to cell.
-			var along_a := float(wall.a.x if wall.outward.y != 0 else wall.a.y) * 0.5
-			var along_b := float(wall.b.x if wall.outward.y != 0 else wall.b.y) * 0.5
-			# Seen from outside: a on the left, b on the right; clockwise.
-			var points: Array[Vector3] = [Vector3(a.x, top, a.z), Vector3(b.x, top, b.z), Vector3(b.x, foot_b, b.z),
-				Vector3(a.x, top, a.z), Vector3(b.x, foot_b, b.z), Vector3(a.x, foot_a, a.z)]
-			var texture_points: Array[Vector2] = [Vector2(along_a, 0.0), Vector2(along_b, 0.0), Vector2(along_b, (top - foot_b) * 0.5),
-				Vector2(along_a, 0.0), Vector2(along_b, (top - foot_b) * 0.5), Vector2(along_a, (top - foot_a) * 0.5)]
-			for index: int in 6:
-				var point: Vector3 = points[index]
-				vertices.append(point)
-				normals.append(normal)
-				uvs.append(texture_points[index])
-				# Darker towards the ground: damp and dirty at the foot.
-				var shade := lerpf(1.0, 0.72, clampf((top - point.y) / 1.2, 0.0, 1.0))
-				colors.append(Color(shade, shade, shade))
+		var footprint := footprint_of(structure.layout)
+		var sides := relief.foundation(footprint, base)
+		sides.append_array(relief.cut_walls(footprint, base))
+		for wall: TerrainRelief.Wall in sides:
+			if wall.retaining and pieces:
+				retaining.append(wall)
+			else:
+				walls.append(wall)
+	_retaining.rebuild(RetainingWalls.pieces(retaining, relief, origin, model.size_x))
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var colors := PackedColorArray()
+	for wall: TerrainRelief.Wall in walls:
+		var a := RetainingWalls.corner_point(wall.a, origin, model.size_x)
+		var b := RetainingWalls.corner_point(wall.b, origin, model.size_x)
+		var top_a := relief.scene_height(wall.top_a) - origin.z
+		var top_b := relief.scene_height(wall.top_b) - origin.z
+		# A hair into the ground, so no seam shows along the foot.
+		var foot_a := relief.scene_height(wall.bottom_a) - origin.z - 0.01
+		var foot_b := relief.scene_height(wall.bottom_b) - origin.z - 0.01
+		var normal := Vector3(wall.outward.x, 0.0, -wall.outward.y)
+		# Along the wall the texture runs on from cell to cell.
+		var along_a := float(wall.a.x if wall.outward.y != 0 else wall.a.y) * 0.5
+		var along_b := float(wall.b.x if wall.outward.y != 0 else wall.b.y) * 0.5
+		# Seen from its face: a on the left, b on the right; clockwise.
+		var points: Array[Vector3] = [Vector3(a.x, top_a, a.z), Vector3(b.x, top_b, b.z), Vector3(b.x, foot_b, b.z),
+			Vector3(a.x, top_a, a.z), Vector3(b.x, foot_b, b.z), Vector3(a.x, foot_a, a.z)]
+		var texture_points: Array[Vector2] = [Vector2(along_a, 0.0), Vector2(along_b, 0.0), Vector2(along_b, (top_b - foot_b) * 0.5),
+			Vector2(along_a, 0.0), Vector2(along_b, (top_b - foot_b) * 0.5), Vector2(along_a, (top_a - foot_a) * 0.5)]
+		for index: int in 6:
+			var point: Vector3 = points[index]
+			vertices.append(point)
+			normals.append(normal)
+			uvs.append(texture_points[index])
+			# Darker towards the ground: damp and dirty at the foot.
+			var top := top_a if index == 0 or index == 3 or index == 5 else top_b
+			var shade := lerpf(1.0, 0.72, clampf((top - point.y) / 1.2, 0.0, 1.0))
+			colors.append(Color(shade, shade, shade))
 	if vertices.is_empty():
 		return
 	if _foundation_material == null:
@@ -1441,6 +1467,11 @@ func _build_foundations() -> void:
 	instance.name = "Foundation"
 	instance.mesh = mesh
 	_foundations.add_child(instance)
+
+
+## Pieces of the retaining walls drawn now, per model, and their MultiMeshes (for measuring).
+func retaining_stats() -> Dictionary:
+	return _retaining.stats()
 
 
 ## Walls of foundations drawn now (for measuring).
@@ -1472,6 +1503,8 @@ func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) ->
 		return
 	_sync_relief()
 	var touched := relief.surface_loaded(request.blocks)
+	# Terraces beside the structures hang on the ground that came (their meshes change too).
+	var reshaped := relief.refresh_pads(request.blocks)
 	var had_reference := relief.has_reference()
 	for block: Vector2i in request.blocks:
 		_queue_ground(block.x * SurfaceBlocks.BLOCK, block.y * SurfaceBlocks.BLOCK)
@@ -1484,6 +1517,8 @@ func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) ->
 	# itself); everything standing there, and the impact sites that came with the ground
 	# (draft.32), is placed again.
 	_heights_changed(touched, false)
+	if not reshaped.is_empty():
+		_heights_changed(reshaped)
 
 
 ## Puts a ground block (its first cell) in line to be built; _process builds a few per frame.
@@ -1917,6 +1952,7 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	viewport.scaling_3d_scale = SLOW_RENDER_SCALE if tier == DetailGovernor.Tier.SLOW else 1.0
 	_props.apply_detail(tier)
 	_perimeter.apply_detail(tier)
+	_retaining.apply_detail(tier)
 	_moving = tier != DetailGovernor.Tier.SLOW
 
 

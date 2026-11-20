@@ -189,6 +189,29 @@ func _update_mesh(instance: MeshInstance3D) -> void:
 				indices[at + 4] = c
 				indices[at + 5] = c + 1
 			at += 6
+	# Terraces beside structures on a slope lie flat at their base, apart from the corners the
+	# ground beyond them shares (a retaining wall closes the step between).
+	var levelled := relief.levelled_in_block(block)
+	if not levelled.is_empty():
+		var first_x := block.x * cells
+		for key: Vector2i in levelled.keys():
+			var i := key.x - first_x
+			var j := key.y - y0
+			if i < 0 or i >= cells or j < 0 or j >= cells:
+				continue
+			var base: float = levelled[key]
+			var y := (base - reference) * TerrainRelief.SCALE
+			var first := vertices.size()
+			for corner: Vector2i in [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 0)]:
+				vertices.append(Vector3(i + corner.x - half, y, half - j - corner.y))
+				normals.append(Vector3.UP)
+			at = (j * cells + i) * 6
+			indices[at] = first
+			indices[at + 1] = first + 1
+			indices[at + 2] = first + 2
+			indices[at + 3] = first
+			indices[at + 4] = first + 2
+			indices[at + 5] = first + 3
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices

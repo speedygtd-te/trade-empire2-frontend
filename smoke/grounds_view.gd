@@ -155,12 +155,46 @@ func _measure_relief(size: int) -> void:
 	var start := Time.get_ticks_usec()
 	view._update_relief()
 	var pads_ms := (Time.get_ticks_usec() - start) / 1000.0
+	view.relief.walls = false
+	view.relief._pad_signature = 0
+	start = Time.get_ticks_usec()
+	view._update_relief()
+	var plain_ms := (Time.get_ticks_usec() - start) / 1000.0
+	view.relief.walls = true
+	view.relief._pad_signature = 0
+	view._update_relief()
+	print("RELIEF  %d hulls: bases and pads %.1f ms with retaining walls, %.1f ms without" % [size, pads_ms, plain_ms])
 	start = Time.get_ticks_usec()
 	view._build_foundations()
 	var walls_ms := (Time.get_ticks_usec() - start) / 1000.0
 	await get_tree().process_frame
-	print("RELIEF  %d hulls: bases and pads %.1f ms, foundations %.1f ms (%d walls)" % [size, pads_ms, walls_ms,
-		view.foundation_walls()])
+	print("RELIEF  %d hulls: bases and pads %.1f ms, foundations %.1f ms (%d plain walls, retaining pieces %s)" % [
+		size, pads_ms, walls_ms, view.foundation_walls(), view.retaining_stats()])
+
+
+## Cost of the view with retaining walls and with plain foundations and soft cuts everywhere (as
+## before the walls), and a picture without them.
+func _compare_walls(label: String, picture: String) -> void:
+	var view := _colony._view
+	var stats := view.retaining_stats()
+	var with_walls := await _frame_cost()
+	await _set_walls(false)
+	var plain := await _frame_cost()
+	await _capture(picture)
+	await _set_walls(true)
+	print("WALLS  %s: retaining walls %d draw calls, %d primitives (%s); plain foundations and soft cuts %d draw calls, %d primitives" % [
+		label, with_walls.x, with_walls.y, stats, plain.x, plain.y])
+
+
+func _set_walls(on: bool) -> void:
+	var view := _colony._view
+	view.relief.walls = on
+	view.relief._pad_signature = 0
+	view._update_relief()
+	var deadline := Time.get_ticks_msec() + 15000
+	while not view._relief_queue.is_empty() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	await get_tree().create_timer(0.5).timeout
 
 
 ## Pictures and cost of the base at its current size.
@@ -203,12 +237,57 @@ func _show(size: int) -> void:
 	_day()
 	await _capture(prefix + "_far_day")
 	await _measure("%d far day" % size)
+	await _compare_walls("%d far day" % size, prefix + "_far_plain_day")
 	_night()
 	await _capture(prefix + "_far_night")
 	await _measure("%d far night" % size)
+	_day()
+	await _show_walls(prefix)
 	view.apply_detail(DetailGovernor.Tier.SLOW)
 	await _measure("%d far night SLOW" % size)
 	view.apply_detail(DetailGovernor.Tier.FAST)
+
+
+## Whether a wall's face looks towards the camera (it looks from +x, −y).
+func _faces_camera(wall: TerrainRelief.Wall) -> bool:
+	return wall.outward.x > 0 or wall.outward.y < 0
+
+
+## Close to the tallest retaining foundation wall and the tallest cut wall of the base, by day and at
+## night (none below RetainingWalls' threshold).
+func _show_walls(prefix: String) -> void:
+	var view := _colony._view
+	var model := _colony._model
+	var base: float = view._bases.get(model.structure_id, NAN)
+	if is_nan(base):
+		return
+	var cells := ColonyView.footprint_of(model.layout)
+	var deepest: TerrainRelief.Wall = null
+	for wall: TerrainRelief.Wall in view.relief.foundation(cells, base):
+		if wall.retaining and _faces_camera(wall) and (deepest == null or minf(wall.bottom_a, wall.bottom_b) < minf(deepest.bottom_a, deepest.bottom_b)):
+			deepest = wall
+	var tallest: TerrainRelief.Wall = null
+	var cut := view.relief.cut_walls(cells, base)
+	for wall: TerrainRelief.Wall in cut:
+		if _faces_camera(wall) and (tallest == null or wall.top > tallest.top):
+			tallest = wall
+	print("WALLS  %s (facing the camera): deepest retaining foundation %s cells, tallest cut wall %s cells, %d cut walls" % [prefix,
+		"-" if deepest == null else "%.2f" % ((base - minf(deepest.bottom_a, deepest.bottom_b)) * TerrainRelief.SCALE),
+		"-" if tallest == null else "%.2f" % ((tallest.top - base) * TerrainRelief.SCALE), cut.size()])
+	for pair: Array in [[deepest, "foundation"], [tallest, "cut"]]:
+		var wall := pair[0] as TerrainRelief.Wall
+		if wall == null:
+			continue
+		# A few cells in front of the wall's face, so the face is in the picture.
+		var cell := Vector3i(wall.a.x + wall.outward.x * 3, wall.a.y + wall.outward.y * 3, 0)
+		await _look(cell, 7.0)
+		_day()
+		await _capture("%s_%s_wall_day" % [prefix, pair[1]])
+		_night()
+		await _capture("%s_%s_wall_night" % [prefix, pair[1]])
+		await _look(cell, 16.0)
+		_day()
+		await _capture("%s_%s_wall_mid_day" % [prefix, pair[1]])
 
 
 ## Where to look from near: the first gate post (before the docks), else the middle of the east
