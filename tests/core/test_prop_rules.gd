@@ -149,3 +149,14 @@ func test_shadows_only_close_up_and_never_on_the_slow_tier() -> void:
 	assert_bool(PropRules.casts_shadows(DetailGovernor.Tier.FAST, 40.0)).is_false()
 	assert_bool(PropRules.casts_shadows(DetailGovernor.Tier.MEDIUM, 16.0)).is_false()
 	assert_bool(PropRules.casts_shadows(DetailGovernor.Tier.SLOW, 3.0)).is_false()
+
+
+## The top tier only swaps the models of modules and hulls: props as on FAST.
+func test_ultra_treats_props_like_fast() -> void:
+	var ultra := DetailGovernor.Tier.ULTRA
+	var fast := DetailGovernor.Tier.FAST
+	for zoom: float in [5.0, 20.0, 40.0]:
+		assert_float(PropRules.visible_share(ultra, zoom, true)).is_equal(PropRules.visible_share(fast, zoom, true))
+		assert_float(PropRules.visible_share(ultra, zoom, false)).is_equal(PropRules.visible_share(fast, zoom, false))
+		assert_bool(PropRules.casts_shadows(ultra, zoom)).is_equal(PropRules.casts_shadows(fast, zoom))
+	assert_int(PropRules.reach(ultra)).is_equal(PropRules.reach(fast))

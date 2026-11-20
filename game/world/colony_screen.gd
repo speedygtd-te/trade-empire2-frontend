@@ -206,6 +206,8 @@ var _armed := ""
 var _refresh_left := 0.0
 var _sun_left := 0.0
 var _detail := DetailGovernor.new()
+## Whether this device may use the top detail tier at all (DetailGovernor.device_allows_ultra).
+var _ultra_device := false
 ## When the last tap on a structure outside came (ms), for the double tap.
 var _last_tap_ms := 0
 
@@ -284,10 +286,14 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if _model.structure_id != 0 and _rendering and not _model.detached:
-		_detail.add_frame(delta * 1000.0)
+		# The top tier needs the player's permission (profile) besides the device.
+		if _detail.allow_ultra(_ultra_device and AppSettings.high_detail_models()):
+			_view.apply_detail(_detail.tier)
+		_detail.add_frame(delta * 1000.0, _frame_work_ms())
 		var now_ticks := Time.get_ticks_msec()
 		if _detail.evaluate(now_ticks):
 			_view.apply_detail(_detail.tier)
+			_save_detail()
 		# The slowest tier holds 30 fps, lifted now and then for a measuring window.
 		_detail.tick(now_ticks)
 		if Engine.max_fps != _detail.fps_cap():
@@ -479,6 +485,20 @@ func _build_world() -> void:
 	if Wire.as_string(stored.get("version")) == Wire.as_string(ProjectSettings.get_setting("application/config/version", "")):
 		_detail.restore(stored)
 	_view.apply_detail(_detail.tier)
+	var memory: int = OS.get_memory_info().get("physical", 0)
+	_ultra_device = DetailGovernor.device_allows_ultra(OS.has_feature("mobile"), memory,
+		OS.get_processor_count(), RenderingServer.get_video_adapter_name())
+	RenderingServer.viewport_set_measure_render_time(_viewport.get_viewport_rid(), true)
+
+
+## The time CPU and GPU spent rendering the 3D view in the last frame (ms); -1 where the renderer
+## does not measure the GPU (vsync hides that time in the frame time).
+func _frame_work_ms() -> float:
+	var rid := _viewport.get_viewport_rid()
+	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(rid)
+	if gpu <= 0.0:
+		return -1.0
+	return RenderingServer.viewport_get_measured_render_time_cpu(rid) + gpu
 
 
 ## Keeps the measured tier for the next start; stamped with the app version, because another

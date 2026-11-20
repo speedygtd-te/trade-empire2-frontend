@@ -29,6 +29,9 @@ const HULL_CLOSED_HEIGHT := 0.72
 ## floor plate high, hull_dock.py).
 const GUEST_DROP := 1.0 - HULL_FLOOR_HEIGHT
 const MODELS := "res://game/world/models/"
+## The high-detail models of modules and hulls (same file names; tools/build-models.ps1 -Detail hd),
+## shown on the top detail tier (DetailGovernor.Tier.ULTRA). A model without one stays normal.
+const MODELS_HD := "res://game/world/models_hd/"
 const CAMERA_PITCH_DEGREES := 35.0
 const CAMERA_YAW_DEGREES := 45.0
 ## Visible height of the view in cells, and its limits.
@@ -172,6 +175,12 @@ var _underground: UndergroundLayer
 var _sun_args: Array = []
 var _scenes: Dictionary = {}
 var _hull_meshes: Dictionary = {}
+## High-detail models: whether they are shown, whether the tier wants them (they load in the
+## background first: key → path while loading), and the loaded ones (key → scene or null).
+var _hd := false
+var _hd_wanted := false
+var _hd_loading: Dictionary = {}
+var _scenes_hd: Dictionary = {}
 ## Meshes of a shaft head (opening, rails, post), made once.
 var _head_meshes: Array[Mesh] = []
 ## Materials of the loaded models that glow (instance id → material), and their strength now.
@@ -1572,6 +1581,12 @@ func _footprint_centre(cells: Array[Vector3i]) -> Vector3:
 
 
 func _scene(key: String) -> PackedScene:
+	if _hd:
+		if not _scenes_hd.has(key):
+			var hd_path := MODELS_HD + key + ".glb"
+			_scenes_hd[key] = load(hd_path) as PackedScene if ResourceLoader.exists(hd_path) else null
+		if _scenes_hd[key] != null:
+			return _scenes_hd[key] as PackedScene
 	if not _scenes.has(key):
 		var path := MODELS + key + ".glb"
 		_scenes[key] = load(path) as PackedScene if ResourceLoader.exists(path) else null
@@ -1610,6 +1625,8 @@ func _process(delta: float) -> void:
 		_ground.refresh_heights(batch)
 	if _followers_due:
 		_place_followers()
+	if _hd_wanted != _hd:
+		_poll_hd()
 	if _moving:
 		_mover.step(delta, _to_sun, _sun_up)
 	if fleet == null:
@@ -1665,8 +1682,9 @@ func _collect_lamps(node: Node3D) -> void:
 ## The mesh of a hull model ("hull_starter", "hull_starter_closed"); a hull type without its
 ## own model borrows the starter's (open) or the standard container (shut).
 func _hull_mesh(key: String) -> Mesh:
-	if _hull_meshes.has(key):
-		return _hull_meshes[key] as Mesh
+	var cached := key + "#hd" if _hd else key
+	if _hull_meshes.has(cached):
+		return _hull_meshes[cached] as Mesh
 	var node := _instance(key)
 	if node == null:
 		node = _instance(StructureLook.hull_fallback(key.ends_with("_closed")))
@@ -1680,8 +1698,61 @@ func _hull_mesh(key: String) -> Mesh:
 		var box := BoxMesh.new()
 		box.size = Vector3(1.0, HULL_FLOOR_HEIGHT, 1.0)
 		mesh = box
-	_hull_meshes[key] = mesh
+	_hull_meshes[cached] = mesh
 	return mesh
+
+
+## Switches between the normal and the high-detail models of modules and hulls. The models of
+## the other kind for everything in use load in the background first; once they are there the
+## structures are rebuilt (no hitch) and the models of the old kind are let go, so only one set
+## of textures is held (the high-detail ones take four times the memory).
+func _want_hd(on: bool) -> void:
+	if on == _hd_wanted:
+		return
+	_hd_wanted = on
+	_hd_loading.clear()
+	var target := _scenes_hd if on else _scenes
+	var keys := {}
+	for cache: Dictionary in [_scenes, _scenes_hd]:
+		for key: String in cache.keys():
+			if cache[key] != null:
+				keys[key] = true
+	for key: String in keys.keys():
+		if target.has(key):
+			continue
+		var path := (MODELS_HD if on else MODELS) + key + ".glb"
+		if ResourceLoader.exists(path) and ResourceLoader.load_threaded_request(path, "PackedScene") == OK:
+			_hd_loading[key] = path
+	_poll_hd()
+
+
+## Takes the models of the wanted kind that finished loading; once all are there, shows them.
+func _poll_hd() -> void:
+	var target := _scenes_hd if _hd_wanted else _scenes
+	for key: String in _hd_loading.keys():
+		var path: String = _hd_loading[key]
+		var status := ResourceLoader.load_threaded_get_status(path)
+		if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			return
+		target[key] = ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
+		_hd_loading.erase(key)
+	_hd = _hd_wanted
+	if _hd:
+		# Normal models stay only where no high-detail one exists.
+		for key: String in _scenes_hd.keys():
+			if _scenes_hd[key] != null:
+				_scenes.erase(key)
+	else:
+		_scenes_hd.clear()
+	_hull_meshes.clear()
+	# The remembered lamp materials would hold the old textures; the rebuild collects them again.
+	_lamps.clear()
+	_rebuild_structure()
+
+
+## Whether modules and hulls show their high-detail models now.
+func shows_high_detail() -> bool:
+	return _hd
 
 
 ## A box standing in for a module without model, coloured by its category.
@@ -1948,12 +2019,13 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	# Soft biome borders cost up to four texture reads per ground pixel.
 	_ground.set_soft(tier != DetailGovernor.Tier.SLOW)
 	_underground.set_soft(tier != DetailGovernor.Tier.SLOW)
-	viewport.msaa_3d = Viewport.MSAA_2X if tier == DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
+	viewport.msaa_3d = Viewport.MSAA_2X if tier <= DetailGovernor.Tier.FAST else Viewport.MSAA_DISABLED
 	viewport.scaling_3d_scale = SLOW_RENDER_SCALE if tier == DetailGovernor.Tier.SLOW else 1.0
 	_props.apply_detail(tier)
 	_perimeter.apply_detail(tier)
 	_retaining.apply_detail(tier)
 	_moving = tier != DetailGovernor.Tier.SLOW
+	_want_hd(tier == DetailGovernor.Tier.ULTRA)
 
 
 func _child(node_name: String) -> Node3D:

@@ -821,6 +821,9 @@ func _capture_profile(shell: MainShell) -> void:
 	shell.show_tab(MainShell.Tab.PROFILE)
 	if not was_on:
 		profile._on_performance()
+	# Scrolled down to the performance panel (display, report, high-detail models).
+	for found: Node in profile.find_children("*", "ScrollContainer", true, false):
+		(found as ScrollContainer).scroll_vertical = 100000
 	await _capture("profile_performance")
 	shell.show_tab(MainShell.Tab.BASE)
 	await get_tree().create_timer(4.0).timeout

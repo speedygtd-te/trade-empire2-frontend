@@ -37,6 +37,7 @@ var _sign_out_hint: Label
 var _performance: Button
 var _copy: Button
 var _performance_status: Label
+var _high_detail: Button
 
 
 func _ready() -> void:
@@ -96,15 +97,7 @@ func set_detail_tier(tier: int) -> void:
 	_detail_tier = tier
 	if _detail_value == null:
 		return
-	match tier:
-		DetailGovernor.Tier.FAST:
-			_detail_value.text = tr("PROFILE_DETAIL_HIGH")
-		DetailGovernor.Tier.MEDIUM:
-			_detail_value.text = tr("PROFILE_DETAIL_MEDIUM")
-		DetailGovernor.Tier.SLOW:
-			_detail_value.text = tr("PROFILE_DETAIL_LOW")
-		_:
-			_detail_value.text = tr("PROFILE_DETAIL_UNKNOWN")
+	_detail_value.text = PerfOverlay.tier_name(tier, self)
 
 
 ## Opens the enterprise as a layer over the profile.
@@ -196,6 +189,12 @@ func _build() -> void:
 	_performance_status = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	performance_rows.add_child(_performance_status)
 	_show_performance()
+	# The high-detail models of the top tier (DetailGovernor.Tier.ULTRA).
+	performance_rows.add_child(Ui.label("PROFILE_HD_HINT", AppTheme.VARIATION_MUTED))
+	_high_detail = Ui.secondary_button("PROFILE_HD_OFF")
+	_high_detail.pressed.connect(_on_high_detail)
+	performance_rows.add_child(_high_detail)
+	_show_high_detail()
 
 	_sign_out = Ui.secondary_button("HOME_SIGN_OUT")
 	_sign_out.pressed.connect(_on_sign_out)
@@ -285,6 +284,15 @@ func _show_performance() -> void:
 	var on := AppSettings.performance_display()
 	_performance.text = tr("PROFILE_PERFORMANCE_OFF") if on else tr("PROFILE_PERFORMANCE_ON")
 	_copy.disabled = not on
+
+
+func _on_high_detail() -> void:
+	AppSettings.set_high_detail_models(not AppSettings.high_detail_models())
+	_show_high_detail()
+
+
+func _show_high_detail() -> void:
+	_high_detail.text = tr("PROFILE_HD_OFF") if AppSettings.high_detail_models() else tr("PROFILE_HD_ON")
 
 
 ## Copies the report of the last minute (device, frame times, draw calls …) to the clipboard.
