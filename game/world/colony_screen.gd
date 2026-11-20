@@ -1774,6 +1774,52 @@ func _refresh_view() -> void:
 		_refresh_telescope(placed)
 	elif Probes.is_launcher(placed.module_type):
 		_refresh_launcher(placed)
+	elif _switches_storage(placed):
+		_refresh_storage(placed)
+
+
+## Whether the inspect card offers switching this module between own supply and cargo hold (a
+## storage module; one that also takes a recipe keeps Choose recipe on the button).
+func _switches_storage(placed: StructureLayout.Module) -> bool:
+	if placed == null or Services.definitions == null:
+		return false
+	var definition := Services.definitions.module(placed.module_type)
+	return definition != null and definition.storage and not definition.blueprint_driven
+
+
+## A storage module: "Storage: own supply · 10 000 units" and a button switching it to the other
+## area (`setStorageMode`). The server allows it at any time, also while the module is built; it
+## refuses when an area could no longer hold its content (the result line says so).
+func _refresh_storage(placed: StructureLayout.Module) -> void:
+	# Deposits under a store say nothing; the card keeps room for the mode.
+	_ground.visible = false
+	_scope.visible = true
+	_scope.remove_theme_color_override("font_color")
+	var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+	_scope.text = tr("STORE_INSPECT_LINE").format({"mode": StorePanel.mode_text(placed, self),
+		"capacity": AmountFormat.units(StorePanel.storage_units(placed, scale))})
+	_secondary.visible = true
+	_secondary.text = tr("STORE_INSPECT_TO_CARGO") if StorePanel.other_mode(placed) == StorePanel.AREA_CARGO \
+		else tr("STORE_INSPECT_TO_SUPPLY")
+	_secondary.disabled = _busy
+
+
+## Switches the inspected storage module to the other area; the card follows the new mode (the
+## model updates the layout and the inventory), the status line says what happened.
+func _switch_storage(placed: StructureLayout.Module) -> void:
+	if _busy:
+		return
+	var structure := _focus
+	var mode := StorePanel.other_mode(placed)
+	_busy = true
+	_status.remove_theme_color_override("font_color")
+	_status.text = tr("COLONY_SENDING")
+	_refresh()
+	var result := await structure.set_storage_mode(placed.module_id, mode)
+	_busy = false
+	_status.add_theme_color_override("font_color", AppTheme.COLOR_OK if result.is_ok() else AppTheme.COLOR_DANGER)
+	_status.text = StorePanel.switch_result_text(result, mode, self)
+	_refresh()
 
 
 ## A probe launcher (draft.31): the probes in this structure's own supply, the probes it sent that
@@ -2354,6 +2400,8 @@ func _on_secondary() -> void:
 			_open_probe_pick(placed)
 		elif _focus.layout.is_shaft(placed):
 			_extend_shaft()
+		elif _switches_storage(placed):
+			_switch_storage(placed)
 		elif placed != null:
 			_open_recipes(placed)
 		return

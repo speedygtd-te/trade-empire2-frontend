@@ -274,24 +274,18 @@ func _module_row(module: StructureLayout.Module, scale: int) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	var definition := Services.definitions.module(module.module_type)
-	var cargo := module.storage_mode == AREA_CARGO
 	var label := Ui.dynamic_label()
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var mode := tr("STORE_MODE_CARGO") if cargo else tr("STORE_MODE_SUPPLY")
-	if module.is_building():
-		mode = tr("STORE_MODE_BUILDING").format({"mode": mode})
-	@warning_ignore("integer_division")
 	label.text = tr("STORE_MODULE_ROW").format({"module": definition.display_name if definition != null else tr("LOG_SOMETHING"),
-		"capacity": AmountFormat.units((definition.storage_capacity if definition != null else 0) / maxi(scale, 1)),
-		"mode": mode})
+		"capacity": AmountFormat.units(storage_units(module, scale)), "mode": mode_text(module, self)})
 	row.add_child(label)
 	# A swipe that starts on the button scrolls the list (ListButton).
 	var switch := ListButton.new()
-	switch.text = tr("STORE_TO_SUPPLY") if cargo else tr("STORE_TO_CARGO")
+	switch.text = tr("STORE_TO_SUPPLY") if module.storage_mode == AREA_CARGO else tr("STORE_TO_CARGO")
 	switch.custom_minimum_size = Vector2(220, AppTheme.TOUCH_MIN)
 	switch.size_flags_horizontal = Control.SIZE_SHRINK_END
 	switch.disabled = _busy
-	switch.tapped.connect(_on_switch_mode.bind(module.module_id, AREA_SUPPLY if cargo else AREA_CARGO))
+	switch.tapped.connect(_on_switch_mode.bind(module.module_id, other_mode(module)))
 	row.add_child(switch)
 	return row
 
@@ -303,11 +297,39 @@ func _on_switch_mode(module_id: int, mode: String) -> void:
 	_refresh_buttons()
 	var result := await _model.set_storage_mode(module_id, mode)
 	_busy = false
-	if result.is_ok():
-		_show_status(tr("STORE_MODE_SET_CARGO") if mode == AREA_CARGO else tr("STORE_MODE_SET_SUPPLY"), AppTheme.COLOR_OK)
-	else:
-		_show_status(ErrorText.describe(result.error, self), AppTheme.COLOR_DANGER)
+	_show_status(switch_result_text(result, mode, self), AppTheme.COLOR_OK if result.is_ok() else AppTheme.COLOR_DANGER)
 	_refresh_buttons()
+
+
+# --- a storage module's mode, shared with the inspect card (ColonyScreen) ---------------------
+
+## The area a storage module's switch moves it to: the cargo hold from the own supply and back.
+static func other_mode(module: StructureLayout.Module) -> String:
+	return AREA_SUPPLY if module.storage_mode == AREA_CARGO else AREA_CARGO
+
+
+## "own supply" or "cargo hold"; "… (under construction)" while the module is built (the server
+## lets it switch then already; its capacity counts once it is done).
+static func mode_text(module: StructureLayout.Module, translator: Object) -> String:
+	var mode := translator.tr("STORE_MODE_CARGO") if module.storage_mode == AREA_CARGO else translator.tr("STORE_MODE_SUPPLY")
+	if module.is_building():
+		mode = translator.tr("STORE_MODE_BUILDING").format({"mode": mode})
+	return mode
+
+
+## The whole units a storage module adds to its area (0 when it is no storage module).
+static func storage_units(module: StructureLayout.Module, scale: int) -> int:
+	var definition: GameDefinitions.ModuleDef = Services.definitions.module(module.module_type) \
+		if Services.definitions != null else null
+	@warning_ignore("integer_division")
+	return (definition.storage_capacity if definition != null else 0) / maxi(scale, 1)
+
+
+## The line after switching a storage module to `mode`: what it holds now, or why not.
+static func switch_result_text(result: ApiResult, mode: String, translator: Object) -> String:
+	if not result.is_ok():
+		return ErrorText.describe(result.error, translator)
+	return translator.tr("STORE_MODE_SET_CARGO") if mode == AREA_CARGO else translator.tr("STORE_MODE_SET_SUPPLY")
 
 
 ## The row moving the chosen item between the own supply and the cargo hold: shown for a cargo
