@@ -58,18 +58,25 @@ func _wait_until(condition: Callable, timeout_ms: int) -> bool:
 
 
 func _run() -> void:
+	if not await _start():
+		return
+	await _main()
+
+
+## Signs in, loads the fleet model and the home base; false when that failed (the run ended).
+func _start() -> bool:
 	await get_tree().process_frame
 	var account := Wire.parse_object(FileAccess.get_file_as_string(ProjectSettings.globalize_path(ACCOUNT)))
 	if account.is_empty():
 		print("FAIL  no fleets account (node tools/dev-account.cjs --account fleets /v2/me)")
 		get_tree().quit(2)
-		return
+		return false
 	print("server: ", Services.server.base)
 	var signed_in := await Services.session.login(Wire.as_string(account.get("email")), Wire.as_string(account.get("password")))
 	_check(signed_in == null, "sign in with the fleets account")
 	if signed_in != null:
 		get_tree().quit(1)
-		return
+		return false
 	Services.events.event_received.connect(func(event: SseEvent) -> void:
 		if event.type.begins_with("fleet."):
 			_events.append(event.type))
@@ -89,8 +96,11 @@ func _run() -> void:
 	_check(failed.is_empty() and _base.layout.hull_count() > 0, "home base loaded: %d hulls" % _base.layout.hull_count())
 	if not failed.is_empty():
 		_finish()
-		return
+		return false
+	return true
 
+
+func _main() -> void:
 	# Leftovers of an earlier run: wait for a running flight, then disband.
 	for group: FleetGroups.Group in _fleet.groups.groups():
 		if group.has_command():

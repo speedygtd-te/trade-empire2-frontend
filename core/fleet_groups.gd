@@ -50,9 +50,10 @@ class Group:
 	var members: Array[Member] = []
 	## The body all members rest at; "" when they are not together (or under way).
 	var location_body_id := ""
-	## The running command (a joint flight): its target (TravelTarget) and times; empty target
-	## without one.
+	## The running command: a joint flight ("travel") or a route ("route", draft.35, with its id);
+	## the target (TravelTarget) and times only while a flight runs.
 	var command_type := ""
+	var route_id := 0
 	var command_target: Dictionary = {}
 	var depart_at := 0
 	var arrival_at := 0
@@ -86,6 +87,7 @@ class Group:
 		var command := Wire.as_dict(data.get("command"))
 		if not command.is_empty():
 			group.command_type = Wire.as_string(command.get("type"))
+			group.route_id = Wire.as_int(command.get("routeId"))
 			group.command_target = Wire.as_dict(command.get("target"))
 			group.depart_at = Wire.as_int(command.get("departAt"))
 			group.arrival_at = Wire.as_int(command.get("arrivalAt"))
@@ -128,17 +130,23 @@ class Group:
 	func target_body_id() -> String:
 		return Wire.as_string(command_target.get("bodyId"))
 
-	## Whether the fleet is under way at game time `now` (its command ends at the arrival).
+	## Whether it runs a route (draft.35): it then has a command until the route is gone.
+	func is_on_route() -> bool:
+		return command_type == "route"
+
+	## Whether the fleet is under way at game time `now` (a flight, also one leg of a route).
 	func is_travelling(now: int) -> bool:
-		return has_command() and now < arrival_at
+		return has_command() and arrival_at > 0 and now < arrival_at
 
 	func remaining_ms(now: int) -> int:
-		return maxi(0, arrival_at - now) if has_command() else 0
+		return maxi(0, arrival_at - now) if has_command() and arrival_at > 0 else 0
 
 	## 0..1 of the flight at `now` (by time).
 	func progress_at(now: int) -> float:
-		if not has_command() or arrival_at <= depart_at:
-			return 1.0 if has_command() else 0.0
+		if not has_command() or arrival_at <= 0:
+			return 0.0
+		if arrival_at <= depart_at:
+			return 1.0
 		return clampf(float(now - depart_at) / float(arrival_at - depart_at), 0.0, 1.0)
 
 	func is_aggressive() -> bool:

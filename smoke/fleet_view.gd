@@ -70,7 +70,7 @@ func _run() -> void:
 		var group := groups[0]
 		var detail := panel.open_group(group.fleet_id)
 		await get_tree().create_timer(1.0).timeout
-		await _capture("fleets_detail_flying" if group.has_command() else "fleets_detail")
+		await _capture("fleets_detail_route" if group.is_on_route() else ("fleets_detail_flying" if group.has_command() else "fleets_detail"))
 		if not group.has_command():
 			detail._scroll_to_end()
 			detail._on_disband()
@@ -96,6 +96,35 @@ func _run() -> void:
 		await get_tree().create_timer(1.0).timeout
 		await _capture("fleets_member_locked")
 		stack.pop_to_root()
+		# Routes (draft.35): the list with a fleet route, and a new route run by a resting fleet.
+		await _until(func() -> bool: return fleet.routes.loaded, 10000)
+		panel._show_tab(FleetPanel.TAB_ROUTES)
+		await _capture("fleets_routes")
+		panel._show_tab(FleetPanel.TAB_STRUCTURES)
+		if not group.has_command():
+			var base := shell.colony()._model.structure_id
+			var station_b := 0
+			for entry: Fleet.Entry in fleet.fleet.entries():
+				if entry.structure_id != base and not group.has_member(entry.structure_id) \
+						and not entry.is_moving(Services.clock.now_ms()):
+					station_b = entry.structure_id
+					break
+			panel.open_route_editor(0, 0, group.fleet_id)
+			var editor := panel.editor()
+			editor._open_picker("transporter")
+			await _capture("fleets_route_editor_picker")
+			editor._close_picker()
+			editor._draft.station_a = base
+			editor._draft.station_b = station_b
+			editor._load_stock(base)
+			editor._add_goods(RoutePlan.A, "HYDROGEN")
+			editor._on_into()
+			editor._rebuild_ends()
+			editor._changed()
+			await _until(func() -> bool: return editor._quote != null or editor._quote_error != null, 10000)
+			await _capture("fleets_route_editor_quote")
+			print("VIEW  route quote: ", editor._quote_label.text.replace("\n", " | "))
+			stack.pop_to_root()
 	if made != 0:
 		var gone := await fleet.dissolve_group(made)
 		print("VIEW  picture fleet disbanded: %s" % ("ok" if gone.is_ok() else gone.error.code))

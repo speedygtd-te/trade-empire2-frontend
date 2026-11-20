@@ -96,7 +96,7 @@ func _card(route: RoutePlan.Route) -> PanelContainer:
 	rows.add_child(title)
 	var ends := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	ends.text = tr("ROUTE_ENDS").format({
-		"transporter": structure_name(_fleet, route.transporter_id, self),
+		"transporter": driver_name(_fleet, route, self),
 		"a": structure_name(_fleet, route.station_id(RoutePlan.A), self),
 		"b": structure_name(_fleet, route.station_id(RoutePlan.B), self),
 		"kind": tr("ROUTE_KIND_SHIP") if route.kind == RoutePlan.KIND_SHIP else tr("ROUTE_KIND_GROUND")})
@@ -217,6 +217,24 @@ static func structure_name(fleet: FleetModel, structure_id: int, translator: Obj
 	return entry.name if entry != null and not entry.name.is_empty() else translator.tr("ROUTE_UNKNOWN_STRUCTURE")
 
 
+## What drives a route: the transporter, or "Fleet “X”" (draft.35).
+static func driver_name(fleet: FleetModel, route: RoutePlan.Route, translator: Object) -> String:
+	if route.is_fleet():
+		var group := fleet.groups.find(route.fleet_id) if fleet != null else null
+		return translator.tr("ROUTE_FLEET_NAME").format({
+			"name": group.name if group != null else translator.tr("ROUTE_UNKNOWN_STRUCTURE")})
+	return structure_name(fleet, route.transporter_id, translator)
+
+
+## The landing site of each ship: "Ship A 150, -4 · Ship B 154, -4".
+static func sites_text(fleet: FleetModel, stops: Array[RoutePlan.MemberStop], translator: Object) -> String:
+	var parts := PackedStringArray()
+	for stop: RoutePlan.MemberStop in stops:
+		parts.append(translator.tr("ROUTE_SITE").format({"name": structure_name(fleet, stop.structure_id, translator),
+			"x": stop.cell.x, "y": stop.cell.y}))
+	return " · ".join(parts)
+
+
 ## What a route does now: heading to a station and when it arrives, waiting there and why, paused,
 ## or stopping/ending at the next station.
 static func status_text(fleet: FleetModel, route: RoutePlan.Route, now: int, translator: Object) -> String:
@@ -264,6 +282,26 @@ static func details_text(fleet: FleetModel, route: RoutePlan.Route, translator: 
 			lines.append(translator.tr("ROUTE_CARGO_FOR").format({
 				"station": structure_name(fleet, route.station_id(letter), translator),
 				"items": amounts_text(cargo, translator)}))
+	if route.is_fleet():
+		for letter: String in [RoutePlan.A, RoutePlan.B]:
+			var station := route.station_b if letter == RoutePlan.B else route.station_a
+			if station.stops.size() > 1:
+				lines.append(translator.tr("ROUTE_QUOTE_CREW_STOPS").format({
+					"station": structure_name(fleet, station.structure_id, translator),
+					"sites": sites_text(fleet, station.stops, translator)}))
+		if not route.last_shares.is_empty():
+			var parts := PackedStringArray()
+			for share: RoutePlan.Share in route.last_shares:
+				var moved := PackedStringArray()
+				if not share.unloaded.is_empty():
+					moved.append(translator.tr("ROUTE_SHARE_UNLOADED").format({"items": amounts_text(share.unloaded, translator)}))
+				if not share.loaded.is_empty():
+					moved.append(translator.tr("ROUTE_SHARE_LOADED").format({"items": amounts_text(share.loaded, translator)}))
+				if moved.is_empty():
+					moved.append(translator.tr("ROUTE_NOTHING"))
+				parts.append("%s: %s" % [structure_name(fleet, share.structure_id, translator), ", ".join(moved)])
+			lines.append(translator.tr("ROUTE_SHARES").format({
+				"station": structure_name(fleet, route.last_shares_station, translator), "rows": "; ".join(parts)}))
 	lines.append(translator.tr("ROUTE_STATS").format({"trips": route.trips, "cycles": route.cycles}))
 	if not route.delivered.is_empty():
 		lines.append(translator.tr("ROUTE_DELIVERED").format({"items": amounts_text(route.delivered, translator)}))

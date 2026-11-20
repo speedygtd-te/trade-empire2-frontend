@@ -60,14 +60,31 @@ class Rule:
 		return make(resource, into, amount)
 
 
+## Where one ship of a route sets down at a station (`RouteMemberStop`, draft.35): the absolute
+## cell of its local (0, 0).
+class MemberStop:
+	extends RefCounted
+	var structure_id := 0
+	var cell := Vector2i.ZERO
+
+	static func from_wire(value: Variant) -> MemberStop:
+		var data := Wire.as_dict(value)
+		var stop := MemberStop.new()
+		stop.structure_id = Wire.as_int(data.get("structureId"))
+		stop.cell = Vector2i(Wire.as_int(data.get("x")), Wire.as_int(data.get("y")))
+		return stop
+
+
 ## One end of a route: the structure, its body and the reserved stop site (absolute cell of the
-## transporter's local (0, 0); none = orbit).
+## transporter's local (0, 0); none = orbit). `stops` has one site per ship (draft.35: a fleet
+## route one per member, a single route at most one); `stop` is the first.
 class Station:
 	extends RefCounted
 	var structure_id := 0
 	var body_id := ""
 	var has_stop := false
 	var stop := Vector2i.ZERO
+	var stops: Array[MemberStop] = []
 
 	static func from_wire(data: Dictionary) -> Station:
 		var station := Station.new()
@@ -76,7 +93,26 @@ class Station:
 		if typeof(data.get("stop")) == TYPE_DICTIONARY:
 			station.has_stop = true
 			station.stop = RoutePlan.grid_xy(data.get("stop"))
+		station.stops = RoutePlan.member_stops_from_wire(data.get("stops"))
+		if not station.has_stop and not station.stops.is_empty():
+			station.has_stop = true
+			station.stop = station.stops[0].cell
 		return station
+
+	## The site of one ship; null when it has none here (orbit, or not its ship).
+	func stop_of(ship_id: int) -> MemberStop:
+		for value: MemberStop in stops:
+			if value.structure_id == ship_id:
+				return value
+		return null
+
+
+## What one ship of a fleet route unloaded and loaded at its last stop (`route.arrived.shares`).
+class Share:
+	extends RefCounted
+	var structure_id := 0
+	var unloaded: Array[Array] = []
+	var loaded: Array[Array] = []
 
 
 ## A route as the server sends it (`Route`).
@@ -86,7 +122,10 @@ class Route:
 	var name := ""
 	## ship or ground.
 	var kind := ""
+	## A single route's transporter; a fleet route's first member.
 	var transporter_id := 0
+	## The fleet that runs it (draft.35); 0 for a single route.
+	var fleet_id := 0
 	var station_a := Station.new()
 	var station_b := Station.new()
 	var rules_ab: Array[Rule] = []
@@ -114,6 +153,10 @@ class Route:
 	## Delivered so far: [resource, micro-units] pairs.
 	var delivered: Array[Array] = []
 	var created_at := 0
+	## A fleet route: what each ship moved at the last stop and where (from `route.arrived`; empty
+	## until one arrived while the app ran).
+	var last_shares: Array[Share] = []
+	var last_shares_station := 0
 
 	static func from_wire(data: Dictionary) -> Route:
 		var route := Route.new()
@@ -121,6 +164,7 @@ class Route:
 		route.name = Wire.as_string(data.get("name"))
 		route.kind = Wire.as_string(data.get("kind"))
 		route.transporter_id = Wire.as_int(data.get("transporterId"))
+		route.fleet_id = Wire.as_int(data.get("fleetId"))
 		route.station_a = Station.from_wire(Wire.as_dict(data.get("stationA")))
 		route.station_b = Station.from_wire(Wire.as_dict(data.get("stationB")))
 		var rules := Wire.as_dict(data.get("rules"))
@@ -163,6 +207,26 @@ class Route:
 	func is_paused() -> bool:
 		return state == "paused"
 
+	## Whether a fleet runs it (draft.35).
+	func is_fleet() -> bool:
+		return fleet_id != 0
+
+	## Takes the per-ship shares of a `route.arrived`.
+	func take_shares(station_id: int, value: Variant) -> void:
+		last_shares.clear()
+		last_shares_station = station_id
+		if typeof(value) != TYPE_ARRAY:
+			return
+		var rows: Array = value
+		for row: Variant in rows:
+			var data := Wire.as_dict(row)
+			var share := Share.new()
+			share.structure_id = Wire.as_int(data.get("structureId"))
+			share.unloaded = RoutePlan.amounts_from_wire(data.get("unloaded"))
+			share.loaded = RoutePlan.amounts_from_wire(data.get("loaded"))
+			if share.structure_id != 0:
+				last_shares.append(share)
+
 	## The structure of station A or B.
 	func station_id(letter: String) -> int:
 		return station_b.structure_id if letter == "B" else station_a.structure_id
@@ -200,12 +264,16 @@ class Route:
 		return maxi(next_arrival_at - now, 0) if next_arrival_at > 0 else 0
 
 
-## What a new route needs: transporter, two stations, start, rules. The kind and the stop sites
-## are left to the server (it picks the nearest fitting site).
+## What a new route needs: a transporter or a fleet (draft.35), two stations, start, rules. The
+## kind and the stop sites are left to the server (it picks the nearest fitting site; for a fleet
+## one per ship).
 class Draft:
 	extends RefCounted
 	var name := ""
 	var transporter_id := 0
+	## A fleet route: the fleet and its members (no member can be a station).
+	var fleet_id := 0
+	var fleet_members := PackedInt64Array()
 	var station_a := 0
 	var station_b := 0
 	## "" (the nearer station), "A" or "B".
@@ -213,10 +281,34 @@ class Draft:
 	var rules_ab: Array[Rule] = []
 	var rules_ba: Array[Rule] = []
 
-	## Transporter and two different stations, none of them the transporter.
+	## A transporter or a fleet (not both) and two different stations, none of them the
+	## transporter or a member.
 	func is_complete() -> bool:
-		return transporter_id != 0 and station_a != 0 and station_b != 0 and station_a != station_b \
-			and station_a != transporter_id and station_b != transporter_id
+		if (transporter_id != 0) == (fleet_id != 0):
+			return false
+		return station_a != 0 and station_b != 0 and station_a != station_b \
+			and not runs(station_a) and not runs(station_b)
+
+	## Whether a structure would drive the route (the transporter or a fleet member).
+	func runs(structure_id: int) -> bool:
+		if structure_id == 0:
+			return false
+		return structure_id == transporter_id or (fleet_id != 0 and fleet_members.has(structure_id))
+
+	## Drive with one structure (a fleet is dropped).
+	func use_transporter(structure_id: int) -> void:
+		transporter_id = structure_id
+		fleet_id = 0
+		fleet_members = PackedInt64Array()
+
+	## Drive with a fleet (a transporter is dropped).
+	func use_fleet(id: int, members: PackedInt64Array) -> void:
+		fleet_id = id
+		fleet_members = members
+		transporter_id = 0
+
+	func is_fleet() -> bool:
+		return fleet_id != 0
 
 	func rules_from(letter: String) -> Array[Rule]:
 		return rules_ba if letter == "B" else rules_ab
@@ -228,11 +320,14 @@ class Draft:
 	## The body of `POST /v2/routes` and `/v2/routes/quote`.
 	func create_body() -> Dictionary:
 		var body := {
-			"transporterId": transporter_id,
 			"stationA": {"structureId": station_a},
 			"stationB": {"structureId": station_b},
 			"rules": RoutePlan.rules_body(rules_ab, rules_ba),
 		}
+		if fleet_id != 0:
+			body["fleetId"] = fleet_id
+		else:
+			body["transporterId"] = transporter_id
 		var shown := RoutePlan.clean_name(name)
 		if not shown.is_empty():
 			body["name"] = shown
@@ -256,8 +351,15 @@ class Quote:
 	## The first trip (to the start station): whether there is one, how long it takes (ms).
 	var has_trip := false
 	var trip_ms := 0
-	## Fuel of the first trip: [resource, needed µ, in the transporter's supply µ, in its cargo µ].
+	## Fuel of the first trip: [resource, needed µ, in the transporter's supply µ, in its cargo µ]
+	## (a fleet: Σ need, Σ own supply of the members, 0).
 	var fuel: Array[Array] = []
+	## A fleet route (draft.35): the site of each ship per station, each ship's broken rules
+	## (structure id → codes; only ships with some), and the first trip as a fleet quote.
+	var crew_stops_a: Array[MemberStop] = []
+	var crew_stops_b: Array[MemberStop] = []
+	var member_errors: Dictionary = {}
+	var fleet_trip: FleetGroups.Quote = null
 
 	static func from_wire(data: Dictionary) -> Quote:
 		var quote := Quote.new()
@@ -285,7 +387,32 @@ class Quote:
 					var row := Wire.as_dict(value)
 					quote.fuel.append([Wire.as_string(row.get("resource")), Wire.as_int(row.get("amount")),
 						Wire.as_int(row.get("selfUse")), Wire.as_int(row.get("inTransport"))])
+		var crew := Wire.as_dict(data.get("crewStops"))
+		quote.crew_stops_a = RoutePlan.member_stops_from_wire(crew.get("a"))
+		quote.crew_stops_b = RoutePlan.member_stops_from_wire(crew.get("b"))
+		if typeof(data.get("members")) == TYPE_ARRAY:
+			var members: Array = data.get("members")
+			for value: Variant in members:
+				var member := Wire.as_dict(value)
+				var codes := PackedStringArray()
+				if typeof(member.get("errors")) == TYPE_ARRAY:
+					var listed: Array = member.get("errors")
+					for code: Variant in listed:
+						codes.append(Wire.as_string(code))
+				if not codes.is_empty():
+					quote.member_errors[Wire.as_int(member.get("structureId"))] = codes
+		if typeof(data.get("fleetTrip")) == TYPE_DICTIONARY:
+			quote.fleet_trip = FleetGroups.Quote.from_wire(data.get("fleetTrip"))
+			if quote.fleet_trip != null:
+				quote.has_trip = true
+				quote.trip_ms = quote.fleet_trip.trip.total_ms()
+				for row: TravelPlan.FuelRow in quote.fleet_trip.trip.fuel:
+					quote.fuel.append([row.resource, row.amount, row.self_use, 0])
 		return quote
+
+	## The sites of a fleet's ships at a station (empty for a single route or the orbit).
+	func crew_stops(letter: String) -> Array[MemberStop]:
+		return crew_stops_b if letter == "B" else crew_stops_a
 
 	## The fuel kinds of the first trip, in order.
 	func fuel_types() -> PackedStringArray:
@@ -295,6 +422,19 @@ class Quote:
 			if not key.is_empty() and not result.has(key):
 				result.append(key)
 		return result
+
+
+## `RouteMemberStop` rows; rows without a structure are left out.
+static func member_stops_from_wire(value: Variant) -> Array[MemberStop]:
+	var result: Array[MemberStop] = []
+	if typeof(value) != TYPE_ARRAY:
+		return result
+	var rows: Array = value
+	for row: Variant in rows:
+		var stop := MemberStop.from_wire(row)
+		if stop.structure_id != 0:
+			result.append(stop)
+	return result
 
 
 ## Rules from a wire list; rows without a resource are left out.

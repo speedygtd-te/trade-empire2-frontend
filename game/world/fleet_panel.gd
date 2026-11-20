@@ -162,6 +162,13 @@ func open_group(fleet_id: int) -> FleetGroupDetail:
 	_group = FleetGroupDetail.new()
 	_group.setup(_fleet, fleet_id)
 	_group.member_requested.connect(func(id: int) -> void: open_detail(id))
+	_group.route_requested.connect(func(route_id: int) -> void:
+		if route_id != 0:
+			# The routes tab holds pause and delete (deleting is the way to rebuild the fleet).
+			ScreenStack.close_layer(_group)
+			_show_tab(TAB_ROUTES)
+		else:
+			open_route_editor(0, 0, fleet_id))
 	ScreenStack.push_onto(self, _group)
 	return _group
 
@@ -199,10 +206,10 @@ func _on_route_requested(route_id: int) -> void:
 
 ## Opens the route editor as a layer: an existing route (its rules), or a new one (0),
 ## prefilled with a transporter when `transporter_id` is not 0.
-func open_route_editor(route_id: int, transporter_id: int = 0) -> void:
+func open_route_editor(route_id: int, transporter_id: int = 0, fleet_id: int = 0) -> void:
 	_close_editor()
 	_editor = RouteEditor.new()
-	_editor.setup(_fleet, route_id, transporter_id)
+	_editor.setup(_fleet, route_id, transporter_id, fleet_id)
 	_editor.saved.connect(func(_route_id: int) -> void: _close_editor())
 	ScreenStack.push_onto(self, _editor)
 

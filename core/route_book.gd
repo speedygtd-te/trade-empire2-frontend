@@ -42,6 +42,16 @@ func routes() -> Array[RoutePlan.Route]:
 	return result
 
 
+## The route a fleet runs (draft.35); null when none.
+func of_fleet(fleet_id: int) -> RoutePlan.Route:
+	if fleet_id == 0:
+		return null
+	for route: RoutePlan.Route in _routes.values():
+		if route.fleet_id == fleet_id:
+			return route
+	return null
+
+
 ## The route a structure drives as transporter; null when none.
 func of_transporter(structure_id: int) -> RoutePlan.Route:
 	for route: RoutePlan.Route in _routes.values():
@@ -103,6 +113,8 @@ func apply_event(type: String, data: Dictionary) -> bool:
 			return true
 		"route.arrived":
 			_stand_at(found, Wire.as_int(data.get("stationId")))
+			if found.is_fleet() or data.has("shares"):
+				found.take_shares(Wire.as_int(data.get("stationId")), data.get("shares"))
 			return true
 	return false
 
