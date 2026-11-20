@@ -50,6 +50,8 @@ class Piece:
 	var file := ""
 	var placed := Transform3D.IDENTITY
 	var shade := 1.0
+	## Colour multiplied with the shade (Piers: what the piece stands in).
+	var tint := Color.WHITE
 
 	func _init(model: String, transform: Transform3D, brightness: float) -> void:
 		file = model

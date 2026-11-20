@@ -65,7 +65,8 @@ func rebuild(pieces: Array[RetainingWalls.Piece]) -> void:
 		for index: int in list.size():
 			var piece: RetainingWalls.Piece = list[index]
 			multimesh.set_instance_transform(index, piece.placed)
-			multimesh.set_instance_color(index, Color(piece.shade, piece.shade, piece.shade))
+			multimesh.set_instance_color(index, Color(piece.shade * piece.tint.r, piece.shade * piece.tint.g,
+				piece.shade * piece.tint.b))
 		var instance := MultiMeshInstance3D.new()
 		instance.name = key.replace(" ", "_").replace(",", "_")
 		instance.multimesh = multimesh

@@ -26,6 +26,16 @@ const ASTEROID := "ASTEROID"
 const WATER_BIOMES: PackedStringArray = [
 	"OCEAN", "DEEP_OCEAN", "SHALLOW_WATER", "REEF", "KELP_FOREST", "ACID_LAKE", "FROZEN_LAKE", "VOLCANIC_VENT",
 ]
+## Display only, not in the contract: ground a structure stands on concrete piers over instead of a
+## solid foundation (Piers; Rudi 2026-11-20): water, molten or unstable volcanic ground and swamp.
+## Solid volcanic ground (BASALT_PLAIN, ASH_FIELD, OBSIDIAN_RIDGE) keeps normal foundations.
+enum PierGround { NONE, WATER, LAVA, SWAMP }
+const LAVA_BIOMES: PackedStringArray = ["LAVA_FLOW", "CALDERA", "FUMAROLE"]
+const SWAMP_BIOMES: PackedStringArray = ["SWAMP", "TOXIC_MARSH"]
+const PIER_BIOMES: PackedStringArray = [
+	"OCEAN", "DEEP_OCEAN", "SHALLOW_WATER", "REEF", "KELP_FOREST", "ACID_LAKE", "FROZEN_LAKE", "VOLCANIC_VENT",
+	"LAVA_FLOW", "CALDERA", "FUMAROLE", "SWAMP", "TOXIC_MARSH",
+]
 ## Body types whose cells are ASTEROID instead of SURFACE.
 const ASTEROID_BODIES: PackedStringArray = ["ASTEROID_M", "ASTEROID_C", "ASTEROID_S"]
 ## Hull types the server takes on a body's surface (any other: INVALID_HULL_TYPE). A guest on a
@@ -76,6 +86,22 @@ class Site:
 ## Whether a biome is water (ocean, lake, reef …).
 static func is_water_biome(biome: String) -> bool:
 	return WATER_BIOMES.has(biome)
+
+
+## Whether a structure stands on piers over a biome (PIER_BIOMES).
+static func is_pier_biome(biome: String) -> bool:
+	return PIER_BIOMES.has(biome)
+
+
+## Which pier ground a biome is: water, lava, swamp, or NONE (solid ground).
+static func pier_ground(biome: String) -> PierGround:
+	if WATER_BIOMES.has(biome):
+		return PierGround.WATER
+	if LAVA_BIOMES.has(biome):
+		return PierGround.LAVA
+	if SWAMP_BIOMES.has(biome):
+		return PierGround.SWAMP
+	return PierGround.NONE
 
 
 ## Environment of a cell at level `z` from the biome at that level (`biome`, "" when unknown):

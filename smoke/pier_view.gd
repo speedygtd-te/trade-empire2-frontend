@@ -22,6 +22,10 @@ var _shore := 0
 var _order: Array[Vector3i] = []
 ## Only the base as it is (-- --small): no grown base.
 var _small := false
+## What lies east of the shore: "water" (the sea), "lava" or "swamp" (a strip STRIP cells wide,
+## solid ground beyond).
+var _kind := "water"
+const STRIP := 6
 
 
 func _ready() -> void:
@@ -104,6 +108,33 @@ func _run() -> void:
 	await _capture("shore_near_day_no_props")
 	view._props.visible = true
 	await _measure("small base")
+
+	# A lava strip and a swamp strip through the base instead of the sea: piers down into the
+	# ground (which keeps its relief), scorched or muddy bands, caissons on the ground.
+	for kind: String in ["lava", "swamp"]:
+		_kind = kind
+		_fill_sample(centre)
+		_refresh()
+		await get_tree().create_timer(1.0).timeout
+		_report(kind)
+		for entry: Array in [[5.0, "near"], [12.0, "mid"]]:
+			var zoom: float = entry[0]
+			var tag: String = entry[1]
+			await _look(pier + Vector3i(1, -1, 0), zoom)
+			_day()
+			await _capture("%s_%s_day" % [kind, tag])
+			_night()
+			await _capture("%s_%s_night" % [kind, tag])
+		_day()
+		for spot: Perimeter.Spot in PerimeterLayer.spots_for(_model):
+			if view.cell_pier(spot.cell.x, spot.cell.y) != LevelRules.PierGround.NONE and spot.kind == Perimeter.Kind.LAMP:
+				await _look(Vector3i(spot.cell.x, spot.cell.y, 0), 4.0)
+				await _capture("%s_mast_day" % kind)
+				break
+		await _measure(kind)
+	_kind = "water"
+	_fill_sample(centre)
+	_refresh()
 
 	if _small:
 		get_tree().quit()
@@ -233,10 +264,24 @@ func _patch(request: SurfaceBlocks.Request) -> SurfacePatch:
 			var depth := _depth(x, y)
 			var biome := "PLAINS"
 			var elevation := mini(330, 303 + (_shore_at(y) - x) * 2)
-			if depth > 0:
+			var out := x - _shore_at(y)
+			if _kind != "water" and depth > 0:
+				# The strip keeps a relief of its own; solid ground beyond.
+				depth = 0
+				var bumps := roundi(2.0 * sin(x * 0.9) + 2.0 * cos(y * 0.6))
+				if out >= STRIP:
+					biome = "BASALT_PLAIN" if _kind == "lava" else "PLAINS"
+					elevation = 306
+				elif _kind == "lava":
+					biome = "LAVA_FLOW" if (x + y) % 5 != 0 else "CALDERA"
+					elevation = 304 - out + bumps
+				else:
+					biome = "SWAMP" if (x * 3 + y) % 4 != 0 else "TOXIC_MARSH"
+					elevation = 302 + bumps / 2
+			elif depth > 0:
 				biome = "SHALLOW_WATER" if depth <= 2 else "OCEAN"
 				elevation = 300 - depth * 8
-			elif x >= _shore_at(y) - 2:
+			elif x >= _shore_at(y) - 2 and _kind == "water":
 				biome = "BEACH"
 			cells.append('{"b":"%s","v":%d,"g":%d,"e":%d,"m":500}' % [biome, posmod(x * 3 + y, 4),
 				2 if depth == 0 else 0, elevation])

@@ -45,7 +45,8 @@ var _impact_cells: Dictionary = {}
 ## Elevation of every cell, row by row from (x0, y0); -1 where unexplored or not sent. For the
 ## relief, which reads hundreds of cells per block (TerrainRelief).
 var _elevations := PackedInt32Array()
-## 1 where the cell carries a water biome (LevelRules.is_water_biome), row by row like _elevations.
+## The cell's LevelRules.PierGround (1 = water, LevelRules.is_water_biome; 2 lava, 3 swamp; 0 any
+## other), row by row like _elevations.
 var _water := PackedByteArray()
 
 
@@ -107,7 +108,15 @@ func elevation(x: int, y: int) -> int:
 func is_water(x: int, y: int) -> bool:
 	if x < x0 or x > x1 or y < y0 or y > y1:
 		return false
-	return _water[(y - y0) * (x1 - x0 + 1) + x - x0] == 1
+	return _water[(y - y0) * (x1 - x0 + 1) + x - x0] == LevelRules.PierGround.WATER
+
+
+## The pier ground (LevelRules.pier_ground) of the cell at absolute (x, y); NONE when unexplored or
+## outside.
+func pier_ground(x: int, y: int) -> LevelRules.PierGround:
+	if x < x0 or x > x1 or y < y0 or y > y1:
+		return LevelRules.PierGround.NONE
+	return _water[(y - y0) * (x1 - x0 + 1) + x - x0] as LevelRules.PierGround
 
 
 func cell_count() -> int:
@@ -159,4 +168,4 @@ func _read_row(line: Dictionary) -> void:
 		_cells[Vector2i(x0 + offset, y)] = entry
 		if y >= y0 and y <= y1 and offset < width():
 			_elevations[(y - y0) * width() + offset] = entry.elevation
-			_water[(y - y0) * width() + offset] = 1 if LevelRules.is_water_biome(entry.biome) else 0
+			_water[(y - y0) * width() + offset] = LevelRules.pier_ground(entry.biome)

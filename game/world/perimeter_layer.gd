@@ -9,7 +9,7 @@ extends Node3D
 ## floodlight throws a light cone away from the base and a pool of light on the ground: no real
 ## lights (too dear on phones in the Compatibility renderer) but additive, unshaded meshes that
 ## fade with distance (perimeter_cone.gdshader, perimeter_pool.gdshader), invisible by day. On a
-## slow device only the pools stay. An item on a water cell stands on a concrete caisson (Piers),
+## slow device only the pools stay. An item on water, lava or swamp stands on a concrete caisson (Piers),
 ## drawn with the fence posts' caissons by a RetainingLayer of its own. Every structure on screen (bases or not) also casts a soft glow
 ## on the ground around itself at night (StructureGlowLayer, a child of this layer).
 ##
@@ -196,14 +196,15 @@ func rebuild() -> void:
 	var model := _view.model
 	var transforms: Dictionary = {}
 	var caissons: Array[RetainingWalls.Piece] = []
-	var water := _view.water_height()
 	var caissons_drawn := _footings.has_models([Piers.CAISSON])
 	for spot: Perimeter.Spot in spots_for(model):
 		# Masts stand upright on the ground as drawn (TerrainRelief); in the water on a caisson.
 		var at := _view.on_ground(WorldGrid.to_scene(Vector3i(spot.cell.x, spot.cell.y, 0), _view.origin, model.size_x))
-		if caissons_drawn and _view.cell_wet(spot.cell.x, spot.cell.y):
-			caissons.append(Piers.caisson(at, water, Piers.caisson_size(spot.kind)))
-			at.y = Piers.standing_height(at.y, water, true)
+		var pier := _view.cell_pier(spot.cell.x, spot.cell.y)
+		if caissons_drawn and pier != LevelRules.PierGround.NONE:
+			var surface := _view.pier_surface(pier, at.y)
+			caissons.append(Piers.caisson(at, surface, Piers.caisson_size(spot.kind), pier))
+			at.y = Piers.standing_height(at.y, surface, true)
 		# The model's front (+Z) looks along the spot's direction (cell y is scene −Z).
 		var turn := Basis(Vector3.UP, atan2(spot.direction.x, -spot.direction.y))
 		if not transforms.has(spot.kind):

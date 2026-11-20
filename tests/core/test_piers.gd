@@ -141,3 +141,66 @@ func test_a_prop_in_the_water_stands_on_a_caisson() -> void:
 	assert_float(piece.placed.basis.y.length()).is_equal_approx(1.0, 0.0001)
 	assert_float(Piers.standing_height(0.2, 0.5, true)).is_equal_approx(0.5 + Piers.CAISSON_SHOWS, 0.0001)
 	assert_float(Piers.standing_height(0.2, 0.5, false)).is_equal_approx(0.2, 0.0001)
+
+
+## A relief over one block: lava (rising 5 a cell from 300) west of x = 8, land at 340 east of it;
+## reference 300 (scene 0).
+func _lava_slope() -> TerrainRelief:
+	var request := SurfaceBlocks.Request.new()
+	request.x0 = 0
+	request.y0 = 0
+	request.x1 = B - 1
+	request.y1 = B - 1
+	request.blocks.append(Vector2i(0, 0))
+	var lines := PackedStringArray()
+	lines.append('{"bodyId":"b","x0":0,"y0":0,"x1":%d,"y1":%d,"z":0,"rows":%d}' % [B - 1, B - 1, B])
+	for y: int in B:
+		var cells := PackedStringArray()
+		for x: int in B:
+			var lava := x < 8
+			cells.append('{"b":"%s","v":0,"g":0,"e":%d,"m":0}' % ["LAVA_FLOW" if lava else "PLAINS", 300 + 5 * x if lava else 340])
+		lines.append('{"y":%d,"cells":[%s]}' % [y, ",".join(cells)])
+	lines.append('{"end":true,"rows":%d}' % B)
+	var surface := SurfaceBlocks.new()
+	surface.store(request, SurfacePatch.from_stream(Ndjson.parse("\n".join(lines))))
+	var relief := TerrainRelief.new(surface)
+	relief.water_level = WaterColumn.sea_level("EARTH_LIKE")
+	relief.set_reference(300.0)
+	return relief
+
+
+func test_on_lava_every_pillar_reaches_into_the_ground_at_its_own_corner() -> void:
+	var relief := _lava_slope()
+	var cells: Array[Vector2i] = [Vector2i(2, 4), Vector2i(3, 4)]
+	var walls := _walls(relief, cells)
+	var pieces := Piers.pieces(walls, relief, Vector3i.ZERO, 0)
+	# All six edges over lava stand on piers: six pillars on the six corners.
+	var pillars := _of(pieces, Piers.PILLAR)
+	assert_int(pillars.size()).is_equal(6)
+	assert_int(_of(pieces, RetainingWalls.PANEL).size()).is_equal(0)
+	var top := relief.scene_height(relief.base_of(cells))
+	for pillar: RetainingWalls.Piece in pillars:
+		var point := pillar.placed.origin
+		# Corner (x, y) lies at scene (x, −y); the lava there keeps its own height.
+		var corner := Vector2i(roundi(point.x), roundi(-point.z))
+		# (The wall's foot: no lower than the floor where the lava rises above it uphill.)
+		var ground := relief.scene_height(minf(relief.corner(corner.x, corner.y), relief.base_of(cells)))
+		assert_float(point.y).is_equal_approx(ground - Piers.PILLAR_SINK, 0.0001)
+		assert_float((pillar.placed * Vector3.UP).y).is_equal_approx(top - Piers.HEAD_HEIGHT, 0.0001)
+		assert_that(pillar.tint).is_equal(Piers.tint(Piers.PILLAR, LevelRules.PierGround.LAVA))
+	# The scorched band sits on the ground at each corner.
+	for collar: RetainingWalls.Piece in _of(pieces, Piers.COLLAR):
+		assert_that(collar.tint).is_equal(Piers.TINTS[LevelRules.PierGround.LAVA][1])
+
+
+func test_caissons_and_bands_take_the_look_of_their_ground() -> void:
+	var water := Piers.caisson(Vector3.ZERO, 0.0, 1.0)
+	assert_that(water.tint).is_equal(Color.WHITE)
+	var lava := Piers.caisson(Vector3.ZERO, 0.4, 1.0, LevelRules.PierGround.LAVA)
+	var swamp := Piers.caisson(Vector3.ZERO, 0.4, 1.0, LevelRules.PierGround.SWAMP)
+	# Darker and sooty on lava, mud-brown in a swamp (more red than blue).
+	assert_float(lava.tint.v).is_less(swamp.tint.v)
+	assert_float(swamp.tint.r).is_greater(swamp.tint.b)
+	assert_float(lava.placed.origin.y).is_equal_approx(0.4 - Piers.CAISSON_SINK, 0.0001)
+	assert_that(Piers.tint(Piers.HEAD, LevelRules.PierGround.LAVA)).is_equal(Color.WHITE)
+	assert_that(Piers.tint(Piers.COLLAR, LevelRules.PierGround.NONE)).is_equal(Color.WHITE)

@@ -85,6 +85,31 @@ func test_water_cells_and_the_corners_touching_them_are_wet() -> void:
 	assert_float(relief.base_of([Vector2i(2, 2)])).is_equal_approx(250.0, 0.001)
 
 
+func test_lava_and_swamp_keep_their_relief_and_are_never_shaped_by_a_pad() -> void:
+	var surface := SurfaceBlocks.new()
+	# Lava west of x = 4 (falling to the west), swamp 4..7, land at 340 from 8 on.
+	_load(surface, Vector2i(0, 0), func(x: int, _y: int) -> int: return 300 + 5 * x if x < 8 else 340,
+		Callable(), func(x: int, _y: int) -> String: return "LAVA_FLOW" if x < 4 else ("SWAMP" if x < 8 else "PLAINS"))
+	var relief := TerrainRelief.new(surface)
+	relief.water_level = WaterColumn.sea_level("EARTH_LIKE")
+	# Not flattened: the corner inside the lava is the mean of its cells.
+	assert_float(relief.corner(2, 5)).is_equal_approx(307.5, 0.001)
+	assert_int(relief.pier_ground(1, 1)).is_equal(LevelRules.PierGround.LAVA)
+	assert_int(relief.pier_ground(5, 1)).is_equal(LevelRules.PierGround.SWAMP)
+	assert_int(relief.pier_ground(9, 1)).is_equal(LevelRules.PierGround.NONE)
+	# Lava before swamp where they meet; solid ground on the land.
+	assert_int(relief.corner_pier(4, 5)).is_equal(LevelRules.PierGround.LAVA)
+	assert_int(relief.corner_pier(8, 5)).is_equal(LevelRules.PierGround.SWAMP)
+	assert_int(relief.corner_pier(10, 5)).is_equal(LevelRules.PierGround.NONE)
+	# Lava and swamp count DECK higher for a base.
+	assert_float(relief.base_of([Vector2i(2, 2)])).is_equal_approx(310.0 + TerrainRelief.DECK, 0.001)
+	# A pad over swamp and land: the swamp's corners keep their height, the land is cut.
+	var cells: Array[Vector2i] = [Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4)]
+	relief.set_pads([TerrainRelief.Pad.new(cells, 330.0)])
+	assert_float(relief.corner(7, 4)).is_equal_approx(332.5, 0.001)
+	assert_float(relief.corner(10, 4)).is_equal_approx(330.0, 0.001)
+
+
 func test_a_pad_reaching_into_the_sea_leaves_the_water_flat() -> void:
 	var surface := SurfaceBlocks.new()
 	# Ocean west of x = 8 (sea level 300), land at 340 east of it; a structure on the shore.
