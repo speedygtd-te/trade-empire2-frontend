@@ -56,6 +56,7 @@ verschärft, wenn es nötig wird.
 | Docks und Gäste gegen das Backend | `powershell -File tools\colony-smoke.ps1 -Scene dock_build` (gründet, erweitert, räumt auf) |
 | Enterprises, Rollen, Steuern, Diplomatie gegen das Backend | `powershell -File tools\colony-smoke.ps1 -Scene enterprise_flow` (zwei eigene Konten `.local/enterprise-a-`/`-b-account.json`; löst am Ende beide Enterprises auf) |
 | Enterprise-Bildschirme ansehen (live, dieselben zwei Konten; Flaggschiff, Forschung, Factory live ohne Flaggschiff, dazu `_SAMPLE`-Zustände) | `godot --path . --resolution 720x1280 res://smoke/enterprise_view.tscn -- --out=build/enterprise` |
+| Enterprise-Strukturen ansehen (Bauen, Lager, Flotten; Orbit-Bau mit dem Konto `travel`) | `godot --path . --resolution 720x1280 res://smoke/enterprise_build_view.tscn -- --out=build/enterprise2` (Konto `enterprise-a`; Flaggschiff-Zustände als `_SAMPLE`, nichts davon wird gesendet) |
 | Ebenen und Schächte gegen das Backend (eigenes Konto `levels`) | `powershell -File tools\colony-smoke.ps1 -Scene level_build` (Stockwerke, Keller, Überhang, Treppe, räumt auf) |
 | Ebenen ansehen (Wähler, Schnitt-Ansicht, Schacht, Stockwerke von außen) | `godot --path . --resolution 720x1280 res://smoke/level_view.tscn -- --out=build/levels` (Konto `levels`; baut auf und räumt ab) |
 | Routen und Lagermodi gegen das Backend (eigenes Konto `routes`) | `powershell -File tools\colony-smoke.ps1 -Scene route_flow -TimeoutSeconds 900` (baut einmal Transporter + Station und lässt sie stehen; Route anlegen, Lieferung, Pause, Löschen; dauert Minuten) |

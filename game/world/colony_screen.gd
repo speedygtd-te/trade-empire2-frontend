@@ -55,8 +55,12 @@ extends Control
 ## The screen shows one own structure (`start_structure`, else the home colony) with the other own
 ## structures on the same body drawn next to it. A structure chosen elsewhere (`show_structure`)
 ## is selected here when it is on screen; otherwise the shell is asked for a new screen
-## (`switch_requested`). A structure in orbit or under way has no ground: it shows as panels only
-## (its trip and its inventory) with the shell's navigation; its details open from the head.
+## (`switch_requested`). A structure under way has no ground: it shows as panels only (its trip
+## and its inventory) with the shell's navigation; its details open from the head. A structure
+## resting in orbit is drawn without ground and built like any other (draft.38: build batches go to
+## `POST /v2/structures/{id}/ops`, ColonyModel.send_ops). Enterprise structures (draft.38) build
+## from the enterprise inventory with MANAGE_TREASURY while the flagship stands; otherwise the
+## palette names the reason.
 ## Trips are planned in the Fleet tab (`travel_requested`). Standing alone (review scenes) the
 ## screen keeps its own fleet model and puts its layers over itself.
 
@@ -998,9 +1002,8 @@ func _fill_palette() -> void:
 	# inventory while the flagship stands; otherwise the palette names the reason.
 	var reason := _focus.build_reason() if _focus != null else ""
 	if not reason.is_empty():
-		var refused: Array[BuildCatalog.Entry] = []
 		_tool = ""
-		_palette.show_entries(refused, _tool, _reason_text(reason))
+		_palette.show_blocked(_reason_text(reason))
 		_palette.show_shapes(false, _shape, "")
 		return
 	var supply := _focus.build_inventory() if _focus != null else null

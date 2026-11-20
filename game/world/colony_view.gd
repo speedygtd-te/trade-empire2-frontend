@@ -868,8 +868,11 @@ func trip_of(structure: ColonyModel, now: int) -> Trip:
 		return Trip.RESTING
 	var motion := entry.motion
 	if motion == null:
-		var away := entry.where() == Fleet.Where.TRANSIT or entry.where() == Fleet.Where.ORBIT
+		# In orbit the view shows the structures resting there (ColonyModel.in_orbit, draft.38).
+		var away := entry.where() == Fleet.Where.TRANSIT or (entry.where() == Fleet.Where.ORBIT and not model.in_orbit)
 		return Trip.HIDDEN if away else Trip.RESTING
+	if model.in_orbit and now >= motion.arrival_at:
+		return Trip.RESTING
 	if motion.mode == TravelPlan.MODE_GROUND:
 		return Trip.DRIVING if motion.body_id == model.body_id and _site_of(entry) != null else Trip.HIDDEN
 	var phase := motion.phase_at(now)
