@@ -278,9 +278,9 @@ func _show_walls(prefix: String) -> void:
 		var wall := pair[0] as TerrainRelief.Wall
 		if wall == null:
 			continue
-		# A few cells in front of the wall's face, so the face is in the picture.
-		var cell := Vector3i(wall.a.x + wall.outward.x * 3, wall.a.y + wall.outward.y * 3, 0)
-		await _look(cell, 7.0)
+		# A cell in front of the wall's face, so the face is in the middle of the picture.
+		var cell := Vector3i(wall.a.x + wall.outward.x, wall.a.y + wall.outward.y, 0)
+		await _look(cell, 10.0)
 		_day()
 		await _capture("%s_%s_wall_day" % [prefix, pair[1]])
 		_night()
