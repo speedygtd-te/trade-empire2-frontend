@@ -501,20 +501,25 @@ class Builder:
         walking down an inside (a bowl from its rim to its bottom), they look into the bowl.
         *closed* joins the last point back to the first (a torus). *scale* stretches the radii
         along x and y (an oval). Shaded smooth, except where the profile bends more than
-        *sharp* degrees."""
+        *sharp* degrees. All of it may be see-through glass (*color* PANE, no other bands): a
+        glass dome or bell; glass and other colours do not mix in one revolve."""
         base = Vector(center)
+        glass = color == PANE
+        if any(len(point) > 2 and (point[2] == PANE) != glass for point in profile):
+            raise ValueError("revolve cannot mix see-through glass with other colours")
+        mesh = self._glass if glass else self._solid
         segments = segments_for(segments)
         rings = []
         for point in profile:
             radius, height = point[0], point[1]
             if radius <= 1e-9:
-                rings.append([self._solid.verts.new(self._frame @ (base + Vector((0.0, 0.0, height))))])
+                rings.append([mesh.verts.new(self._frame @ (base + Vector((0.0, 0.0, height))))])
                 continue
             ring = []
             for index in range(segments):
                 angle = 2.0 * math.pi * index / segments
                 local = Vector((math.cos(angle) * radius * scale[0], math.sin(angle) * radius * scale[1], height))
-                ring.append(self._solid.verts.new(self._frame @ (base + local)))
+                ring.append(mesh.verts.new(self._frame @ (base + local)))
             rings.append(ring)
         bands = {}
         for number in range(len(profile) if closed else len(profile) - 1):
@@ -531,11 +536,9 @@ class Builder:
                     corners = [low[index], low[following], high[0]]
                 else:
                     corners = [low[index], low[following], high[following], high[index]]
-                created.add(self._solid.faces.new(corners))
+                created.add(mesh.faces.new(corners))
         limit = math.radians(sharp)
         for band, faces in bands.items():
-            if band == PANE:
-                raise ValueError("revolve cannot make see-through glass")
             self._paint(faces, band)
             for face in faces:
                 face.normal_update()
