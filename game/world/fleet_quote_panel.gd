@@ -185,8 +185,7 @@ func _error(code: String) -> String:
 
 
 static func _whole(value: int, scale: int) -> String:
-	@warning_ignore("integer_division")
-	return AmountFormat.units(value / maxi(scale, 1))
+	return AmountFormat.amount(value, scale)
 
 
 func _line(text: String, color: Color) -> void:

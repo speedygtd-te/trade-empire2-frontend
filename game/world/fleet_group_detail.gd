@@ -175,6 +175,7 @@ func _ready() -> void:
 	_actions.add_child(_disband)
 	_disband_note = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_actions.add_child(_disband_note)
+	_actions.add_child(Ui.spacer(32))
 
 	_model.changed.connect(_update)
 	_update()
@@ -541,9 +542,8 @@ static func supply_text(group: FleetGroups.Group, translator: Object) -> String:
 		if item.self_use <= 0:
 			continue
 		var shown := Services.definitions.resource_name(item.resource) if Services.definitions != null else ""
-		@warning_ignore("integer_division")
 		parts.append("%s %s" % [shown if not shown.is_empty() else translator.tr("STORE_UNKNOWN_ITEM"),
-			AmountFormat.units(item.self_use / maxi(scale, 1))])
+			AmountFormat.amount(item.self_use, scale)])
 	if parts.is_empty():
 		return translator.tr("FLEETS_SUPPLY_EMPTY")
 	return translator.tr("FLEETS_SUPPLY").format({"rows": " · ".join(parts)})
