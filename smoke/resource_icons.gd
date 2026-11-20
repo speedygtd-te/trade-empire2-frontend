@@ -34,11 +34,21 @@ const MARGIN := 0.06
 ## The contact sheets: the size the UI shows an icon at, and the enlarged size.
 const SHEET_SIZES: Array[int] = [44, 128]
 ## Items the server does not offer yet whose models exist (item key -> model), after the specs
-## in Backend-V2/docs: the probe launcher (SPEC-sonden); the civic and population enterprise
-## modules and the member modules of SPEC-enterprise-flaggschiff (item keys after the usual
-## <MODULE>_MODULE pattern; several module keys there are working titles).
+## in Backend-V2/docs: the probe launcher (SPEC-sonden); the enterprise modules and the
+## enterprise hulls (SPEC-enterprise-flaggschiff 3.6, 5.1, 5.2, 5.5, 6a; item keys <MODULE>_MODULE and
+## HULL_<TYPE>, indoor hulls shown shut; several module keys there are working titles) and the
+## member modules of 6a. The unique factory, lab and supply hub have no item.
 const COMING_ITEMS: Dictionary[String, String] = {
 	"PROBE_LAUNCHER_MODULE": "probe_launcher",
+	"ENTERPRISE_GENERATOR_MODULE": "enterprise_generator",
+	"ENTERPRISE_HABITAT_T3_MODULE": "enterprise_habitat_t3",
+	"ENTERPRISE_SUBLIGHT_THRUSTER_MODULE": "enterprise_sublight_thruster",
+	"HULL_ENTERPRISE_HULL_STANDARD": "hull_enterprise_hull_standard_closed",
+	"HULL_ENTERPRISE_HULL_GLASS": "hull_enterprise_hull_glass_closed",
+	"HULL_ENTERPRISE_HULL_ARMORED": "hull_enterprise_hull_armored_closed",
+	"HULL_ENTERPRISE_PLATFORM": "hull_enterprise_platform",
+	"HULL_ENTERPRISE_PLATFORM_ARMORED": "hull_enterprise_platform_armored",
+	"HULL_ENTERPRISE_DOCK": "hull_enterprise_dock",
 	"ENTERPRISE_ADMINISTRATION_MODULE": "enterprise_administration",
 	"MINING_EFFICIENCY_DISTRIBUTOR_MODULE": "mining_efficiency_distributor",
 	"CARTOGRAPHY_ARCHIVE_MODULE": "cartography_archive",
