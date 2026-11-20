@@ -4,7 +4,7 @@ extends EnterpriseTab
 ## it is paused — the Enterprise Lab in the flagship does not work), cancelling it in two steps
 ## (nothing is refunded); below, the techs by tier E1–E4, each with its state: researched,
 ## running, available with cost and time, or locked with the missing prerequisites. A tap opens
-## a tech under the list: cost (what the inventory lacks in red), time, what it unlocks, and
+## a tech in place, below its row: cost (what the inventory lacks in red), time, what it unlocks, and
 ## "Start research" in two steps — only with MANAGE_TREASURY and a flagship, otherwise the
 ## reason. Loaded again every minute while shown.
 
@@ -16,7 +16,6 @@ var _running_box: VBoxContainer
 var _running_line: Label = null
 var _running_bar: ProgressBar = null
 var _list: VBoxContainer
-var _detail: VBoxContainer
 var _chosen := ""
 var _tick := 0.0
 var _reload := 0.0
@@ -28,8 +27,6 @@ func _build() -> void:
 	_running_box = Ui.column(10)
 	add_child(_running_box)
 	_list = scroll_column(self, 8)
-	_detail = Ui.column(10)
-	add_child(_detail)
 	model.research_changed.connect(refresh)
 	model.flagship_changed.connect(refresh)
 	model.stock_changed.connect(refresh)
@@ -77,7 +74,6 @@ func refresh() -> void:
 		return
 	clear(_running_box)
 	clear(_list)
-	clear(_detail)
 	_running_line = null
 	_running_bar = null
 	var research := model.research
@@ -103,8 +99,8 @@ func refresh() -> void:
 		text_label(_list, tr("ENTERPRISE_RESEARCH_TIER").format({"tier": tier}), AppTheme.VARIATION_MUTED)
 		for tech: EnterpriseResearch.Tech in techs:
 			_tech_row(research, tech)
-	if not _chosen.is_empty() and research.tech(_chosen) != null:
-		_show_detail(research, research.tech(_chosen))
+			if tech.key == _chosen:
+				_show_detail(research, tech)
 
 
 func _show_running(research: EnterpriseResearch) -> void:
@@ -171,8 +167,7 @@ func _tech_row(research: EnterpriseResearch, tech: EnterpriseResearch.Tech) -> v
 
 
 func _show_detail(research: EnterpriseResearch, tech: EnterpriseResearch.Tech) -> void:
-	var box := card(_detail)
-	text_label(box, tech.name, AppTheme.VARIATION_HEADING)
+	var box := card(_list)
 	var short := EnterpriseResearch.shortfall(tech.cost, model.stock, Services.clock.now_ms()) if model.stock != null else {}
 	var cost := text_label(box, tr("ENTERPRISE_RESEARCH_COST").format({"cost": costs_text(tech.cost, self),
 		"duration": TimeFormat.duration(tech.duration_ms)}))
@@ -192,7 +187,7 @@ func _show_detail(research: EnterpriseResearch, tech: EnterpriseResearch.Tech) -
 	var reason := research.start_blocker(tech.key, holds(Enterprise.FLAG_TREASURY), _has_flagship())
 	if reason == "done" or reason == "locked":
 		return
-	var start := action_button(box, tr("ENTERPRISE_RESEARCH_START_CONFIRM").format({"cost": costs_text(tech.cost, self)})
+	var start := action_button(box, tr("ENTERPRISE_RESEARCH_START_CONFIRM")
 		if armed == "start" else tr("ENTERPRISE_RESEARCH_START"), false, true)
 	start.disabled = busy or not reason.is_empty()
 	start.pressed.connect(_on_start.bind(tech.key))
@@ -201,6 +196,7 @@ func _show_detail(research: EnterpriseResearch, tech: EnterpriseResearch.Tech) -
 	elif armed == "start":
 		var warning := text_label(box, tr("ENTERPRISE_RESEARCH_START_WARNING"))
 		warning.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	reveal(start)
 
 
 func _reason_text(reason: String) -> String:

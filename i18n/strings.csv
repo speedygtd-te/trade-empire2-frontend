@@ -1372,7 +1372,7 @@ ENTERPRISE_RESEARCH_LACKS,The inventory lacks {cost}.
 ENTERPRISE_RESEARCH_UNLOCKS,Unlocks: {items}
 ENTERPRISE_RESEARCH_NEEDS,Needs: {techs}
 ENTERPRISE_RESEARCH_START,Start research
-ENTERPRISE_RESEARCH_START_CONFIRM,Tap again to pay {cost}
+ENTERPRISE_RESEARCH_START_CONFIRM,Tap again to start and pay
 ENTERPRISE_RESEARCH_START_WARNING,"The cost is taken at once; cancelling refunds nothing."
 ENTERPRISE_RESEARCH_STARTED,Research started.
 ENTERPRISE_RESEARCH_WHY_BUSY,Another research is running.
@@ -1409,3 +1409,8 @@ ERROR_NOT_ENTERPRISE_BUILDABLE,The Enterprise Factory cannot build this.
 ERROR_ENTERPRISE_TECH_LOCKED,This needs enterprise research first.
 ERROR_ENTERPRISE_RESEARCH_RUNNING,Another research is already running.
 ERROR_UNKNOWN_ENTERPRISE_TECH,"This research is unknown, already done, or nothing is running."
+ENTERPRISE_FACTORY_CATALOG,All blueprints ({count})
+ENTERPRISE_FACTORY_CATALOG_CLOSE,Hide blueprints
+ENTERPRISE_FACTORY_READY,ready
+ENTERPRISE_FACTORY_NEEDS_TECH,needs {tech}
+ENTERPRISE_FACTORY_NEEDS_FLAGSHIP,needs the flagship

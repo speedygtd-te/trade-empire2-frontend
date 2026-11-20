@@ -16,6 +16,8 @@ var _actions: VBoxContainer
 var _draft: Array[Array] = []
 var _dirty := false
 var _picking := false
+## The list of every blueprint is open.
+var _catalog := false
 var _reload := 0.0
 
 
@@ -36,14 +38,17 @@ func shown() -> void:
 	model.reload_factory()
 	if model.flagship == null:
 		model.reload_flagship()
+	if model.research == null:
+		model.reload_research()
 	_reload = RELOAD_SECONDS
 
 
 func handle_back() -> bool:
 	if super.handle_back():
 		return true
-	if _picking:
+	if _picking or _catalog:
 		_picking = false
+		_catalog = false
 		refresh()
 		return true
 	return false
@@ -95,6 +100,7 @@ func refresh() -> void:
 	var editable := _can_edit()
 	for index: int in _draft.size():
 		_line_card(factory, index, editable)
+	_show_catalog(factory)
 	if not editable:
 		return
 	var add := action_button(_actions, tr("ENTERPRISE_FACTORY_ADD"))
@@ -123,7 +129,7 @@ func _line_card(factory: EnterpriseFactory, index: int, editable: bool) -> void:
 	head.add_theme_constant_override("separation", 16)
 	box.add_child(head)
 	var recipe := factory.recipe(blueprint)
-	head.add_child(Ui.resource_icon(recipe.item if recipe != null else ""))
+	head.add_child(Ui.resource_icon(recipe.item if recipe != null else "", ResourceIcon.ROW_SIZE, true))
 	var title := text_label(head, _blueprint_name(blueprint))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
@@ -171,7 +177,7 @@ func _show_picker(factory: EnterpriseFactory) -> void:
 		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.text = "%s\n%s" % [_blueprint_name(recipe.blueprint), tr("ENTERPRISE_FACTORY_RATE").format({
 			"rate": AmountFormat.rate(recipe.units_per_hour, scale), "cost": costs_text(recipe.inputs, self)})]
-		Ui.add_resource_icon(row, recipe.item)
+		Ui.add_resource_icon(row, recipe.item, true)
 		var key := recipe.blueprint
 		row.tapped.connect(func() -> void:
 			_draft.append([key, 1])
@@ -191,6 +197,42 @@ func _show_picker(factory: EnterpriseFactory) -> void:
 	cancel.pressed.connect(func() -> void:
 		_picking = false
 		refresh())
+
+
+## Every blueprint of the factory with its rate and the research it needs, behind a button.
+func _show_catalog(factory: EnterpriseFactory) -> void:
+	var toggle := action_button(_list, tr("ENTERPRISE_FACTORY_CATALOG_CLOSE") if _catalog
+		else tr("ENTERPRISE_FACTORY_CATALOG").format({"count": factory.recipes.size()}))
+	toggle.pressed.connect(func() -> void:
+		_catalog = not _catalog
+		refresh())
+	if not _catalog:
+		return
+	var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+	var names: Dictionary = {}
+	for recipe: EnterpriseFactory.Recipe in factory.recipes:
+		names[recipe.blueprint] = _blueprint_name(recipe.blueprint)
+	var sorted := factory.recipes.duplicate()
+	sorted.sort_custom(func(a: EnterpriseFactory.Recipe, b: EnterpriseFactory.Recipe) -> bool:
+		return str(names[a.blueprint]).naturalnocasecmp_to(str(names[b.blueprint])) < 0)
+	for recipe: EnterpriseFactory.Recipe in sorted:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		_list.add_child(row)
+		row.add_child(Ui.resource_icon(recipe.item, ResourceIcon.ROW_SIZE, true))
+		var texts := Ui.column(2)
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(texts)
+		text_label(texts, str(names[recipe.blueprint]), "" if recipe.unlocked else AppTheme.VARIATION_MUTED)
+		var state := tr("ENTERPRISE_FACTORY_READY") if recipe.unlocked else (
+			tr("ENTERPRISE_FACTORY_NEEDS_TECH").format({"tech": _tech_name(recipe.tech)}) if not recipe.tech.is_empty()
+			else tr("ENTERPRISE_FACTORY_NEEDS_FLAGSHIP"))
+		text_label(texts, "%s · %s" % [AmountFormat.rate(recipe.units_per_hour, scale), state], AppTheme.VARIATION_MUTED)
+
+
+func _tech_name(key: String) -> String:
+	var known := model.research.name_of(key) if model.research != null else ""
+	return known if not known.is_empty() else tr("ENTERPRISE_RESEARCH_UNKNOWN_TECH")
 
 
 func _blueprint_name(blueprint: String) -> String:
