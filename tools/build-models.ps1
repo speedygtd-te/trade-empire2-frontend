@@ -15,16 +15,28 @@
 # hulls.py are libraries. Default output: game\world\models (the models the game loads).
 # Look at them with
 #   powershell -File tools\preview-models.ps1 game\world\models build\model-preview -NoFit
+#
+# -Detail hd builds the high-detail variant of the modules and hulls for strong phones (rounder,
+# rounded edges, 1024 px textures; kit.py HD_*) into game\world\models_hd with the same file
+# names; the game shows it on the top detail tier. Props, perimeter, grounds and resources have
+# none. Afterwards Godot imports the folder and its textures are switched to lossy WebP (a
+# quarter of the APK size of lossless at 1024 px; needs Godot, GODOT_BIN).
 # Exit code: 0 = ok, 1 = at least one model failed or breaks its size limits, 2 = Blender not found.
 param(
     [string]$Out = '',
     [string]$Only = '',
-    [string]$Types = ''
+    [string]$Types = '',
+    [ValidateSet('', 'hd')]
+    [string]$Detail = ''
 )
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
-if (-not $Out) { $Out = Join-Path $root 'game\world\models' }
+if (-not $Out) { $Out = Join-Path $root $(if ($Detail -eq 'hd') { 'game\world\models_hd' } else { 'game\world\models' }) }
+# kit.py reads the detail level from the environment; the normal build must not inherit it.
+if ($Detail) { $env:TE_DETAIL = $Detail } else { Remove-Item Env:TE_DETAIL -ErrorAction SilentlyContinue }
+# Only modules and hulls have a high-detail variant.
+$noDetail = @('props', 'perimeter', 'grounds', 'resources', 'retaining')
 $blender = $env:BLENDER_BIN
 if (-not $blender) { $blender = 'F:\Program Files\Blender Foundation\Blender 5.3\blender.exe' }
 if (-not (Test-Path -LiteralPath $blender)) {
@@ -36,6 +48,7 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $failed = 0
 $models = Get-ChildItem -LiteralPath (Join-Path $root 'scripts\3d\models') -Filter '*.py' -File |
     Where-Object { $_.BaseName -notin @('kit', 'parts', 'hulls') -and (-not $Only -or $_.BaseName -eq $Only) } |
+    Where-Object { -not $Detail -or $_.BaseName -notin $noDetail } |
     Sort-Object Name
 foreach ($model in $models) {
     if ($model.BaseName -in @('families', 'hulls_closed', 'props', 'perimeter', 'grounds', 'retaining', 'resources')) {
@@ -57,5 +70,28 @@ foreach ($model in $models) {
     }
 }
 if ($models.Count -eq 0) { Write-Output 'no model scripts found'; exit 1 }
+# Godot extracts the textures of a GLB on its first import, with lossless import settings: import,
+# switch the high-detail ones to lossy, import again.
+if ($Detail) {
+    $godot = $env:GODOT_BIN
+    if (-not $godot) { $godot = 'F:\Tools\Godot\godot_console.exe' }
+    if (Test-Path -LiteralPath $godot) {
+        Push-Location -LiteralPath $root
+        & $godot --headless --path . --import --quit *> $null
+        $lossy = 0
+        Get-ChildItem -LiteralPath $Out -Filter '*.webp.import' -File | ForEach-Object {
+            $text = [IO.File]::ReadAllText($_.FullName)
+            if ($text -match 'compress/mode=0') {
+                [IO.File]::WriteAllText($_.FullName, ($text -replace 'compress/mode=0', 'compress/mode=1'))
+                $lossy++
+            }
+        }
+        if ($lossy -gt 0) { & $godot --headless --path . --import --quit *> $null }
+        Pop-Location
+        Write-Output "textures switched to lossy: $lossy"
+    } else {
+        Write-Output "Godot not found ($godot): high-detail textures stay lossless until this runs again"
+    }
+}
 if ($failed -gt 0) { exit 1 }
 exit 0

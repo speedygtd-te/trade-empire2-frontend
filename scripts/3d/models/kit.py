@@ -181,9 +181,43 @@ GLASS_ROUGHNESS = 0.05
 # How a surface kind is stored in the fourth channel of the face colour.
 _KINDS = {"concrete": 0.0, "plain": 0.5, "metal": 1.0}
 
+# --- Detail level ----------------------------------------------------------------------------
+# TE_DETAIL=hd builds the high-detail variant of modules and hulls for strong phones
+# (tools/build-models.ps1 -Detail hd -> game/world/models_hd, shown on the top detail tier):
+# rounder cylinders and revolves, real rounded edges on boxes and beams, textures twice the edge
+# length. Shapes, colours and the recipe stay the same; without TE_DETAIL nothing changes.
+DETAIL = os.environ.get("TE_DETAIL", "").strip().lower()
+HD = DETAIL == "hd"
+# Round shapes: segments of at least HD_ROUND_FROM are multiplied, up to HD_MAX_SEGMENTS; six-sided
+# rods and pipes of at least HD_ROD_RADIUS get HD_ROD_SEGMENTS. Fewer segments are meant to show
+# (plants, pins, square and pyramid shapes) and stay.
+HD_SEGMENT_FACTOR = 2
+HD_ROUND_FROM = 8
+HD_MAX_SEGMENTS = 40
+HD_ROD_RADIUS = 0.012
+HD_ROD_SEGMENTS = 10
+# Rounded edges of boxes and beams: width (cells, at most HD_BEVEL_SHARE of the thinnest side),
+# segments, and the thinnest side below which a box keeps sharp edges (thin plates, wires).
+HD_BEVEL_WIDTH = 0.012
+HD_BEVEL_SHARE = 0.2
+HD_BEVEL_SEGMENTS = 2
+HD_BEVEL_MIN_SIDE = 0.03
+
+
+def segments_for(segments: int, radius: float = 1.0) -> int:
+    """The segments of a round shape at the detail level of this build."""
+    if not HD:
+        return segments
+    if segments >= HD_ROUND_FROM:
+        return min(HD_MAX_SEGMENTS, segments * HD_SEGMENT_FACTOR)
+    if segments == 6 and radius >= HD_ROD_RADIUS:
+        return HD_ROD_SEGMENTS
+    return segments
+
+
 # --- The recipe of the baked look -----------------------------------------------------------
 # Edge length of the texture of one model, in pixels.
-TEXTURE_PIXELS = 512
+TEXTURE_PIXELS = 1024 if HD else 512
 # How often a surface texture repeats across one grid cell.
 SURFACE_REPEATS = 2.0
 # How strongly the surface texture breaks up the flat colour (0 = flat).
@@ -316,13 +350,16 @@ class Builder:
         matrix = (self._frame @ Matrix.Translation(Vector(center)) @ Matrix.Rotation(turn, 4, "Z")
                   @ Matrix.Diagonal((size[0], size[1], size[2], 1.0)))
         with self._into(color):
-            self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
+            created = bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)
+            self._paint(self._rounded(created, color, min(size)), color)
 
     def beam(self, start, end, thickness: float, color: str) -> None:
         """A square bar from *start* to *end*."""
         matrix = _along(self._frame @ Vector(start), self._frame @ Vector(end), thickness, thickness)
         with self._into(color):
-            self._paint(self._faces(bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)), color)
+            created = bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)
+            length = (Vector(end) - Vector(start)).length
+            self._paint(self._rounded(created, color, min(thickness, length)), color)
 
     def cylinder(self, start, end, radius: float, color: str, segments: int = 10,
                  end_radius: float | None = None) -> None:
@@ -330,7 +367,8 @@ class Builder:
         start, end = self._frame @ Vector(start), self._frame @ Vector(end)
         with self._into(color):
             created = bmesh.ops.create_cone(
-                self._mesh, cap_ends=True, cap_tris=False, segments=segments, radius1=radius,
+                self._mesh, cap_ends=True, cap_tris=False,
+                segments=segments_for(segments, max(radius, end_radius or 0.0)), radius1=radius,
                 radius2=radius if end_radius is None else end_radius, depth=1.0,
                 matrix=_along(start, end, 1.0, 1.0))
             faces = self._faces(created)
@@ -386,6 +424,7 @@ class Builder:
         along x and y (an oval). Shaded smooth, except where the profile bends more than
         *sharp* degrees."""
         base = Vector(center)
+        segments = segments_for(segments)
         rings = []
         for point in profile:
             radius, height = point[0], point[1]
@@ -467,6 +506,31 @@ class Builder:
 
     def _faces(self, created: dict) -> set:
         return {face for vert in created["verts"] for face in vert.link_faces}
+
+    def _rounded(self, created: dict, color: str, thinnest: float) -> set:
+        """The faces of a box just made; in the high-detail build its edges are rounded first
+        (HD_BEVEL_*), shaded smooth across the rounding and flat on the sides. Glass stays sharp."""
+        faces = self._faces(created)
+        if not HD or color == PANE or thinnest < HD_BEVEL_MIN_SIDE:
+            return faces
+        verts = list(created["verts"])
+        edges = list({edge for vert in verts for edge in vert.link_edges})
+        result = bmesh.ops.bevel(
+            self._mesh, geom=verts + edges, offset=min(HD_BEVEL_WIDTH, thinnest * HD_BEVEL_SHARE),
+            offset_type="OFFSET", segments=HD_BEVEL_SEGMENTS, profile=0.5, affect="EDGES",
+            clamp_overlap=True)
+        rounding = set(result["faces"])
+        for face in rounding:
+            face.smooth = True
+        # The bevel replaces faces of the box: take the whole box again (it is an island).
+        island, waiting = set(), list(rounding)
+        while waiting:
+            face = waiting.pop()
+            if face in island:
+                continue
+            island.add(face)
+            waiting.extend(other for edge in face.edges for other in edge.link_faces if other not in island)
+        return island
 
     def _paint(self, faces: set, color: str) -> None:
         if color == PANE:
