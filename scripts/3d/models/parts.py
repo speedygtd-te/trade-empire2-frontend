@@ -607,3 +607,233 @@ def cow(model, position, z: float, turn: float = 0.0, patch: str = "dark") -> No
             for along in (-0.055, 0.05):
                 model.box((along, side * 0.022, 0.0225), (0.016, 0.016, 0.045), "hide")
         model.beam((-0.075, 0.0, 0.095), (-0.09, 0.0, 0.05), 0.008, "dark")
+
+
+# --- Enterprise style ---------------------------------------------------------------------------
+# The clean, modern look of the enterprise items (Rudi 2026-11-20): white satin panels with fine
+# seams, exposed carbon fibre and graphite as accents, a little chrome, cyan light strips, sleek
+# displays and much glass. Models build with kit.Builder(name, style="enterprise") (no rust, no
+# grime) and paint only with these colours; the rough player parts above do not belong on them.
+# Soft-rounded edges come from kit.Builder.rounded_box.
+
+ENT_WHITE = "ent_white"            # wall and housing panels, with seams
+ENT_SMOOTH = "ent_white_smooth"    # small white parts (no seams)
+ENT_GREY = "ent_grey"              # secondary panels, armour
+ENT_FLOOR = "ent_floor"            # floors: light tiles
+ENT_GRAPHITE = "ent_graphite"      # trims, frames, bezels, shadow gaps
+ENT_CARBON = "ent_carbon"          # exposed carbon fibre: plinths, bands, arms
+ENT_CHROME = "ent_chrome"          # sparingly: rings, rails, caps
+ENT_LIGHT = "ent_glow"             # cyan light strips and lamps
+ENT_LAMP = "ent_lamp"              # cool white lamps
+ENT_SCREEN = "ent_screen"          # a display's glowing screen
+ENT_ACCENT = "ent_amber"           # a rare warm dot on a display
+ENT_WINDOW = "ent_window"          # a closed ribbon window, lit from inside at night
+_PANE = "pane"                     # kit.PANE: see-through glass
+
+_ACROSS_UP = {
+    "+x": ((0, 1, 0), (0, 0, 1)), "-x": ((0, 1, 0), (0, 0, 1)),
+    "+y": ((1, 0, 0), (0, 0, 1)), "-y": ((1, 0, 0), (0, 0, 1)),
+    "+z": ((1, 0, 0), (0, 1, 0)),
+}
+
+
+def _on_face(center, facing: str, across: float, up: float, out: float = 0.0) -> tuple:
+    """A point on a face looking along *facing*: *across* and *up* from *center* as seen on the
+    face (kit.Builder.plate's axes), *out* in front of it."""
+    a, u = _ACROSS_UP[facing]
+    o = _OUTWARD[facing]
+    return tuple(center[axis] + a[axis] * across + u[axis] * up + o[axis] * out for axis in range(3))
+
+
+def light_strip(model, start, end, thickness: float = 0.012, color: str = ENT_LIGHT) -> None:
+    """A glowing strip from *start* to *end*, a square bar of *thickness*; set it half into the
+    surface it runs along."""
+    model.beam(start, end, thickness, color)
+
+
+def display(model, center, size, facing: str, seed: int = 0, frame: str = ENT_GRAPHITE,
+            depth: float = 0.012) -> None:
+    """A slim display looking along *facing* (+x, -x, +y, -y or +z): a graphite bezel *depth*
+    deep whose front is at *center*, a glowing screen and a simple abstract interface on it,
+    different for every *seed*: a title bar, rows of lines, a bar chart or a ring of dots, a warm
+    marker. *size* is (across, up) of the bezel."""
+    generator = random.Random(seed)
+    width, height = size
+    if facing in ("+x", "-x"):
+        box = (depth, width, height)
+    elif facing in ("+y", "-y"):
+        box = (width, depth, height)
+    else:
+        box = (width, height, depth)
+    model.box(_on_face(center, facing, 0.0, 0.0, -depth / 2.0), box, frame)
+    border = min(width, height) * 0.08
+    inner_w, inner_h = width - 2.0 * border, height - 2.0 * border
+    model.plate(_on_face(center, facing, 0.0, 0.0, _HAIR), (inner_w, inner_h), facing, ENT_SCREEN)
+
+    def mark(across: float, up: float, mark_size, color: str = ENT_LIGHT) -> None:
+        # *across*, *up*: shares of the screen from its lower left corner.
+        point = _on_face(center, facing, (across - 0.5) * inner_w, (up - 0.5) * inner_h, 2.0 * _HAIR)
+        model.plate(point, (mark_size[0] * inner_w, mark_size[1] * inner_h), facing, color)
+
+    mark(0.5, 0.90, (0.92, 0.06))
+    layout = generator.choice(("lines_chart", "ring_lines", "chart_wide"))
+    if layout in ("lines_chart", "ring_lines"):
+        for row in range(3 + generator.randint(0, 1)):
+            length = generator.uniform(0.25, 0.42)
+            mark(0.06 + length / 2.0, 0.70 - row * 0.16, (length, 0.05), ENT_LAMP if row == 0 else ENT_LIGHT)
+    if layout == "lines_chart":
+        for bar in range(5):
+            tall = generator.uniform(0.15, 0.62)
+            mark(0.60 + bar * 0.075, 0.10 + tall / 2.0, (0.045, tall))
+    elif layout == "ring_lines":
+        aspect = inner_h / inner_w
+        for dot in range(10):
+            angle = 2.0 * math.pi * dot / 10.0
+            mark(0.74 + math.cos(angle) * 0.25 * aspect, 0.44 + math.sin(angle) * 0.25, (0.07 * aspect, 0.07),
+                 ENT_LAMP if dot < 3 else ENT_LIGHT)
+    else:
+        for bar in range(9):
+            tall = generator.uniform(0.12, 0.55)
+            mark(0.08 + bar * 0.105, 0.10 + tall / 2.0, (0.06, tall))
+        mark(0.30, 0.78, (0.40, 0.05), ENT_LAMP)
+    mark(0.93, 0.08, (0.05, 0.06), ENT_ACCENT)
+
+
+def wall_panel(model, center, size, facing: str, color: str = ENT_WHITE, gap: str = ENT_GRAPHITE,
+               depth: float = 0.014) -> None:
+    """A raised panel on a wall looking along *facing*, its back at *center*: a white slab with a
+    thin graphite shadow gap around it. *size* is (across, up)."""
+    width, height = size
+    model.plate(_on_face(center, facing, 0.0, 0.0, _HAIR), (width + 0.012, height + 0.012), facing, gap)
+    box = (depth, width, height) if facing in ("+x", "-x") else (width, depth, height)
+    model.box(_on_face(center, facing, 0.0, 0.0, depth / 2.0), box, color)
+
+
+def corner_post(model, position, bottom: float, top: float, radius: float = 0.035, segments: int = 3,
+                outward=None, color: str = ENT_WHITE, strip: str | None = ENT_LIGHT) -> None:
+    """A round-edged post at *position* from *bottom* to *top*; with *strip* and *outward*
+    (sx, sy: the corner it faces) a glowing line up that corner."""
+    x, y = position
+    model.rounded_box((x, y, (bottom + top) / 2.0), (2.0 * radius, 2.0 * radius, top - bottom), radius * 0.9,
+                      color, segments=segments)
+    if strip and outward:
+        reach = radius * 0.72
+        length = top - bottom
+        light_strip(model, (x + outward[0] * reach, y + outward[1] * reach, bottom + length * 0.15),
+                    (x + outward[0] * reach, y + outward[1] * reach, top - length * 0.10), 0.012, strip)
+
+
+def glass_wall(model, start, end, bottom: float, top: float, sill: float = 0.05,
+               mullions: int = 2, frame: str = ENT_SMOOTH, light: str | None = ENT_LIGHT) -> None:
+    """A glass bulkhead from *start* to *end* (x, y): a white sill with a cyan line along its
+    front (the side to the right of the walk), a pane up to a slim graphite head rail, *mullions*
+    slim graphite bars."""
+    length = math.hypot(end[0] - start[0], end[1] - start[1])
+    with model.placed(((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0, 0.0),
+                      turn=math.atan2(end[1] - start[1], end[0] - start[0])):
+        model.box((0.0, 0.0, bottom + sill / 2.0), (length, 0.05, sill), frame)
+        if light:
+            light_strip(model, (-length / 2.0 + 0.02, -0.025, bottom + sill - 0.006),
+                        (length / 2.0 - 0.02, -0.025, bottom + sill - 0.006), 0.009, light)
+        tall = top - bottom - sill
+        model.box((0.0, 0.0, bottom + sill + tall / 2.0), (length, 0.006, tall), _PANE)
+        model.box((0.0, 0.0, top - 0.008), (length, 0.03, 0.016), ENT_GRAPHITE)
+        for index in range(mullions):
+            along = -length / 2.0 + length * (index + 1) / (mullions + 1)
+            model.box((along, 0.0, bottom + sill + tall / 2.0), (0.012, 0.016, tall), ENT_GRAPHITE)
+
+
+def carbon_trim(model, start, end, height: float, depth: float = 0.02, z: float = 0.0) -> None:
+    """A band of exposed carbon fibre from *start* to *end* (x, y), *height* tall from *z*."""
+    length = math.hypot(end[0] - start[0], end[1] - start[1])
+    with model.placed(((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0, 0.0),
+                      turn=math.atan2(end[1] - start[1], end[0] - start[0])):
+        model.box((0.0, 0.0, z + height / 2.0), (length, depth, height), ENT_CARBON)
+
+
+def plinth(model, half, height: float = 0.05, radius: float = 0.06, light: bool = True) -> float:
+    """The base enterprise machines stand on: a carbon skirt, a white top with soft corners and,
+    with *light*, a cyan line round the skirt. *half* may be (x, y). Returns its top."""
+    hx, hy = (half, half) if isinstance(half, (int, float)) else half
+    skirt = height * 0.55
+    model.rounded_box((0.0, 0.0, skirt / 2.0), (2.0 * hx - 0.02, 2.0 * hy - 0.02, skirt), radius, ENT_CARBON)
+    model.rounded_box((0.0, 0.0, skirt + (height - skirt) / 2.0), (2.0 * hx, 2.0 * hy, height - skirt), radius,
+                      ENT_SMOOTH)
+    if light:
+        line = skirt * 0.5
+        for sign in (-1, 1):
+            light_strip(model, (-(hx - radius), sign * (hy - 0.012), line), (hx - radius, sign * (hy - 0.012), line),
+                        0.008)
+            light_strip(model, (sign * (hx - 0.012), -(hy - radius), line), (sign * (hx - 0.012), hy - radius, line),
+                        0.008)
+    return height
+
+
+def console(model, position, z: float, width: float = 0.20, turn: float = 0.0, seed: int = 0) -> None:
+    """A free-standing console at *position* on *z*, its operator side to the front (-y of its
+    *turn*): a soft white pedestal on a carbon foot, a slanted display and a cyan kick light."""
+    with model.placed((position[0], position[1], z), turn=turn):
+        model.rounded_box((0.0, 0.0, 0.008), (width, 0.10, 0.016), 0.03, ENT_CARBON)
+        model.rounded_box((0.0, 0.01, 0.016 + 0.045), (width * 0.86, 0.07, 0.09), 0.025, ENT_SMOOTH)
+        light_strip(model, (-width * 0.34, -0.026, 0.026), (width * 0.34, -0.026, 0.026), 0.008)
+        with model.placed((0.0, -0.005, 0.115), tilt=0.85):
+            model.box((0.0, 0.0, 0.0), (width, 0.10, 0.014), ENT_SMOOTH)
+            display(model, (0.0, 0.0, 0.007 + 0.005), (width * 0.92, 0.088), "+z", seed=seed, depth=0.005)
+
+
+def ent_room(model, half=0.42, height: float = 0.40, glass: bool = True, floor_top: float = 0.06) -> float:
+    """The open room of an enterprise module (the counterpart of room): a tiled floor on a carbon
+    edge with a cyan line along the open sides, two walls meeting in the back left corner (+y,
+    -x) - white panels below, glass above (*glass*) under a white head with a cyan cove light -
+    and a round post in that corner. *half* may be (x, y). Returns the floor's top."""
+    hx, hy = (half, half) if isinstance(half, (int, float)) else half
+    model.box((0.0, 0.0, floor_top * 0.3), (2.0 * hx, 2.0 * hy, floor_top * 0.6), ENT_CARBON)
+    model.box((0.0, 0.0, floor_top * 0.8), (2.0 * hx, 2.0 * hy, floor_top * 0.4), ENT_FLOOR)
+    light_strip(model, (-hx + 0.03, -hy, floor_top * 0.3), (hx - 0.03, -hy, floor_top * 0.3), 0.008)
+    light_strip(model, (hx, -hy + 0.03, floor_top * 0.3), (hx, hy - 0.03, floor_top * 0.3), 0.008)
+    thick = 0.05
+    top = floor_top + height
+    lower = floor_top + (height * 0.42 if glass else height - 0.04)
+    back_y, left_x = hy - thick / 2.0, -hx + thick / 2.0
+    model.box((thick / 2.0, back_y, (floor_top + lower) / 2.0), (2.0 * hx - thick, thick, lower - floor_top),
+              ENT_WHITE)
+    model.box((left_x, -thick / 2.0, (floor_top + lower) / 2.0), (thick, 2.0 * hy - thick, lower - floor_top),
+              ENT_WHITE)
+    carbon_trim(model, (-hx + thick, back_y - thick / 2.0 - 0.003), (hx, back_y - thick / 2.0 - 0.003), 0.03,
+                depth=0.008, z=floor_top)
+    carbon_trim(model, (left_x + thick / 2.0 + 0.003, -hy), (left_x + thick / 2.0 + 0.003, hy - thick), 0.03,
+                depth=0.008, z=floor_top)
+    if glass:
+        glass_wall(model, (-hx + thick, back_y), (hx, back_y), lower, top - 0.04, sill=0.02,
+                   mullions=max(1, int(round(hx * 2.0 / 0.4)) - 1))
+        glass_wall(model, (left_x, -hy), (left_x, hy - thick), lower, top - 0.04, sill=0.02,
+                   mullions=max(1, int(round(hy * 2.0 / 0.4)) - 1))
+    # The head over the walls, a cyan cove light along its inner side.
+    model.box((thick / 2.0, back_y, top - 0.02), (2.0 * hx - thick, thick + 0.01, 0.04), ENT_SMOOTH)
+    model.box((left_x, -thick / 2.0, top - 0.02), (thick + 0.01, 2.0 * hy - thick, 0.04), ENT_SMOOTH)
+    light_strip(model, (-hx + thick + 0.01, back_y - thick / 2.0 - 0.006, top - 0.034),
+                (hx - 0.01, back_y - thick / 2.0 - 0.006, top - 0.034), 0.01)
+    light_strip(model, (left_x + thick / 2.0 + 0.006, -hy + 0.01, top - 0.034),
+                (left_x + thick / 2.0 + 0.006, hy - thick - 0.01, top - 0.034), 0.01)
+    corner_post(model, (-hx + 0.04, hy - 0.04), floor_top, top + 0.012, radius=0.04)
+    return floor_top
+
+
+def robot_arm_clean(model, position, turn: float, z: float, reach: float = 0.22) -> None:
+    """A sleek manipulator on a round carbon foot reaching to its front (-y of its *turn*): white
+    round links, carbon joints, a cyan ring at its foot, a chrome tool head with a cyan tip."""
+    with model.placed((position[0], position[1], z), turn=turn):
+        model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, 0.03), 0.055, ENT_CARBON, segments=16)
+        model.cylinder((0.0, 0.0, 0.03), (0.0, 0.0, 0.036), 0.05, ENT_LIGHT, segments=16)
+        model.cylinder((0.0, 0.0, 0.036), (0.0, 0.0, 0.07), 0.042, ENT_SMOOTH, segments=16)
+        shoulder = (0.0, 0.0, 0.07 + reach * 0.55)
+        model.cylinder((0.0, 0.0, 0.07), shoulder, 0.026, ENT_SMOOTH, segments=12)
+        model.cylinder((-0.03, 0.0, shoulder[2]), (0.03, 0.0, shoulder[2]), 0.03, ENT_CARBON, segments=12)
+        elbow = (0.0, -reach * 0.62, shoulder[2] + reach * 0.22)
+        model.cylinder(shoulder, elbow, 0.022, ENT_SMOOTH, segments=12)
+        model.cylinder((-0.024, elbow[1], elbow[2]), (0.024, elbow[1], elbow[2]), 0.024, ENT_CARBON, segments=12)
+        wrist = (0.0, -reach, shoulder[2] - reach * 0.12)
+        model.cylinder(elbow, wrist, 0.016, ENT_SMOOTH, segments=10)
+        model.cylinder(wrist, (wrist[0], wrist[1], wrist[2] - 0.04), 0.014, ENT_CHROME, segments=10)
+        model.cylinder((wrist[0], wrist[1], wrist[2] - 0.04), (wrist[0], wrist[1], wrist[2] - 0.05), 0.009,
+                       ENT_LIGHT, segments=8)
