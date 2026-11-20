@@ -5,7 +5,9 @@ become child objects the game moves. Every face has a palette colour and a surfa
 For the game file the look is baked into one texture per model: the colour, broken up by a
 generated surface texture (scripts/3d/textures, made by scripts/3d/make-texture.cjs), rust,
 dirt in the corners and worn edges. Changing the palette, the surface textures or the recipe
-below changes every model on its next build; no model has to be touched.
+below changes every model on its next build; no model has to be touched. A second look, the
+clean one of the enterprise items (STYLES "enterprise", palette ent_*, surface textures drawn
+here: PROCEDURAL), replaces part of the recipe for the models built with it.
 
 Sizes are in grid cells; up is Z. A 1x1x1 module has to stay within FOOTPRINT on the ground
 and below MAX_HEIGHT.
@@ -159,6 +161,26 @@ PALETTE = {
     "null_crystal": ((0.46, 0.24, 0.72), "plain", (0.10, 0.0)),
     "glow_blue": ((0.36, 0.60, 1.0), "plain", (0.20, 0.0)),
     "glow_yellow": ((1.0, 0.82, 0.22), "plain", (0.30, 0.0)),
+    # --- Enterprise style (Builder style "enterprise", parts.py ENT_*; Rudi 2026-11-20): clean,
+    # bright and calm. Satin white panels with fine seams, light grey, graphite and exposed carbon
+    # fibre as accents, a little chrome, cyan light strips, sleek glowing displays, much glass.
+    # The surface textures "panel", "tiles" and "carbon" are drawn by the kit (PROCEDURAL).
+    "ent_white": ((0.64, 0.66, 0.68), "concrete", (0.34, 0.0), "panel"),
+    "ent_white_smooth": ((0.68, 0.70, 0.72), "plain", (0.30, 0.0)),
+    "ent_grey": ((0.40, 0.43, 0.47), "concrete", (0.36, 0.05), "panel"),
+    "ent_floor": ((0.31, 0.34, 0.37), "concrete", (0.40, 0.0), "tiles"),
+    "ent_graphite": ((0.17, 0.19, 0.22), "plain", (0.36, 0.20)),
+    "ent_carbon": ((0.15, 0.16, 0.17), "concrete", (0.20, 0.10), "carbon"),
+    "ent_chrome": ((0.80, 0.82, 0.85), "plain", (0.16, 0.90)),
+    "ent_fabric": ((0.52, 0.60, 0.68), "plain", (0.90, 0.0)),
+    # Dark glossy glass of a floor panel, and a closed ribbon window (lit from inside at night).
+    "ent_glassfloor": ((0.10, 0.17, 0.21), "plain", (0.06, 0.0)),
+    "ent_window": ((0.11, 0.15, 0.19), "plain", (0.06, 0.0)),
+    # Lit: a display's screen (a dim deep teal), cyan strips, cool white lamps, a warm accent.
+    "ent_screen": ((0.06, 0.18, 0.24), "plain", (0.08, 0.0)),
+    "ent_glow": ((0.42, 0.88, 1.0), "plain", (0.20, 0.0)),
+    "ent_lamp": ((0.92, 0.96, 1.0), "plain", (0.20, 0.0)),
+    "ent_amber": ((1.0, 0.74, 0.34), "plain", (0.25, 0.0)),
 }
 # Colours that give off light, and the sRGB colour of their light. Baked into a third texture
 # (the glow mask); the game turns it up at night and on airless worlds (ColonyView).
@@ -172,6 +194,11 @@ GLOWS = {
     "glow_red": (1.0, 0.14, 0.08),
     "glow_blue": (0.36, 0.60, 1.0),
     "glow_yellow": (1.0, 0.82, 0.22),
+    "ent_screen": (0.05, 0.22, 0.32),
+    "ent_glow": (0.30, 0.85, 1.0),
+    "ent_lamp": (0.86, 0.94, 1.0),
+    "ent_amber": (1.0, 0.70, 0.30),
+    "ent_window": (0.50, 0.70, 0.82),
 }
 PANE = "pane"
 # The see-through glass: tint (sRGB), opacity, roughness.
@@ -254,6 +281,22 @@ GLOSS_PATCHES = 0.7
 GLOSS_SCRATCHES = 0.6
 BAKE_SAMPLES = 24
 
+# Looks beside the default rough one (Builder style): recipe values that replace the ones above
+# or the ones *wear* scales. "enterprise" is the clean, modern look of the enterprise items (Rudi
+# 2026-11-20): no age, rust or grime, the seams and weave of its surface textures at full
+# strength, no worn edges, even satin gloss, soft corners.
+STYLES = {
+    "rough": {},
+    "enterprise": {
+        "wear": 0.0,
+        "surface_strength": 0.9,
+        "edges": 0.0,
+        "corner_darkness": 0.78,
+        "gloss_patches": 0.08,
+        "gloss_scratches": 0.30,
+    },
+}
+
 _TINT = "tint"
 _FINISH = "finish"
 _GLOW = "glow"
@@ -281,12 +324,16 @@ def _linear(srgb) -> tuple:
 class Builder:
     """Collects boxes, beams, cylinders and plates into one mesh. *wear* (0..1) is how old and
     dirty the recipe makes it: 1 for industry and supply (rust, grime, dark corners), low for
-    hulls and housing (clean paint, a little dirt in the corners). Faces painted PANE become
-    see-through glass."""
+    hulls and housing (clean paint, a little dirt in the corners). *style* picks a look from
+    STYLES: "enterprise" is the clean one of the enterprise items (it brings its own wear).
+    Faces painted PANE become see-through glass."""
 
-    def __init__(self, name: str, wear: float = 1.0) -> None:
+    def __init__(self, name: str, wear: float = 1.0, style: str = "rough") -> None:
+        if style not in STYLES:
+            raise ValueError("unknown style " + style)
         self.name = name
-        self.wear = wear
+        self.style = style
+        self.wear = STYLES[style].get("wear", wear)
         self._solid = bmesh.new()
         self._tint = self._solid.loops.layers.color.new(_TINT)
         self._finish = self._solid.loops.layers.float_color.new(_FINISH)
@@ -352,6 +399,38 @@ class Builder:
         with self._into(color):
             created = bmesh.ops.create_cube(self._mesh, size=1.0, matrix=matrix)
             self._paint(self._rounded(created, color, min(size)), color)
+
+    def rounded_box(self, center, size, radius: float, color: str, segments: int = 3,
+                    turn: float = 0.0) -> None:
+        """A box whose four upright edges are rounded with *radius* (a soft-cornered housing,
+        a post, a pedestal); *segments* per quarter round, twice as many in the high-detail
+        build. Round sides are shaded smooth, flat sides and the caps stay flat."""
+        half = (size[0] / 2.0, size[1] / 2.0, size[2] / 2.0)
+        radius = min(radius, half[0], half[1])
+        if radius <= 1e-6:
+            self.box(center, size, color, turn)
+            return
+        steps = max(1, segments * (2 if HD else 1))
+        outline = []
+        for index, (sx, sy) in enumerate(((1, 1), (-1, 1), (-1, -1), (1, -1))):
+            middle = (sx * (half[0] - radius), sy * (half[1] - radius))
+            for step in range(steps + 1):
+                angle = math.pi / 2.0 * (index + step / steps)
+                outline.append((middle[0] + math.cos(angle) * radius, middle[1] + math.sin(angle) * radius))
+        matrix = self._frame @ Matrix.Translation(Vector(center)) @ Matrix.Rotation(turn, 4, "Z")
+        with self._into(color):
+            mesh = self._mesh
+            low = [mesh.verts.new(matrix @ Vector((x, y, -half[2]))) for x, y in outline]
+            high = [mesh.verts.new(matrix @ Vector((x, y, half[2]))) for x, y in outline]
+            faces = {mesh.faces.new(high), mesh.faces.new(list(reversed(low)))}
+            count = len(outline)
+            for index in range(count):
+                following = (index + 1) % count
+                side = mesh.faces.new((low[index], low[following], high[following], high[index]))
+                # Within a corner's quarter round the sides are round; between corners flat.
+                side.smooth = index % (steps + 1) != steps
+                faces.add(side)
+            self._paint(faces, color)
 
     def beam(self, start, end, thickness: float, color: str) -> None:
         """A square bar from *start* to *end*."""
@@ -495,7 +574,7 @@ class Builder:
         target = bpy.data.objects.new(self.name, mesh)
         scene.collection.objects.link(target)
         if bpy.app.background:
-            _bake_look(target, self._glowing, self.wear, self._surfaces)
+            _bake_look(target, self._glowing, self.wear, self._surfaces, self.style)
         else:
             mesh.color_attributes.active_color_name = _TINT
         _split_parts(target, self._parts)
@@ -621,7 +700,9 @@ def _surface_image(texture: str) -> bpy.types.Image:
     pixels[:, :, 0] = 0.5
     pixels[:, :, 3] = 1.0
     path = os.path.join(TEXTURE_FOLDER, texture + ".jpg")
-    if os.path.exists(path):
+    if texture in PROCEDURAL:
+        pixels[:, :, 0] = numpy.clip(PROCEDURAL[texture](size) * 0.5, 0.0, 1.0)
+    elif os.path.exists(path):
         source = bpy.data.images.load(path, check_existing=False)
         width, height = source.size
         raw = numpy.empty(width * height * 4, dtype=numpy.float32)
@@ -648,15 +729,72 @@ def _surface_image(texture: str) -> bpy.types.Image:
     return image
 
 
+# Surface textures drawn here instead of read from a file: the brightness relative to the flat
+# colour (1 = unchanged) of one square of _SURFACE_PIXELS, which covers 1 / SURFACE_REPEATS of a
+# cell and repeats without a seam. For the clean enterprise look: panels with fine seams, floor
+# tiles, a carbon fibre twill.
+PANEL_COUNT = 2         # panels per square and direction (0.25 cells each)
+PANEL_SEAM = 0.010      # seam width in cells (a texel or two of a baked 1x1 model)
+TILE_COUNT = 2
+TILE_SEAM = 0.008
+CARBON_TOWS = 16        # fibre bundles per square and direction (0.03 cells each)
+
+
+def _seam_profile(size: int, count: int, seam: float) -> tuple:
+    """Along one axis, per pixel: 1 on a panel falling softly to 0 in the middle of a seam, and
+    a faint light lip on one side of it (a bevelled edge catching the light)."""
+    position = (numpy.arange(size, dtype=numpy.float32) + 0.5) / size * count
+    offset = position - numpy.round(position)
+    distance = numpy.abs(offset) / count / SURFACE_REPEATS  # in cells
+    half = seam / 2.0
+    dark = numpy.clip((distance - half * 0.4) / (half * 0.9), 0.0, 1.0)
+    lip = numpy.clip(1.0 - numpy.abs(distance - half * 1.7) / (half * 0.7), 0.0, 1.0) * (offset > 0.0)
+    return dark, lip
+
+
+def _panel_surface(size: int) -> numpy.ndarray:
+    dark, lip = _seam_profile(size, PANEL_COUNT, PANEL_SEAM)
+    seams = numpy.minimum(dark[None, :], dark[:, None])
+    lips = numpy.maximum(lip[None, :], lip[:, None]) * seams
+    return (0.40 + 0.60 * seams + 0.08 * lips).astype(numpy.float32)
+
+
+def _tile_surface(size: int) -> numpy.ndarray:
+    dark, _ = _seam_profile(size, TILE_COUNT, TILE_SEAM)
+    seams = numpy.minimum(dark[None, :], dark[:, None])
+    # Every other tile a shade lighter, like a laid floor.
+    index = (numpy.arange(size) * TILE_COUNT) // size
+    checker = ((index[None, :] + index[:, None]) % 2).astype(numpy.float32)
+    return (0.55 + 0.45 * seams + 0.04 * (checker - 0.5)).astype(numpy.float32)
+
+
+def _carbon_surface(size: int) -> numpy.ndarray:
+    """A 2x2 twill: each bundle runs across or along, its brightness a rounded profile across
+    its width (light on round fibres), the pattern stepping by one bundle per row."""
+    tow = size // CARBON_TOWS
+    coordinate = numpy.arange(size)
+    cell_x, cell_y = coordinate[None, :] // tow, coordinate[:, None] // tow
+    inner_x = ((coordinate[None, :] % tow) + 0.5) / tow
+    inner_y = ((coordinate[:, None] % tow) + 0.5) / tow
+    across = ((cell_x + cell_y) // 2) % 2 == 0
+    profile = numpy.where(across, numpy.sin(numpy.pi * inner_y) + 0.0 * inner_x,
+                          numpy.sin(numpy.pi * inner_x) + 0.0 * inner_y)
+    return (0.55 + 0.65 * profile).astype(numpy.float32)
+
+
+PROCEDURAL = {"panel": _panel_surface, "tiles": _tile_surface, "carbon": _carbon_surface}
+
+
 # --- The baked look --------------------------------------------------------------------------
 
-def _look_material(wear: float = 1.0, textures=()) -> tuple:
+def _look_material(wear: float = 1.0, textures=(), style: str = "rough") -> tuple:
     """The recipe as a node graph: palette colour x surface texture, rust on metal, dirt in
     corners, worn edges, and the finish (roughness, metalness); *wear* (0..1) scales the age
-    and dirt (Builder); *textures* are the surface textures the palette names, in the order of
-    the faces' places (Builder._surfaces). Returns the material, the
-    input of its glow, and the two results to feed into it one after the other: the colour
+    and dirt (Builder), *style* replaces recipe values (STYLES); *textures* are the surface
+    textures the palette names, in the order of the faces' places (Builder._surfaces). Returns
+    the material, the input of its glow, and the two results to feed into it one after the other: the colour
     and the finish. A glowing surface is baked without lighting."""
+    recipe = STYLES[style]
     material = bpy.data.materials.get("te_look") or bpy.data.materials.new("te_look")
     if material.node_tree is None:
         material.use_nodes = True
@@ -726,7 +864,7 @@ def _look_material(wear: float = 1.0, textures=()) -> tuple:
     detail, rust = surface.outputs[0], surface.outputs[1]
     # detail is stored halved: 1 + strength * (2 * detail - 1), kept within sane bounds;
     # plain surfaces keep their flat colour.
-    strength = SURFACE_STRENGTH * (0.2 + 0.8 * wear)
+    strength = recipe.get("surface_strength", SURFACE_STRENGTH * (0.2 + 0.8 * wear))
     shade = math_node("MULTIPLY_ADD", detail, 2.0 * strength, 1.0 - strength)
     shade = math_node("MINIMUM", math_node("MAXIMUM", shade, 0.35), 1.6)
     shade = math_node("MULTIPLY_ADD", math_node("SUBTRACT", shade, 1.0), textured, 1.0)
@@ -738,7 +876,7 @@ def _look_material(wear: float = 1.0, textures=()) -> tuple:
 
     occlusion = node("ShaderNodeAmbientOcclusion", samples=16, only_local=True)
     occlusion.inputs["Distance"].default_value = 0.3
-    corner = 1.0 - (1.0 - CORNER_DARKNESS) * (0.35 + 0.65 * wear)
+    corner = recipe.get("corner_darkness", 1.0 - (1.0 - CORNER_DARKNESS) * (0.35 + 0.65 * wear))
     dirt = math_node("MULTIPLY_ADD", occlusion.outputs[1], 1.0 - corner, corner)
     color = mix("MULTIPLY", 1.0, color, dirt)
     # Grime at the foot of walls (not on upward faces): darkest at the ground, fading upwards.
@@ -764,7 +902,7 @@ def _look_material(wear: float = 1.0, textures=()) -> tuple:
     age = tuple(1.0 - (1.0 - tone) * wear for tone in AGE_TINT)
     color = mix("MULTIPLY", 1.0, color, _linear(age))
 
-    edges = EDGE_AMOUNT * (0.4 + 0.6 * wear)
+    edges = recipe.get("edges", EDGE_AMOUNT * (0.4 + 0.6 * wear))
     bevel = node("ShaderNodeBevel", samples=6)
     bevel.inputs[0].default_value = EDGE_WIDTH
     geometry = node("ShaderNodeNewGeometry")
@@ -793,15 +931,19 @@ def _look_material(wear: float = 1.0, textures=()) -> tuple:
     finish = node("ShaderNodeSeparateColor")
     link(node("ShaderNodeVertexColor", layer_name=_FINISH).outputs[0], finish.inputs[0])
     bare = math_node("MULTIPLY", math_node("MULTIPLY", edge, breakup), is_metal, clamp=True)
+    if edges <= 0.0:
+        bare = math_node("MULTIPLY", bare, 0.0)
     # Uneven gloss on textured surfaces: large dull and shiny patches from a noise texture,
     # fine scratches from the surface texture (its dark spots are rougher).
     patches = node("ShaderNodeTexNoise")
     patches.inputs["Scale"].default_value = GLOSS_PATCH_SCALE
     patches.inputs["Detail"].default_value = 4.0
     link(coordinates.outputs["Object"], patches.inputs["Vector"])
+    gloss_patches = recipe.get("gloss_patches", GLOSS_PATCHES)
+    gloss_scratches = recipe.get("gloss_scratches", GLOSS_SCRATCHES)
     uneven = math_node("ADD",
-                       math_node("MULTIPLY_ADD", patches.outputs[0], GLOSS_PATCHES, -0.5 * GLOSS_PATCHES),
-                       math_node("MULTIPLY_ADD", detail, -2.0 * GLOSS_SCRATCHES, GLOSS_SCRATCHES))
+                       math_node("MULTIPLY_ADD", patches.outputs[0], gloss_patches, -0.5 * gloss_patches),
+                       math_node("MULTIPLY_ADD", detail, -2.0 * gloss_scratches, gloss_scratches))
     roughness = math_node("MULTIPLY_ADD", uneven, textured, finish.outputs[0], clamp=True)
     roughness = blend(blend(roughness, RUST_ROUGHNESS, rust_amount), BARE_ROUGHNESS, bare)
     roughness = math_node("MULTIPLY_ADD", math_node("SUBTRACT", 1.0, occlusion.outputs[1]),
@@ -819,13 +961,14 @@ def _look_material(wear: float = 1.0, textures=()) -> tuple:
     return material, glow.inputs["Color"], color, packed.outputs[0]
 
 
-def _bake_look(target: bpy.types.Object, glowing: bool, wear: float = 1.0, textures=()) -> None:
+def _bake_look(target: bpy.types.Object, glowing: bool, wear: float = 1.0, textures=(),
+               style: str = "rough") -> None:
     """Unwraps the model, bakes the look into two textures (colour and finish), and a third
     one (the glow mask) when something on it glows, and leaves the model with a plain material
     that shows them. *textures*: the surface textures the palette names (Builder._surfaces)."""
     scene = target.users_scene[0]
     mesh = target.data
-    look, glow_input, color_result, finish_result = _look_material(wear, textures)
+    look, glow_input, color_result, finish_result = _look_material(wear, textures, style)
     mesh.materials.append(look)
     if len(mesh.uv_layers) == 0:
         mesh.uv_layers.new(name="UVMap")
@@ -1054,7 +1197,8 @@ def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT,
                                max_height: float = MAX_HEIGHT) -> None:
     """Entry point of a script that builds several models: `builders` maps a file name (without
     .glb) to (build function, cells). Writes every model into --output-dir; --only limits it to
-    some names (comma separated). Hulls pass footprint 1.0."""
+    some names (comma separated). Hulls pass footprint 1.0; an entry (build, cells, footprint) sets
+    its own (a script that builds hulls and modules)."""
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True)
@@ -1062,13 +1206,14 @@ def run_many_from_command_line(builders: dict, footprint: float = FOOTPRINT,
     options = parser.parse_args(arguments)
     wanted = [name for name in options.only.split(",") if name]
     failed = 0
-    for name, (build, cells) in builders.items():
+    for name, entry in builders.items():
+        build, cells = entry[0], entry[1]
         if wanted and name not in wanted:
             continue
         path = os.path.join(options.output_dir, name + ".glb")
         try:
             target = build()
-            facts = describe(target, footprint, cells, max_height)
+            facts = describe(target, entry[2] if len(entry) > 2 else footprint, cells, max_height)
             export_glb(target, path)
             remove(target)
         except Exception as error:
