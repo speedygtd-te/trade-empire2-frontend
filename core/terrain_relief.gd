@@ -457,6 +457,10 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 	var span := SIDE + 1
 	var cells := PackedFloat32Array()
 	cells.resize(span * span)
+	# Which cells are water (drawn flat at the sea level): a corner with only water around is
+	# never shaped by a pad, or a structure reaching into the sea would raise a hill of water.
+	var wet := PackedByteArray()
+	wet.resize(span * span)
 	var b := SurfaceBlocks.BLOCK
 	var last_key := Vector2i(0x7FFFFFFF, 0)
 	var patch: SurfacePatch = null
@@ -475,6 +479,7 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 				cells[j * span + i] = NAN
 			elif flatten and patch.is_water(x, y):
 				cells[j * span + i] = WaterColumn.drawn_elevation(value, true, water_level)
+				wet[j * span + i] = 1
 			else:
 				cells[j * span + i] = float(value)
 	var heights := PackedFloat32Array()
@@ -502,7 +507,9 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 				sum += value
 				count += 1
 			var natural := sum / count if count > 0 else _fog(x0 - 1 + i, y0 - 1 + j)
-			if padded:
+			var open_water := count > 0 and wet[row + i] + wet[row + i + 1] + wet[row + span + i] \
+				+ wet[row + span + i + 1] == count
+			if padded and not open_water:
 				var found_pad: Variant = _pad_corners.get(Vector2i(WorldGrid.wrap_x(x0 - 1 + i, size_x), y0 - 1 + j))
 				if found_pad != null:
 					var pad: Vector2 = found_pad

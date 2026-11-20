@@ -61,6 +61,22 @@ func test_water_lies_flat_at_the_sea_level_and_the_shore_blends() -> void:
 	assert_float(relief.base_of([Vector2i(2, 2), Vector2i(3, 2)])).is_equal_approx(300.0, 0.001)
 
 
+func test_a_pad_reaching_into_the_sea_leaves_the_water_flat() -> void:
+	var surface := SurfaceBlocks.new()
+	# Ocean west of x = 8 (sea level 300), land at 340 east of it; a structure on the shore.
+	_load(surface, Vector2i(0, 0), func(x: int, _y: int) -> int: return 200 if x < 8 else 340,
+		Callable(), func(x: int, _y: int) -> String: return "OCEAN" if x < 8 else "PLAINS")
+	var relief := TerrainRelief.new(surface)
+	relief.water_level = WaterColumn.sea_level("EARTH_LIKE")
+	var cells: Array[Vector2i] = [Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4)]
+	relief.set_pads([TerrainRelief.Pad.new(cells, 330.0)])
+	# Open water beside and under the pad stays at the sea level (no hill of water).
+	assert_float(relief.corner(5, 5)).is_equal_approx(300.0, 0.001)
+	assert_float(relief.corner(6, 4)).is_equal_approx(300.0, 0.001)
+	# The land side is still shaped by the pad.
+	assert_float(relief.corner(10, 4)).is_equal_approx(330.0, 0.001)
+
+
 func test_a_corner_is_the_mean_of_the_known_cells_around_it() -> void:
 	var surface := _surface([Vector2i(0, 0)], func(x: int, y: int) -> int: return x * 10 + y)
 	var relief := TerrainRelief.new(surface)
