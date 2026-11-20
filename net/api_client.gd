@@ -65,13 +65,13 @@ func delete_json(path: String, authorised: bool = true) -> ApiResult:
 	return await _send(HTTPClient.METHOD_DELETE, path, "", authorised)
 
 
-## GET of a file the server hands out as bytes (enterprise logos under `/assets/…`, public and
-## cached forever). Empty when the call failed.
+## GET of a public file as bytes: an absolute URL as it is (enterprise logos in the CDN since
+## draft.34), a server-relative path (`/assets/…`) on this server. Empty when the call failed.
 func get_bytes(path: String) -> PackedByteArray:
 	var request := HTTPRequest.new()
 	request.timeout = TIMEOUT_SECONDS
 	add_child(request)
-	if request.request(base_url + path) != OK:
+	if request.request(ServerUrl.resolve(base_url, path)) != OK:
 		request.queue_free()
 		return PackedByteArray()
 	var response: Array = await request.request_completed

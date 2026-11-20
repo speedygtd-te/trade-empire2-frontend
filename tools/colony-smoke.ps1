@@ -14,14 +14,17 @@
 # staircase shaft up two levels and removes it, and compares every preview with the server. With
 # -Scene enterprise_flow (smoke/enterprise_flow.tscn, two own accounts .local/enterprise-a- and
 # enterprise-b-account.json): founding, applying, roles, taxes, inventory, log, invitations,
-# diplomacy between two enterprises and the logo; both enterprises are dissolved at the end.
+# diplomacy between two enterprises and the logo; both enterprises are dissolved at the end. With
+# -Scene fleet_flow (smoke/fleet_flow.tscn, its own account .local/fleets-account.json): builds two
+# ships if missing, forms a fleet, checks the member lock, stance and pooled fuel, flies the fleet
+# into orbit, disbands it and docks both ships again (real minutes: 30 minutes timeout).
 #
-#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build|route_flow|travel_flow|level_build|enterprise_flow] [-TimeoutSeconds 120]
+#   powershell -File tools\colony-smoke.ps1 [-Scene colony_build|dock_build|route_flow|travel_flow|fleet_flow|level_build|enterprise_flow] [-TimeoutSeconds 120]
 #
 # Needs the development account (node tools/dev-account.cjs creates it). Runs without window.
 # Exit code: 0 = green, 1 = a check failed, 2 = no account, 3 = stopped after the timeout.
 param(
-    [ValidateSet('colony_build', 'dock_build', 'route_flow', 'travel_flow', 'level_build', 'enterprise_flow')][string]$Scene = 'colony_build',
+    [ValidateSet('colony_build', 'dock_build', 'route_flow', 'travel_flow', 'fleet_flow', 'level_build', 'enterprise_flow')][string]$Scene = 'colony_build',
     [int]$TimeoutSeconds = 0
 )
 
@@ -29,8 +32,8 @@ $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = 'F:\Tools\Godot\godot_console.exe' }
-$accountNames = switch ($Scene) { 'route_flow' { @('routes') } 'travel_flow' { @('travel') } 'level_build' { @('levels') } 'enterprise_flow' { @('enterprise-a', 'enterprise-b') } default { @('dev') } }
-if ($TimeoutSeconds -le 0) { $TimeoutSeconds = switch ($Scene) { 'travel_flow' { 1500 } 'route_flow' { 900 } 'enterprise_flow' { 300 } default { 120 } } }
+$accountNames = switch ($Scene) { 'route_flow' { @('routes') } 'travel_flow' { @('travel') } 'fleet_flow' { @('fleets') } 'level_build' { @('levels') } 'enterprise_flow' { @('enterprise-a', 'enterprise-b') } default { @('dev') } }
+if ($TimeoutSeconds -le 0) { $TimeoutSeconds = switch ($Scene) { 'travel_flow' { 1500 } 'fleet_flow' { 1800 } 'route_flow' { 900 } 'enterprise_flow' { 300 } default { 120 } } }
 foreach ($accountName in $accountNames) {
     if (-not (Test-Path -LiteralPath (Join-Path $root ".local\$accountName-account.json"))) {
         Push-Location -LiteralPath $root
@@ -57,7 +60,7 @@ try {
     foreach ($file in @($log, $errLog)) {
         if (Test-Path -LiteralPath $file) {
             Get-Content -LiteralPath $file | ForEach-Object { ([string]$_) -replace '[0-9a-f]{64}', '<token>' } |
-                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|ROUTE|LEVEL|docks|server|TRAVEL|ENTERPRISE)|ERROR|SCRIPT' }
+                Where-Object { $_ -cmatch '^(PASS|FAIL|COLONY|DOCK|ROUTE|LEVEL|docks|server|TRAVEL|ENTERPRISE|FLEET)|ERROR|SCRIPT' }
         }
     }
     if (-not $finished) { Write-Output "stopped after $TimeoutSeconds s"; exit 3 }

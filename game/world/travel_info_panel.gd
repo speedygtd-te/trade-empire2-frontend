@@ -61,7 +61,7 @@ func tick() -> void:
 	_bar.visible = moving
 	_times.visible = moving
 	_fuel.visible = moving and not motion.fuel.is_empty()
-	_travel.visible = offer_travel and not moving and entry.can_fly() and entry.where() == Fleet.Where.ORBIT
+	_travel.visible = offer_travel and not moving and entry.can_fly() and entry.where() == Fleet.Where.ORBIT 		and _fleet.group_of(_structure_id) == null
 	if not moving:
 		return
 	_phase.text = phase_text(motion, now, self)

@@ -23,3 +23,18 @@ static func rate(micro_per_hour: int, micro_per_unit: int) -> String:
 	var sign := "+" if micro_per_hour > 0 else "−"
 	var text := units(roundi(per_hour)) if per_hour >= 10.0 else String.num(per_hour, 1)
 	return "%s%s/h" % [sign, text]
+
+
+## Micro-units as units: whole with groups from 10 on, one decimal below ("1.9", "0.1"), and
+## "<0.1" for a little more than nothing (fuel a ship gives to its fleet).
+static func amount(micro: int, micro_per_unit: int) -> String:
+	var scale := maxi(micro_per_unit, 1)
+	var value := float(absi(micro)) / scale
+	var sign := "-" if micro < 0 else ""
+	if value >= 10.0:
+		@warning_ignore("integer_division")
+		return units(micro / scale)
+	if micro != 0 and value < 0.05:
+		return sign + "<0.1"
+	var text := String.num(value, 1)
+	return sign + (text.trim_suffix(".0") if text.ends_with(".0") else text)
