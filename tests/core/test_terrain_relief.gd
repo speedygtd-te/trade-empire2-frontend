@@ -103,10 +103,12 @@ func test_lava_and_swamp_keep_their_relief_and_are_never_shaped_by_a_pad() -> vo
 	assert_int(relief.corner_pier(10, 5)).is_equal(LevelRules.PierGround.NONE)
 	# Lava and swamp count DECK higher for a base.
 	assert_float(relief.base_of([Vector2i(2, 2)])).is_equal_approx(310.0 + TerrainRelief.DECK, 0.001)
-	# A pad over swamp and land: the swamp's corners keep their height, the land is cut.
+	# A pad over swamp and land: swamp higher than the floor is cut (it would show through the
+	# floor), lower swamp is never filled; the land is cut as usual.
 	var cells: Array[Vector2i] = [Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4)]
 	relief.set_pads([TerrainRelief.Pad.new(cells, 330.0)])
-	assert_float(relief.corner(7, 4)).is_equal_approx(332.5, 0.001)
+	assert_float(relief.corner(7, 4)).is_equal_approx(330.0, 0.001)
+	assert_float(relief.corner(5, 4)).is_equal_approx(322.5, 0.001)
 	assert_float(relief.corner(10, 4)).is_equal_approx(330.0, 0.001)
 
 

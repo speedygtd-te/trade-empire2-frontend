@@ -33,6 +33,17 @@ func test_weaker_at_night_but_not_gone() -> void:
 	assert_float(HeatShimmer.strength(450.0, 1.4)).is_equal_approx(day, 0.001)
 
 
+func test_air_carries_the_shimmer() -> void:
+	var earth := HeatShimmer.strength(450.0, 1.0, 1.0)
+	# No air: no heat haze.
+	assert_float(HeatShimmer.strength(450.0, 1.0, 0.0)).is_equal(0.0)
+	assert_float(HeatShimmer.strength(450.0, 1.0, 0.01)).is_equal(0.0)
+	# Thin air weaker, thick air stronger, capped.
+	assert_float(HeatShimmer.strength(450.0, 1.0, 0.25)).is_equal_approx(earth * 0.5, 0.001)
+	assert_float(HeatShimmer.strength(450.0, 1.0, 1.44)).is_equal_approx(earth * 1.2, 0.001)
+	assert_float(HeatShimmer.strength(450.0, 1.0, 90.0)).is_equal_approx(earth * HeatShimmer.AIR_MAX, 0.001)
+
+
 func test_shown_by_tier_and_cutaway() -> void:
 	assert_float(HeatShimmer.shown(0.8, DetailGovernor.Tier.ULTRA, false)).is_equal_approx(0.8, 0.001)
 	assert_float(HeatShimmer.shown(0.8, DetailGovernor.Tier.FAST, false)).is_equal_approx(0.8, 0.001)

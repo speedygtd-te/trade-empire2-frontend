@@ -566,15 +566,24 @@ func _compute(block: Vector2i) -> PackedFloat32Array:
 			var touches_water := wet[row + i] == 1 or wet[row + i + 1] == 1 or wet[row + span + i] == 1 				or wet[row + span + i + 1] == 1
 			if touches_water:
 				natural = water_level
-			# Lava and swamp are not filled or cut either.
+			# Lava and swamp are never filled, but cut down where they rise above a floor, so they
+			# never show through it (Rudi 2026-11-20); water is left as it lies.
 			var soft := wet[row + i] + wet[row + i + 1] + wet[row + span + i] + wet[row + span + i + 1] > 0
-			if padded and not soft:
+			if padded and not touches_water:
 				var found_pad: Variant = _pad_corners.get(Vector2i(WorldGrid.wrap_x(x0 - 1 + i, size_x), y0 - 1 + j))
 				if found_pad != null:
 					var pad: Vector2 = found_pad
-					natural = shaped(natural, pad)
+					natural = cut(natural, pad) if soft else shaped(natural, pad)
 			heights[j * SIDE + i] = natural
 	return heights
+
+
+## Like `shaped`, but only cutting: ground higher than the base comes down (easing back over the
+## BLEND corners), lower ground is never filled (lava and swamp under piers).
+static func cut(natural: float, pad: Vector2) -> float:
+	var target := minf(natural, pad.x)
+	var weight := 1.0 - pad.y / (BLEND + 1.0)
+	return natural + (target - natural) * weight
 
 
 ## The ground at a corner near a pad: `pad` is (base, distance in corners). On the footprint

@@ -19,10 +19,26 @@ const NIGHT_SHARE := 0.6
 const MEDIUM_SHARE := 0.6
 ## Below this the effect is switched off entirely (no shader on the picture).
 const OFF_BELOW := 0.01
+## Heat haze needs air (Rudi 2026-11-20): below AIR_MIN (atmosphere density, Earth = 1) none;
+## above, the strength scales with the square root of the density, up to AIR_MAX for thick air.
+const AIR_MIN := 0.05
+const AIR_MAX := 1.3
 
 
-## Strength 0..1 from the surface temperature (°C) and the daylight (0 night .. 1 full sun).
-static func strength(celsius: float, daylight: float) -> float:
+## How much the air carries the shimmer: 0 without air, 1 for Earth-like air, up to AIR_MAX.
+static func air_factor(density: float) -> float:
+	if density < AIR_MIN:
+		return 0.0
+	return clampf(sqrt(density), 0.0, AIR_MAX)
+
+
+## Strength from the surface temperature (°C), the daylight (0 night .. 1 full sun) and the
+## atmosphere density (Earth = 1): 0 .. AIR_MAX.
+static func strength(celsius: float, daylight: float, density: float = 1.0) -> float:
+	return _heat(celsius, daylight) * air_factor(density)
+
+
+static func _heat(celsius: float, daylight: float) -> float:
 	var heat := 0.0
 	if celsius <= START_C:
 		return 0.0

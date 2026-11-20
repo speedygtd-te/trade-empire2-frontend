@@ -387,7 +387,7 @@ func _update_heat() -> void:
 		return
 	var value := 0.0
 	if _rendering and not _model.detached and not _model.in_orbit and _model.structure_id != 0:
-		value = HeatShimmer.shown(HeatShimmer.strength(_model.surface_celsius, _view.daylight()),
+		value = HeatShimmer.shown(HeatShimmer.strength(_model.surface_celsius, _view.daylight(), _model.atmosphere_density),
 			_view.applied_tier(), _view.cutaway())
 	if value <= 0.0:
 		if _container.material != null:
