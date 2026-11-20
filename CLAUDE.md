@@ -62,6 +62,8 @@ verschärft, wenn es nötig wird.
 | Routen-, Fracht- und Editor-Ansichten ansehen | `godot --path . --resolution 720x1280 res://smoke/route_view.tscn -- --out=build/routes` (Konto `routes`, nach `route_flow`) |
 | Fahrten gegen das Backend (eigenes Konto `travel`) | `powershell -File tools\colony-smoke.ps1 -Scene travel_flow` (baut Fahrzeug und Schiff, falls sie fehlen; Orbit + Andocken, Fahrt mit Wegpunkt + Andocken; dauert ~10 min) |
 | Fahrt-Bildschirme ansehen (Konto `travel`, startet nichts) | `godot --path . --resolution 720x1280 res://smoke/travel_view.tscn -- --out=build/travel` |
+| Flotten gegen das Backend (eigenes Konto `fleets`) | `powershell -File tools\colony-smoke.ps1 -Scene fleet_flow` (baut zwei Schiffe, falls sie fehlen — Treibstoff nur im ersten; Flotte bilden, Sperre, Haltung, gemeinsamer Vorrat, Flug in den Orbit, Austritt, Auflösen, beide docken wieder an; dauert ~15 min) |
+| Flotten-Bildschirme ansehen (Konto `fleets`, startet nichts) | `godot --path . --resolution 720x1280 res://smoke/fleet_view.tscn -- --out=build/fleets` (während des Flugs von `fleet_flow` zeigt es den Flug; sonst bildet es eine Bilder-Flotte und löst sie wieder auf) |
 | Alle Module in eine Kolonie setzen (eigenes Showcase-Konto) | `node tools/showcase.cjs` (`--dry-run` zeigt nur den Plan; braucht den Test-Grant; einmal je frischem Konto) |
 | Showcase-Kolonie ansehen | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase` |
 | Normale gegen HD-Modelle vergleichen (Showcase-Konto; Bilder nah/mittel/fern, Frame-, CPU-/GPU-Zeit, Draw Calls, Primitive, Texturspeicher) | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase-detail --detail-compare` |
