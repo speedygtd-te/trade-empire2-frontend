@@ -58,8 +58,31 @@ func test_water_lies_flat_at_the_sea_level_and_the_shore_blends() -> void:
 	# stays flat up to the bank.
 	assert_float(relief.corner(8, 5)).is_equal_approx(300.0, 0.001)
 	assert_float(relief.corner(12, 5)).is_equal_approx(345.0, 0.001)
-	# A structure on the water stands at the sea level.
-	assert_float(relief.base_of([Vector2i(2, 2), Vector2i(3, 2)])).is_equal_approx(300.0, 0.001)
+	# A structure on the water stands DECK above the sea level (on a pier); half on land at 310,
+	# half on water: the mean of 310 and the deck.
+	assert_float(relief.base_of([Vector2i(2, 2), Vector2i(3, 2)])).is_equal_approx(300.0 + TerrainRelief.DECK, 0.001)
+	assert_float(relief.base_of([Vector2i(7, 2), Vector2i(8, 2)])).is_equal_approx((310.0 + 300.0 + TerrainRelief.DECK) * 0.5, 0.001)
+
+
+func test_water_cells_and_the_corners_touching_them_are_wet() -> void:
+	var surface := SurfaceBlocks.new()
+	_load(surface, Vector2i(0, 0), func(_x: int, _y: int) -> int: return 250,
+		Callable(), func(x: int, _y: int) -> String: return "SHALLOW_WATER" if x < 8 else "BEACH")
+	var relief := TerrainRelief.new(surface)
+	# Without a sea level nothing is drawn as water.
+	assert_bool(relief.is_water(3, 3)).is_false()
+	relief.water_level = WaterColumn.sea_level("EARTH_LIKE")
+	assert_bool(relief.is_water(3, 3)).is_true()
+	assert_bool(relief.is_water(8, 3)).is_false()
+	# Unloaded cells are no water.
+	assert_bool(relief.is_water(3, 40)).is_false()
+	# Corner (8, y) lies between the last water cell (7) and the first land cell (8).
+	assert_bool(relief.corner_wet(8, 3)).is_true()
+	assert_bool(relief.corner_wet(9, 3)).is_false()
+	assert_bool(relief.corner_wet(2, 3)).is_true()
+	# Without a sea level water keeps its elevation: no deck.
+	relief.water_level = NAN
+	assert_float(relief.base_of([Vector2i(2, 2)])).is_equal_approx(250.0, 0.001)
 
 
 func test_a_pad_reaching_into_the_sea_leaves_the_water_flat() -> void:
