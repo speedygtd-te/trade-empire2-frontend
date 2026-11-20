@@ -218,3 +218,29 @@ func test_structures_learn_their_fleet_from_details_and_events() -> void:
 	assert_int(structures.find(2).fleet_id).is_equal(0)
 	assert_int(structures.find(7).fleet_id).is_equal(12)
 	assert_bool(structures.apply_event("fleet.updated", {"fleet": {"name": "x"}})).is_false()
+
+
+func test_a_fleet_of_the_enterprise_has_another_owner() -> void:
+	var own := FleetGroups.Group.from_wire({"fleetId": 1, "ownerId": "42"})
+	var enterprise := FleetGroups.Group.from_wire({"fleetId": 2, "ownerId": "9001"})
+
+	assert_bool(own.is_enterprise("42")).is_false()
+	assert_bool(enterprise.is_enterprise("42")).is_true()
+	assert_bool(enterprise.is_enterprise("")).is_false()
+
+
+func test_candidates_take_the_enterprise_structures_when_asked() -> void:
+	var structures := _structures()
+	var flagship := EnterpriseFlagship.StructureRef.new()
+	flagship.structure_id = 90
+	flagship.flagship = true
+	var refs: Array[EnterpriseFlagship.StructureRef] = [flagship]
+	structures.apply_enterprise(refs, "e1")
+	structures.apply_details({"structureId": 90, "name": "Flagship", "kind": "ship", "capabilities": ["SPACE_DRIVE"],
+		"anchor": {"type": "free", "kind": "orbit", "bodyId": "p1"}, "ownerKind": "enterprise", "enterpriseId": "e1"})
+	var book := FleetGroups.new()
+
+	var ids := func(entries: Array[Fleet.Entry]) -> Array:
+		return entries.map(func(entry: Fleet.Entry) -> int: return entry.structure_id)
+	assert_array(ids.call(book.candidates(structures, "p1", 0))).is_equal([2, 3, 5, 7])
+	assert_array(ids.call(book.candidates(structures, "p1", 0, true))).is_equal([2, 3, 5, 7, 90])

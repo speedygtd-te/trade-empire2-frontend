@@ -31,11 +31,15 @@ var _failure := ""
 var _lines: VBoxContainer
 var _note: Label
 var _move: Button
+var _enterprise := false
 var _start: Button
 
 
-func setup(structure_id: int) -> void:
+## `enterprise`: a structure of the player's enterprise (draft.38): its fuel comes from the
+## enterprise inventory (`selfUse` is the flagship's stock), there is nothing to move on board.
+func setup(structure_id: int, enterprise: bool = false) -> void:
 	_structure_id = structure_id
+	_enterprise = enterprise
 
 
 func _ready() -> void:
@@ -139,7 +143,7 @@ func _show() -> void:
 			"limit": _whole(_quote.max_mass, scale)}),
 			AppTheme.COLOR_OK if _quote.mass_within_limit() else AppTheme.COLOR_DANGER)
 	for row: TravelPlan.FuelRow in _quote.fuel:
-		var text := tr("TRAVEL_FUEL").format({"resource": _resource_name(row.resource),
+		var text := tr("TRAVEL_FUEL_ENTERPRISE" if _enterprise else "TRAVEL_FUEL").format({"resource": _resource_name(row.resource),
 			"amount": _whole(row.amount, scale),
 			"on_board": _whole(row.self_use, scale)})
 		if row.is_short() and row.in_transport > 0:
@@ -149,7 +153,7 @@ func _show() -> void:
 		var error := ApiError.new()
 		error.code = code
 		_line(ErrorText.describe(error, self), AppTheme.COLOR_DANGER)
-	_move.visible = not _quote.movable_fuel().is_empty()
+	_move.visible = not _enterprise and not _quote.movable_fuel().is_empty()
 	_move.disabled = _busy
 	_note.visible = _quote.ok
 	_start.disabled = _busy or not _quote.ok

@@ -234,3 +234,17 @@ func test_target_on_a_guest_stacks_or_starts_at_its_lowest_level() -> void:
 	assert_that(DockRules.target_cell(_host, _l_guest, Vector2i(2, 0), false)).is_equal(Vector3i(2, 0, 2))
 	assert_that(DockRules.target_cell(_host, _l_guest, Vector2i(3, 1), true)).is_equal(Vector3i(3, 1, 1))
 	assert_that(DockRules.target_cell(_host, _l_guest, Vector2i(3, 1), false)).is_equal(Vector3i(3, 1, 1))
+
+
+func test_an_enterprise_dock_founds_a_daughter_like_a_dock() -> void:
+	# draft.38: a hull above an ENTERPRISE_DOCK founds a new enterprise structure.
+	var flagship := _layout(
+		'{"line":"header","structureId":7,"anchor":{"type":"free","kind":"orbit","bodyId":"p"},"rev":1,"chunks":1}',
+		'["ENTERPRISE_HULL_STANDARD","ENTERPRISE_DOCK"]', "[[0,0,0,0],[1,0,0,1],[2,0,0,1]]")
+	var none: Array[StructureLayout] = []
+
+	assert_bool(DockRules.is_dock("ENTERPRISE_DOCK")).is_true()
+	assert_bool(DockRules.is_dock("DOCK")).is_true()
+	assert_bool(DockRules.is_dock("ENTERPRISE_HULL_STANDARD")).is_false()
+	assert_int(DockRules.placement(flagship, none, Vector3i(1, 0, 1))).is_equal(DockRules.Placement.FOUND)
+	assert_int(DockRules.placement(flagship, none, Vector3i(0, 0, 1))).is_equal(DockRules.Placement.HOST)

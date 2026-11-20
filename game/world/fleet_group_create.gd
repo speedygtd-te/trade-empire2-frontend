@@ -4,6 +4,10 @@ extends Control
 ## resting, not on a route, in no fleet), grouped by the body they rest at. Tapping ships picks
 ## them — all from one body (picking one elsewhere starts the choice anew). A name is optional
 ## (the server names it otherwise). "‹ Back" or Back closes it.
+##
+## A member with COMMAND_ENTERPRISE_FLEET also sees the enterprise's structures (draft.38, marked):
+## picked, they form a fleet of the enterprise. A fleet never mixes them with own ships
+## (NOT_STRUCTURE_OWNER): picking one of the other kind starts the choice anew.
 
 signal closed
 ## The fleet was formed; the tab opens it.
@@ -12,6 +16,8 @@ signal created(fleet_id: int)
 var _model: FleetModel
 var _picked: Array[int] = []
 var _body := ""
+## The owner kind of the picked ships ("player" or "enterprise"); "" while none is picked.
+var _kind := ""
 var _busy := false
 
 var _list: VBoxContainer
@@ -70,13 +76,16 @@ func handle_back() -> bool:
 ## Picks a ship (for review scenes and taps).
 func toggle(structure_id: int) -> void:
 	var body := _model.fleet.body_of(structure_id)
+	var entry := _model.fleet.find(structure_id)
+	var kind := entry.owner_kind if entry != null else "player"
 	if _picked.has(structure_id):
 		_picked.erase(structure_id)
 	else:
-		if body != _body:
+		if body != _body or kind != _kind:
 			_picked.clear()
 		_picked.append(structure_id)
 	_body = body if not _picked.is_empty() else ""
+	_kind = kind if not _picked.is_empty() else ""
 	_rebuild()
 
 
@@ -88,7 +97,7 @@ func _rebuild() -> void:
 		_form.disabled = true
 		return
 	var now := Services.clock.now_ms()
-	var found := _model.groups.candidates(_model.fleet, "", now)
+	var found := _model.groups.candidates(_model.fleet, "", now, commands_enterprise())
 	# Only ships still free stay picked.
 	var free: Dictionary = {}
 	for entry: Fleet.Entry in found:
@@ -100,6 +109,7 @@ func _rebuild() -> void:
 	_picked = kept
 	if _picked.is_empty():
 		_body = ""
+		_kind = ""
 	_state.visible = found.is_empty()
 	_state.text = tr("FLEETS_CREATE_NONE")
 	var by_body: Dictionary = {}
@@ -124,13 +134,22 @@ func _rebuild() -> void:
 			row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			var picked := _picked.has(entry.structure_id)
 			row.set_chosen(picked)
-			row.text = "%s\n%s" % [tr("FLEETS_PICKED").format({"name": entry.name}) if picked else entry.name,
-				FleetPanel.status_text(_model, entry, now, self)]
+			var line := FleetPanel.status_text(_model, entry, now, self)
+			if entry.is_enterprise():
+				line = "%s · %s" % [tr("FLEET_FLAGSHIP_MARK") if entry.flagship else tr("FLEET_ENTERPRISE_MARK"), line]
+			row.text = "%s\n%s" % [tr("FLEETS_PICKED").format({"name": entry.name}) if picked else entry.name, line]
 			var id := entry.structure_id
 			row.tapped.connect(func() -> void: toggle(id))
 			_list.add_child(row)
 	_form.disabled = _busy or _picked.is_empty()
 	_form.text = tr("FLEETS_CREATE_COUNT").format({"count": _picked.size()}) if not _picked.is_empty() else tr("FLEETS_CREATE")
+
+
+## Whether the player may form fleets of the enterprise's structures (COMMAND_ENTERPRISE_FLEET).
+static func commands_enterprise() -> bool:
+	var account := Services.session.account
+	return account != null and EnterpriseStructures.command_reason(EnterpriseStructures.ENTERPRISE,
+		account.enterprise_flags).is_empty()
 
 
 func _on_form() -> void:

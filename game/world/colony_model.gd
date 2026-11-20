@@ -26,6 +26,9 @@ signal load_failed(error: ApiError)
 signal ready_to_show
 ## A guest was founded or removed, or its name arrived.
 signal guests_changed
+## A build batch founded structures (a hull on a dock, `results[].created`): their ids. A
+## daughter of the enterprise founded in orbit or on the ground shows up in Fleet with this.
+signal structures_founded(ids: Array[int])
 ## Research, labs or their progress changed (also when loading research failed).
 signal research_changed
 ## A research of the player is done: the tech key.
@@ -42,9 +45,18 @@ const DEPOSIT_BLOCK := 4
 
 var structure_id := 0
 var structure_name := ""
-## "player", or "enterprise" for a structure of the player's enterprise (draft.37): it has no
-## store of its own (the inventory is the enterprise's) and builds only enterprise items.
+## "player", or "enterprise" for a structure of the player's enterprise (draft.37): it builds only
+## enterprise items, from the enterprise inventory (the flagship's store, draft.38); a daughter has
+## a store of its own that the server tops up from there.
 var owner_kind := "player"
+## The enterprise's flagship (draft.38: the structure whose store is the enterprise inventory);
+## 0 while unknown, for an own structure, or when the enterprise has none standing.
+var flagship_id := 0
+## Whether the enterprise's structures were listed (flagship_id is then reliable).
+var flagship_known := false
+## The enterprise inventory (the flagship's store), for building at a daughter; null while not
+## loaded, and for the flagship itself (its own `inventory` is it).
+var enterprise_inventory: Inventory = null
 ## The structure this one is docked on; null for the home structure.
 var host: ColonyModel = null
 ## Guests docked on this structure: structure id → ColonyModel (home structure only).
@@ -119,8 +131,12 @@ var life_support_coverage := 1000000
 var production_error: ApiError = null
 ## Inhabitants per tier and who works where (from production, structure and PUT workforce).
 var workforce := Workforce.new()
-## The structure rests in orbit or is under way: no ground to show (the screen shows panels).
+## The structure is under way: no ground to show (the screen shows panels).
 var detached := false
+## The structure rests in orbit (anchor `free`, kind `orbit`): drawn in 3D without ground, so it
+## can be built on (draft.38 `POST /v2/structures/{id}/ops`, local cells = absolute cells here).
+## The body is the one it circles (name, star); it has no grid here.
+var in_orbit := false
 ## When a guest was asked for (load_structure), its id: the screen selects it; 0 otherwise.
 var asked_guest := 0
 ## Other own structures on the same body's surface (load_structure): id → ColonyModel.
@@ -185,6 +201,7 @@ func load_structure(preferred: int) -> void:
 		if other.is_ok() and Wire.as_string(other.data.get("ownerKind")) == "enterprise":
 			chosen = other.data
 			owner_kind = "enterprise"
+			await _load_flagship_id(Wire.as_string(other.data.get("enterpriseId")))
 	for _step: int in 8:
 		var anchor := Wire.as_dict(chosen.get("anchor"))
 		if Wire.as_string(anchor.get("type")) != "docked":
@@ -217,13 +234,17 @@ func load_structure(preferred: int) -> void:
 	structure_id = Wire.as_int(chosen.get("structureId"))
 	structure_name = Wire.as_string(chosen.get("name"))
 	var where := Wire.as_dict(chosen.get("anchor"))
-	detached = Wire.as_string(where.get("type")) == "free"
+	in_orbit = Wire.as_string(where.get("type")) == "free" and Wire.as_string(where.get("kind")) == "orbit" \
+		and not Wire.as_string(where.get("bodyId")).is_empty()
+	detached = Wire.as_string(where.get("type")) == "free" and not in_orbit
 	body_id = Wire.as_string(where.get("bodyId"))
 	if not body_id.is_empty():
 		var body_error := await _load_body()
 		if body_error != null:
 			load_failed.emit(body_error)
 			return
+	if in_orbit:
+		_leave_ground()
 
 	var layout_error := await _load_layout(true)
 	if layout_error != null:
@@ -286,9 +307,23 @@ func _load_body() -> ApiError:
 	return null
 
 
+## In orbit there is no ground: no grid, no air, no wrapping (size 0), no surface to load.
+func _leave_ground() -> void:
+	has_grid = false
+	size_x = 0
+	size_y = 0
+	min_z = 0
+	max_z = 0
+	atmosphere_density = 0.0
+	atmosphere = {}
+	surface = SurfaceBlocks.new(0)
+
+
 ## The other own structures standing on this body's surface: models with their layout (and
 ## their guests), drawn closed next to this one.
 func _add_neighbours(items: Array) -> void:
+	if in_orbit:
+		return
 	for entry: Variant in items:
 		var summary := Wire.as_dict(entry)
 		var id := Wire.as_int(summary.get("structureId"))
@@ -335,6 +370,7 @@ func _make_sibling(id: int) -> ColonyModel:
 	other.atmosphere = atmosphere
 	other.sun = sun
 	other.surface = surface
+	other.in_orbit = in_orbit
 	# The same dictionary: a research reload of the home structure reaches the other one too.
 	other.usable_blueprints = usable_blueprints
 	return other
@@ -362,7 +398,7 @@ func load_body_view(body: String) -> void:
 ## dock here become travellers until they arrive; a layout whose structure stands somewhere else
 ## now loads again. Emits guests_changed when the set of drawn structures changed.
 func sync_with_fleet(fleet: Fleet, now: int) -> void:
-	if body_id.is_empty() or detached or host != null or neighbour_of != null:
+	if body_id.is_empty() or detached or in_orbit or host != null or neighbour_of != null:
 		return
 	var changed := false
 	for entry: Fleet.Entry in fleet.entries():
@@ -656,6 +692,10 @@ func reload_production() -> void:
 ## tiers that fill up when a module of the type is finished. Robots come from and go back to the
 ## store. On success the workforce is the one the server sends back.
 func set_workforce(module_type: String, humans: Array[int], robots: Array[int], auto: Array[bool]) -> ApiResult:
+	# Enterprise structures: MANAGE_TREASURY (draft.38), refused here with the server's code.
+	var refused := refusal(manage_reason())
+	if refused != null:
+		return refused
 	var result := await Services.api.put_json("/v2/structures/%d/workforce" % structure_id, {
 		"assignments": [{"moduleType": module_type, "humans": humans, "robots": robots, "auto": auto}],
 	})
@@ -690,6 +730,10 @@ func counterparts() -> Array[ColonyModel]:
 ## its guests). The call always goes to the host; on success both stores are the ones the
 ## server sends back.
 func transfer_to(other: ColonyModel, item: String, amount: int) -> ApiResult:
+	# Enterprise structures: MANAGE_TREASURY (draft.38), refused here with the server's code.
+	var refused := refusal(manage_reason())
+	if refused != null:
+		return refused
 	var to_guest := other.host == self
 	var host_model: ColonyModel = self if to_guest else other
 	var guest_model: ColonyModel = other if to_guest else self
@@ -709,6 +753,10 @@ func transfer_to(other: ColonyModel, item: String, amount: int) -> ApiResult:
 ## Destroys `amount` micro-units of an item for good (way out of a full store). On success the
 ## inventory is the one the server sends back.
 func discard(item: String, amount: int) -> ApiResult:
+	# Enterprise structures: MANAGE_TREASURY (draft.38), refused here with the server's code.
+	var refused := refusal(manage_reason())
+	if refused != null:
+		return refused
 	var result := await Services.api.post_json("/v2/structures/%d/discard" % structure_id, {
 		"items": [{"resource": item, "amount": amount}],
 	})
@@ -771,12 +819,16 @@ func centre_cell() -> Vector3i:
 
 ## Makes sure the surface around an absolute cell is loaded (in the background).
 func ensure_surface(cell: Vector3i) -> void:
+	if in_orbit:
+		return
 	for request: SurfaceBlocks.Request in surface.missing_around(cell.x, cell.y, SURFACE_RADIUS):
 		_load_surface(request)
 
 
 ## Makes sure the ground of an underground level around an absolute column is loaded (cutaway).
 func ensure_level_surface(cell: Vector3i, z: int) -> void:
+	if in_orbit:
+		return
 	if z >= 0:
 		ensure_surface(cell)
 		return
@@ -871,11 +923,25 @@ func site() -> LevelRules.Site:
 func send_ops(ops: Array[Dictionary], mode: String = "atomic") -> ApiResult:
 	if is_guest():
 		return await host.send_ops(ops, mode)
-	var result := await Services.api.post_json("/v2/bodies/%s/ops" % body_id.uri_encode(), {
-		"mode": mode,
-		"ops": ops,
-	})
+	var refused := refusal(build_reason())
+	if refused != null:
+		return refused
+	var result: ApiResult
+	if EnterpriseStructures.uses_structure_ops(owner_kind, layout.anchor_type):
+		# draft.38: enterprise structures and structures in orbit, local cells of this structure.
+		result = await Services.api.post_json("/v2/structures/%d/ops" % structure_id, {
+			"mode": mode,
+			"ops": EnterpriseStructures.local_ops(ops, layout.offset + layout.base),
+		})
+	else:
+		result = await Services.api.post_json("/v2/bodies/%s/ops" % body_id.uri_encode(), {
+			"mode": mode,
+			"ops": ops,
+		})
 	if result.is_ok():
+		var founded := EnterpriseStructures.created_structures(result.data)
+		if not founded.is_empty():
+			structures_founded.emit(founded)
 		reload_layout()
 		reload_inventory()
 		var changed: Array = result.data.get("structures") if typeof(result.data.get("structures")) == TYPE_ARRAY else []
@@ -905,6 +971,79 @@ func reload_inventory() -> void:
 		var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
 		inventory = Inventory.from_wire(answer.data, scale)
 		inventory_changed.emit()
+	if owner_kind == EnterpriseStructures.ENTERPRISE and not is_guest() and flagship_id != structure_id:
+		reload_enterprise_inventory()
+
+
+## Loads the enterprise inventory (the flagship's store) for building at a daughter.
+func reload_enterprise_inventory() -> void:
+	if flagship_id == 0 or flagship_id == structure_id:
+		enterprise_inventory = null
+		return
+	var answer := await Services.api.get_json("/v2/structures/%d/inventory" % flagship_id)
+	if answer.is_ok():
+		var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
+		enterprise_inventory = Inventory.from_wire(answer.data, scale)
+		inventory_changed.emit()
+
+
+## Finds the enterprise's flagship among its structures (`GET /v2/enterprises/{id}/structures`).
+func _load_flagship_id(enterprise: String) -> void:
+	flagship_id = 0
+	flagship_known = false
+	if enterprise.is_empty():
+		return
+	var answer := await Services.api.get_json("/v2/enterprises/%s/structures" % enterprise.uri_encode())
+	if not answer.is_ok():
+		return
+	flagship_known = true
+	for ref: EnterpriseFlagship.StructureRef in EnterpriseFlagship.structures_from_wire(answer.data):
+		if ref.flagship:
+			flagship_id = ref.structure_id
+
+
+## Whether this is the enterprise's flagship (its store is the enterprise inventory).
+func is_flagship() -> bool:
+	var home_model := home()
+	return home_model.owner_kind == EnterpriseStructures.ENTERPRISE and home_model.flagship_id != 0 \
+		and structure_id == home_model.flagship_id
+
+
+## The store hulls and modules for this structure come from: the host's for a guest, the
+## enterprise inventory for a structure of the enterprise (draft.38), else its own.
+func build_inventory() -> Inventory:
+	var home_model := home()
+	if home_model.owner_kind == EnterpriseStructures.ENTERPRISE and home_model.flagship_id != 0 \
+			and home_model.flagship_id != home_model.structure_id:
+		return home_model.enterprise_inventory
+	return supply().inventory
+
+
+## Why the player may not build here (EnterpriseStructures reason; "" when allowed).
+func build_reason() -> String:
+	var account := Services.session.account
+	var flags := account.enterprise_flags if account != null else PackedStringArray()
+	var home_model := home()
+	var standing := home_model.flagship_id != 0 or not home_model.flagship_known
+	return EnterpriseStructures.build_reason(owner_kind, flags, standing)
+
+
+## A failed result with the server's code for a reason (the same text as the server's answer);
+## null when the reason is "" (allowed).
+static func refusal(reason: String) -> ApiResult:
+	if reason.is_empty():
+		return null
+	var result := ApiResult.new()
+	result.error = ApiError.new()
+	result.error.code = EnterpriseStructures.error_code(reason)
+	return result
+
+
+## Why the player may not manage this structure (workforce, store, recipes); "" when allowed.
+func manage_reason() -> String:
+	var account := Services.session.account
+	return EnterpriseStructures.manage_reason(owner_kind,
+		account.enterprise_flags if account != null else PackedStringArray())
 
 
 func _load_layout(full: bool) -> ApiError:
@@ -967,6 +1106,9 @@ func _add_guest(id: int) -> ColonyModel:
 	var guest := _make_sibling(id)
 	guest.name = "Guest%d" % id
 	guest.host = self
+	# A daughter on an enterprise dock belongs to the enterprise; a member's own ship docked there
+	# is named from the own list (_name_guests) and is the player's.
+	guest.owner_kind = owner_kind
 	guest.layout.base = layout.offset
 	guests[id] = guest
 	add_child(guest)
@@ -986,7 +1128,18 @@ func _name_guests(items: Array) -> void:
 		var guest := guests.get(Wire.as_int(summary.get("structureId"))) as ColonyModel
 		if guest != null:
 			guest.structure_name = Wire.as_string(summary.get("name"))
+			guest.owner_kind = "player"
 			named = true
+	# Guests the own list does not know: the enterprise's daughters (draft.38), named one by one.
+	if owner_kind == EnterpriseStructures.ENTERPRISE:
+		for guest: ColonyModel in guest_list():
+			if not guest.structure_name.is_empty():
+				continue
+			var details := await Services.api.get_json("/v2/structures/%d" % guest.structure_id)
+			if details.is_ok():
+				guest.structure_name = Wire.as_string(details.data.get("name"))
+				guest.owner_kind = Wire.as_string(details.data.get("ownerKind"), owner_kind)
+				named = true
 	if named:
 		guests_changed.emit()
 
@@ -1143,6 +1296,10 @@ func storage_modules() -> Array[StructureLayout.Module]:
 ## Switches a storage module between the own supply ("selfUse") and the cargo area
 ## ("transport"). On success the inventory is the one the server sends back.
 func set_storage_mode(module_id: int, mode: String) -> ApiResult:
+	# Enterprise structures: MANAGE_TREASURY (draft.38), refused here with the server's code.
+	var refused := refusal(manage_reason())
+	if refused != null:
+		return refused
 	var result := await Services.api.patch_json("/v2/structures/%d/modules/%d/storage" % [structure_id, module_id],
 		{"mode": mode})
 	if result.is_ok():
@@ -1156,6 +1313,10 @@ func set_storage_mode(module_id: int, mode: String) -> ApiResult:
 ## Moves `amount` micro-units of an item from the own supply ("selfUse") to the cargo area
 ## ("transport") or back. On success the inventory is the one the server sends back.
 func move_storage(from: String, item: String, amount: int) -> ApiResult:
+	# Enterprise structures: MANAGE_TREASURY (draft.38), refused here with the server's code.
+	var refused := refusal(manage_reason())
+	if refused != null:
+		return refused
 	var result := await Services.api.post_json("/v2/structures/%d/storage/move" % structure_id, {
 		"from": from,
 		"items": [{"resource": item, "amount": amount}],

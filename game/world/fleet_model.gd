@@ -32,6 +32,7 @@ var groups_supported := true
 var enterprise_supported := true
 
 var _loading := false
+var _enterprise_loading := false
 var _again := false
 
 
@@ -81,10 +82,12 @@ func reload() -> void:
 
 ## Loads the structures of the player's enterprise again (it changed, or its flagship came).
 func reload_enterprise() -> void:
-	if _loading or not loaded:
+	if _loading or not loaded or _enterprise_loading:
 		return
+	_enterprise_loading = true
 	await _load_enterprise()
 	await _name_bodies()
+	_enterprise_loading = false
 	changed.emit()
 
 
@@ -260,6 +263,15 @@ func _on_event(event: SseEvent) -> void:
 		return
 	if event.type.begins_with("fleet."):
 		_on_group_event(event)
+		return
+	if event.type == "structure.layoutChanged":
+		# A structure this list does not know changed: with an enterprise, a daughter another member
+		# founded on an enterprise dock (draft.38; structure events reach every member).
+		var changed_id := Wire.as_int(Wire.parse_object(event.data).get("structureId"))
+		var account := Services.session.account
+		if changed_id != 0 and fleet.find(changed_id) == null and account != null \
+				and not account.enterprise_id.is_empty() and enterprise_supported:
+			reload_enterprise()
 		return
 	if not event.type.begins_with("travel.") and not event.type.begins_with("route.") \
 			and event.type != "structure.anchorChanged":

@@ -55,8 +55,12 @@ extends Control
 ## The screen shows one own structure (`start_structure`, else the home colony) with the other own
 ## structures on the same body drawn next to it. A structure chosen elsewhere (`show_structure`)
 ## is selected here when it is on screen; otherwise the shell is asked for a new screen
-## (`switch_requested`). A structure in orbit or under way has no ground: it shows as panels only
-## (its trip and its inventory) with the shell's navigation; its details open from the head.
+## (`switch_requested`). A structure under way has no ground: it shows as panels only (its trip
+## and its inventory) with the shell's navigation; its details open from the head. A structure
+## resting in orbit is drawn without ground and built like any other (draft.38: build batches go to
+## `POST /v2/structures/{id}/ops`, ColonyModel.send_ops). Enterprise structures (draft.38) build
+## from the enterprise inventory with MANAGE_TREASURY while the flagship stands; otherwise the
+## palette names the reason.
 ## Trips are planned in the Fleet tab (`travel_requested`). Standing alone (review scenes) the
 ## screen keeps its own fleet model and puts its layers over itself.
 
@@ -275,6 +279,7 @@ func _ready() -> void:
 	_model.deposits_loaded.connect(_refresh)
 	_model.telescopes_changed.connect(_refresh)
 	_model.ready_to_show.connect(_on_ready_to_show)
+	_model.structures_founded.connect(_on_structures_founded)
 	_model.load_failed.connect(_on_load_failed)
 	Services.events.event_received.connect(_on_travel_event)
 	if Services.definitions == null:
@@ -782,7 +787,8 @@ func _on_ready_to_show() -> void:
 	_update_sun()
 	# Foreign structures probes have seen here and the own probes lying here (draft.31); nothing
 	# on an older server.
-	_fleet.probes.load_reveal(_model.body_id)
+	if not _model.in_orbit:
+		_fleet.probes.load_reveal(_model.body_id)
 	_show_wrecks()
 	# The head and the bottom cover parts of the view: shift the colony into the room between
 	# them (and from then on with every change of their heights).
@@ -795,7 +801,7 @@ func _on_ready_to_show() -> void:
 
 ## The explored areas of this body arrived or changed: the ghosts of seen structures follow.
 func _on_reveal_changed(changed_body: String) -> void:
-	if changed_body == _model.body_id and not _model.detached:
+	if changed_body == _model.body_id and not _model.detached and not _model.in_orbit:
 		_view.set_reveal(_fleet.probes.reveal(changed_body))
 
 
@@ -815,7 +821,7 @@ func _wreck_text(impacts: Array) -> String:
 
 ## The own probes that landed on this body lie there as wrecks (the probe list changed).
 func _show_wrecks() -> void:
-	if _model.structure_id == 0 or _model.detached or _model.body_id.is_empty():
+	if _model.structure_id == 0 or _model.detached or _model.in_orbit or _model.body_id.is_empty():
 		return
 	_view.set_landed_probes(_fleet.probes.list.landed_on(_model.body_id, Services.clock.now_ms()))
 
@@ -827,7 +833,7 @@ func _on_probe_arrived(probe: Probes.Probe, sightings: int) -> void:
 		body = _model.body_name if probe.body_id == _model.body_id else tr("FLEET_UNKNOWN_PLACE")
 	var key := "PROBE_NOTICE_ARRIVED_SEEN" if sightings > 0 else "PROBE_NOTICE_ARRIVED"
 	show_notice(tr(key).format({"body": body, "count": sightings}), AppTheme.COLOR_OK)
-	if probe.body_id == _model.body_id and not _model.detached:
+	if probe.body_id == _model.body_id and not _model.detached and not _model.in_orbit:
 		_model.reset_surface()
 
 
@@ -837,7 +843,7 @@ func _on_probe_arrived(probe: Probes.Probe, sightings: int) -> void:
 func _update_sun() -> void:
 	if _model.detached:
 		return
-	if _model.sun == null:
+	if _model.sun == null or _model.in_orbit:
 		_view.set_sun(FIXED_SUN_ELEVATION, FIXED_SUN_AZIMUTH, _model.star_kelvin, _model.atmosphere_density,
 		_model.star_brightness(), _model.star_size())
 		return
@@ -992,7 +998,15 @@ func _move_details(on_card: bool) -> void:
 ## out (named in a hint), and modules whose production depends on the level show the change here.
 func _fill_palette() -> void:
 	var definitions := Services.definitions
-	var supply := _focus.supply().inventory if _focus != null else null
+	# Enterprise structures (draft.38): built by members with MANAGE_TREASURY from the enterprise
+	# inventory while the flagship stands; otherwise the palette names the reason.
+	var reason := _focus.build_reason() if _focus != null else ""
+	if not reason.is_empty():
+		_tool = ""
+		_palette.show_blocked(_reason_text(reason))
+		_palette.show_shapes(false, _shape, "")
+		return
+	var supply := _focus.build_inventory() if _focus != null else null
 	if supply == null or definitions == null:
 		var none: Array[BuildCatalog.Entry] = []
 		_palette.show_entries(none, _tool)
@@ -1025,6 +1039,22 @@ func _fill_palette() -> void:
 	_palette.show_entries(entries, _tool, hint)
 	# Shapes only on the home structure: a guest keeps its own stacking on the docks.
 	_palette.show_shapes(_shapes_offered(), _shape, tr("COLONY_SHAPE_HOME_ONLY") if _focus.is_guest() else "")
+
+
+## The line saying why the player may not build or manage here (EnterpriseStructures reason).
+func _reason_text(reason: String) -> String:
+	return tr(EnterpriseStructures.reason_key(reason)).format({
+		"right": tr("ENTERPRISE_FLAG_MANAGE_TREASURY") if reason == EnterpriseStructures.NEEDS_TREASURY
+			else tr("ENTERPRISE_FLAG_COMMAND_ENTERPRISE_FLEET")})
+
+
+## A hull on a dock founded structures (draft.38: daughters of the enterprise too): Fleet lists them.
+func _on_structures_founded(_ids: Array[int]) -> void:
+	show_notice(tr("COLONY_STRUCTURE_FOUNDED"), AppTheme.COLOR_OK)
+	if _model.owner_kind == EnterpriseStructures.ENTERPRISE:
+		_fleet.reload_enterprise()
+	else:
+		_fleet.reload()
 
 
 # --- levels ---------------------------------------------------------------------------------
@@ -1585,7 +1615,7 @@ func _show_names() -> void:
 	if _header == null or _model.structure_id == 0:
 		return
 	if not _opened:
-		_header.set_title(_model.body_name)
+		_header.set_title(tr("FLEET_IN_ORBIT").format({"body": _model.body_name}) if _model.in_orbit else _model.body_name)
 		var count := _model.drawn_structures().size()
 		for place: Fleet.Place in _fleet.fleet.places():
 			if place.body_id == _model.body_id:
@@ -1600,7 +1630,7 @@ func _show_names() -> void:
 	elif _focus.is_guest():
 		_header.set_subtitle(tr("COLONY_DOCKED_AT").format({"host": _focus.host.structure_name}))
 	else:
-		_header.set_subtitle(_model.body_name)
+		_header.set_subtitle(tr("FLEET_IN_ORBIT").format({"body": _model.body_name}) if _model.in_orbit else _model.body_name)
 
 
 func _on_title_pressed() -> void:

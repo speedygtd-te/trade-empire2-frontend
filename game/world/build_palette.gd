@@ -27,6 +27,9 @@ var _empty: Label
 ## Why some items are not offered here (hulls that cannot stand on the active level).
 var _hint: Label
 var _hint_text := ""
+## Why nothing may be built here (an enterprise structure without the right or the flagship,
+## draft.38), shown amber in place of "Nothing to build"; "" otherwise.
+var _blocked_text := ""
 var _compact: HBoxContainer
 var _compact_icon: TextureRect
 var _compact_label: Label
@@ -85,6 +88,7 @@ func show_entries(entries: Array[BuildCatalog.Entry], tool: String, hint: String
 	_entries = entries
 	_tool = tool
 	_hint_text = hint
+	_blocked_text = ""
 	var present := BuildCatalog.categories(entries)
 	var of_tool := BuildCatalog.category_of(entries, tool)
 	if not of_tool.is_empty():
@@ -99,6 +103,15 @@ func show_entries(entries: Array[BuildCatalog.Entry], tool: String, hint: String
 
 ## Offers the shape switch under the chosen hull (`offered`) with `shape` chosen; `note` says why
 ## it is not offered ("" for nothing to say).
+## Nothing may be built here: `text` says why (already translated).
+func show_blocked(text: String) -> void:
+	var none: Array[BuildCatalog.Entry] = []
+	show_entries(none, "")
+	_blocked_text = text
+	if is_inside_tree():
+		_rebuild()
+
+
 func show_shapes(offered: bool, shape: HullShapes.Shape, note: String = "") -> void:
 	_shapes_offered = offered
 	_shape_note_text = note
@@ -127,6 +140,11 @@ func _rebuild() -> void:
 		child.queue_free()
 	var categories := BuildCatalog.categories(_entries)
 	_empty.visible = _entries.is_empty()
+	_empty.text = _blocked_text if not _blocked_text.is_empty() else tr("COLONY_NOTHING_TO_BUILD")
+	if _blocked_text.is_empty():
+		_empty.remove_theme_color_override("font_color")
+	else:
+		_empty.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	_grid.visible = _browsing and not _entries.is_empty()
 	_scroll.visible = _grid.visible
 	_compact.visible = not _browsing and not _entries.is_empty()

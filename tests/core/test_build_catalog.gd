@@ -90,8 +90,47 @@ func test_owners_decide_who_may_build_when_the_data_says() -> void:
 		"module:ENTERPRISE_GENERATOR"])
 
 
-func test_without_owners_in_the_data_nothing_is_filtered() -> void:
-	# The draft.37 server keeps `owners` out of /v2/definitions.
-	assert_bool(_definitions.owners_known).is_false()
-	assert_int(BuildCatalog.entries(_definitions, _units(), "enterprise").size()).is_equal(
-		BuildCatalog.entries(_definitions, _units()).size())
+func test_without_owners_in_the_data_they_are_derived() -> void:
+	# The draft.37/38 server keeps `owners` out of /v2/definitions: prefix, maker and the shared list decide.
+	var definitions := GameDefinitions.from_bundle({
+		"dataHash": "x",
+		"modules": [
+			{"key": "PUMP", "displayName": "Pump", "category": "PRODUCTION", "item": "PUMP_MODULE",
+				"manufacturedBy": "FACTORY"},
+			{"key": "LIFE_SUPPORT", "displayName": "Life Support", "category": "COLONY", "item": "LIFE_SUPPORT_MODULE",
+				"manufacturedBy": "FACTORY"},
+			{"key": "PROTEIN_SYNTHESIZER", "displayName": "Protein", "category": "PRODUCTION",
+				"item": "PROTEIN_SYNTHESIZER_MODULE", "manufacturedBy": "ENTERPRISE_FACTORY"},
+			{"key": "ENTERPRISE_LAB", "displayName": "Lab", "category": "PRODUCTION", "item": "ENTERPRISE_LAB_MODULE"},
+		],
+		"hulls": [
+			{"key": "STARTER", "displayName": "Starter", "item": "HULL_STARTER"},
+			{"key": "ENTERPRISE_DOCK", "displayName": "Enterprise Dock", "item": "HULL_ENTERPRISE_DOCK"},
+		],
+	})
+	var units := {"PUMP_MODULE": 1, "LIFE_SUPPORT_MODULE": 1, "PROTEIN_SYNTHESIZER_MODULE": 1,
+		"ENTERPRISE_LAB_MODULE": 1, "HULL_STARTER": 1, "HULL_ENTERPRISE_DOCK": 1}
+
+	assert_bool(definitions.owners_known).is_true()
+	assert_bool(definitions.owners_derived).is_true()
+	assert_bool(definitions.module("PROTEIN_SYNTHESIZER").enterprise_buildable).is_true()
+	assert_bool(definitions.module("ENTERPRISE_LAB").enterprise_buildable).is_false()
+	var player: Array[String] = []
+	for entry: BuildCatalog.Entry in BuildCatalog.entries(definitions, units):
+		player.append(entry.tool)
+	var enterprise: Array[String] = []
+	for entry: BuildCatalog.Entry in BuildCatalog.entries(definitions, units, "enterprise"):
+		enterprise.append(entry.tool)
+	assert_array(player).contains_exactly_in_any_order(["hull:STARTER", "module:PUMP", "module:LIFE_SUPPORT"])
+	assert_array(enterprise).contains_exactly_in_any_order(["hull:ENTERPRISE_DOCK", "module:LIFE_SUPPORT",
+		"module:PROTEIN_SYNTHESIZER", "module:ENTERPRISE_LAB"])
+
+
+func test_owners_from_the_data_are_not_derived() -> void:
+	var definitions := GameDefinitions.from_bundle({
+		"dataHash": "x",
+		"modules": [{"key": "ENTERPRISE_X", "displayName": "X", "item": "ENTERPRISE_X_MODULE", "owners": ["PLAYER"]}],
+	})
+
+	assert_bool(definitions.owners_derived).is_false()
+	assert_bool(definitions.module("ENTERPRISE_X").allows("player")).is_true()

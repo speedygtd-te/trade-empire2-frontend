@@ -328,7 +328,7 @@ static func dock_offset(host: StructureLayout, cells: Array[Vector3i], except: i
 		high = high.max(Vector2i(cell.x, cell.y))
 	var docks: Array[Vector3i] = []
 	for cell: Vector3i in host.hull_cells():
-		if host.hull_at(cell) == DOCK:
+		if DockRules.is_dock(host.hull_at(cell)):
 			docks.append(cell)
 	docks.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
 		if a.z != b.z:
@@ -347,7 +347,7 @@ static func _fits_on_docks(host: StructureLayout, guests: Array[StructureLayout.
 	var rect := Rect2i(Vector2i(low.x + offset.x, low.y + offset.y), high - low + Vector2i.ONE)
 	for y: int in range(rect.position.y, rect.end.y):
 		for x: int in range(rect.position.x, rect.end.x):
-			if host.hull_at(Vector3i(x, y, level)) != DOCK:
+			if not DockRules.is_dock(host.hull_at(Vector3i(x, y, level))):
 				return false
 	for other: StructureLayout.Guest in guests:
 		if other.dock_z == level and other.rect.intersects(rect):
