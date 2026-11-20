@@ -217,16 +217,57 @@ func _finish() -> void:
 
 
 func _on_event(event: SseEvent) -> void:
+	if event.type.begins_with("fleet."):
+		_on_group_event(event)
+		return
 	if not event.type.begins_with("travel.") and not event.type.begins_with("route.") \
 			and event.type != "structure.anchorChanged":
 		return
 	var data := Wire.parse_object(event.data)
+	# A fleet's route (draft.35) starts, moves on or ends: its command changed with it.
+	var group_id := _group_behind(event.type, data)
+	if group_id != 0:
+		reload_group(group_id)
 	if fleet.apply_event(event.type, data):
 		await _name_bodies()
 		changed.emit()
 	elif event.type == "travel.started" or event.type == "route.created":
 		# A structure the list does not know yet (founded since): load it.
 		reload()
+
+
+## The fleet whose command an event changes: a fleet route created, moving on or deleted, or
+## a member setting off on a leg; 0 for anything else.
+func _group_behind(type: String, data: Dictionary) -> int:
+	match type:
+		"route.created", "route.updated":
+			return Wire.as_int(Wire.as_dict(data.get("route")).get("fleetId"))
+		"route.arrived", "route.departed":
+			return Wire.as_int(data.get("fleetId"))
+		"route.deleted", "route.paused", "route.stalled":
+			var route_id := Wire.as_int(data.get("routeId"))
+			for group: FleetGroups.Group in groups.groups():
+				if group.is_on_route() and group.route_id == route_id:
+					return group.fleet_id
+		"travel.started", "travel.arrived":
+			var group := groups.of_structure(Wire.as_int(data.get("structureId")))
+			if group != null and group.is_on_route():
+				return group.fleet_id
+	return 0
+
+
+## Loads one fleet again (`GET /v2/fleets/{id}`); a fleet that is gone leaves the book.
+func reload_group(fleet_id: int) -> void:
+	var answer := await Services.api.get_json("/v2/fleets/%d" % fleet_id)
+	if answer.is_ok():
+		groups.put(FleetGroups.Group.from_wire(answer.data))
+	elif answer.error.code == "FLEET_NOT_FOUND":
+		groups.remove(fleet_id)
+	else:
+		return
+	_sync_members()
+	await _name_bodies()
+	changed.emit()
 
 
 func _on_group_event(event: SseEvent) -> void:
