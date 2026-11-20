@@ -1625,7 +1625,7 @@ func _process(delta: float) -> void:
 		_ground.refresh_heights(batch)
 	if _followers_due:
 		_place_followers()
-	if _hd_wanted and not _hd:
+	if _hd_wanted != _hd:
 		_poll_hd()
 	if _moving:
 		_mover.step(delta, _to_sun, _sun_up)
@@ -1702,38 +1702,51 @@ func _hull_mesh(key: String) -> Mesh:
 	return mesh
 
 
-## Switches between the normal and the high-detail models of modules and hulls. Going up, the
-## high-detail models of everything loaded so far load in the background first and the structures
-## are rebuilt once they are there (no hitch); going down is at once (the normal ones stay loaded).
+## Switches between the normal and the high-detail models of modules and hulls. The models of
+## the other kind for everything in use load in the background first; once they are there the
+## structures are rebuilt (no hitch) and the models of the old kind are let go, so only one set
+## of textures is held (the high-detail ones take four times the memory).
 func _want_hd(on: bool) -> void:
 	if on == _hd_wanted:
 		return
 	_hd_wanted = on
 	_hd_loading.clear()
-	if not on:
-		if _hd:
-			_hd = false
-			_rebuild_structure()
-		return
-	for key: String in _scenes.keys():
-		if _scenes[key] == null or _scenes_hd.has(key):
+	var target := _scenes_hd if on else _scenes
+	var keys := {}
+	for cache: Dictionary in [_scenes, _scenes_hd]:
+		for key: String in cache.keys():
+			if cache[key] != null:
+				keys[key] = true
+	for key: String in keys.keys():
+		if target.has(key):
 			continue
-		var path := MODELS_HD + key + ".glb"
+		var path := (MODELS_HD if on else MODELS) + key + ".glb"
 		if ResourceLoader.exists(path) and ResourceLoader.load_threaded_request(path, "PackedScene") == OK:
 			_hd_loading[key] = path
 	_poll_hd()
 
 
-## Takes the high-detail models that finished loading; once all are there, shows them.
+## Takes the models of the wanted kind that finished loading; once all are there, shows them.
 func _poll_hd() -> void:
+	var target := _scenes_hd if _hd_wanted else _scenes
 	for key: String in _hd_loading.keys():
 		var path: String = _hd_loading[key]
 		var status := ResourceLoader.load_threaded_get_status(path)
 		if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			return
-		_scenes_hd[key] = ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
+		target[key] = ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
 		_hd_loading.erase(key)
-	_hd = true
+	_hd = _hd_wanted
+	if _hd:
+		# Normal models stay only where no high-detail one exists.
+		for key: String in _scenes_hd.keys():
+			if _scenes_hd[key] != null:
+				_scenes.erase(key)
+	else:
+		_scenes_hd.clear()
+	_hull_meshes.clear()
+	# The remembered lamp materials would hold the old textures; the rebuild collects them again.
+	_lamps.clear()
 	_rebuild_structure()
 
 
