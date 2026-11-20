@@ -96,22 +96,25 @@ func test_fog_takes_the_block_means_and_the_reference_where_nothing_is_known() -
 
 
 func test_a_pad_cuts_higher_ground_fills_lower_ground_a_little_and_eases_back() -> void:
-	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], _slope_x))
+	# 3 units per cell: below the height of retaining walls.
+	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], func(x: int, _y: int) -> int: return 100 + 3 * x))
 	var cells: Array[Vector2i] = [Vector2i(4, 4), Vector2i(5, 4), Vector2i(4, 5), Vector2i(5, 5)]
 
-	var touched := relief.set_pads([TerrainRelief.Pad.new(cells, 150.0)])
+	var touched := relief.set_pads([TerrainRelief.Pad.new(cells, 113.5)])
 
 	assert_bool(touched.has(Vector2i(0, 0))).is_true()
-	# Uphill edge (corner x = 6, natural 155): cut to the base.
-	assert_float(relief.corner(6, 5)).is_equal_approx(150.0, 0.001)
-	# Downhill edge (corner x = 4, natural 135): filled up by FILL of the difference.
-	assert_float(relief.corner(4, 5)).is_equal_approx(135.0 + TerrainRelief.FILL * 15.0, 0.001)
+	# Uphill edge (corner x = 6, natural 116.5): cut to the base.
+	assert_float(relief.corner(6, 5)).is_equal_approx(113.5, 0.001)
+	# Downhill edge (corner x = 4, natural 110.5): filled up by FILL of the difference.
+	assert_float(relief.corner(4, 5)).is_equal_approx(110.5 + TerrainRelief.FILL * 3.0, 0.001)
 	# One corner out: half way back.
-	assert_float(relief.corner(7, 5)).is_equal_approx(165.0 + (150.0 - 165.0) * 0.5, 0.001)
-	assert_float(relief.corner(3, 5)).is_equal_approx(125.0 + TerrainRelief.FILL * 25.0 * 0.5, 0.001)
+	assert_float(relief.corner(7, 5)).is_equal_approx(119.5 + (113.5 - 119.5) * 0.5, 0.001)
+	assert_float(relief.corner(3, 5)).is_equal_approx(107.5 + TerrainRelief.FILL * 6.0 * 0.5, 0.001)
 	# Two corners out: natural.
-	assert_float(relief.corner(8, 5)).is_equal_approx(175.0, 0.001)
-	assert_float(relief.corner(2, 5)).is_equal_approx(115.0, 0.001)
+	assert_float(relief.corner(8, 5)).is_equal_approx(122.5, 0.001)
+	assert_float(relief.corner(2, 5)).is_equal_approx(104.5, 0.001)
+	# No terrace, no retaining wall.
+	assert_bool(is_nan(relief.levelled_base(6, 5))).is_true()
 
 
 func test_the_foundation_runs_where_the_ground_lies_lower_than_the_floor() -> void:
@@ -234,3 +237,133 @@ func test_scene_heights_count_from_the_reference() -> void:
 	assert_bool(relief.has_reference()).is_true()
 	assert_float(relief.scene_height(610.0)).is_equal_approx(10.0 * TerrainRelief.SCALE, 0.0001)
 	assert_float(relief.scene_height(600.0)).is_equal(0.0)
+
+
+func test_a_foundation_three_quarters_of_a_cell_tall_becomes_a_retaining_wall() -> void:
+	# The ground rises a whole cell per cell to the east (10 units).
+	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], _slope_x))
+	var cells: Array[Vector2i] = [Vector2i(4, 4), Vector2i(5, 4), Vector2i(4, 5), Vector2i(5, 5)]
+	relief.set_pads([TerrainRelief.Pad.new(cells, 150.0)])
+
+	var walls := relief.foundation(cells, 150.0)
+
+	var retaining := 0
+	for wall: TerrainRelief.Wall in walls:
+		assert_bool(wall.cut).is_false()
+		if wall.outward == Vector2i(-1, 0):
+			# West: filled up to 139.5 below a floor at 150.
+			assert_bool(wall.retaining).is_true()
+		if wall.a.x == 6 or wall.b.x == 6:
+			# The east halves of the north and south sides fall only to 146.5, and the cut side
+			# beside them has no foundation to join: plain.
+			assert_float(150.0 - minf(wall.bottom_a, wall.bottom_b)).is_less(TerrainRelief.WALL)
+			assert_bool(wall.retaining).is_false()
+		if wall.retaining:
+			retaining += 1
+	# West (2), and the west halves of the north and south sides.
+	assert_int(retaining).is_equal(4)
+	# Gentle ground (3 units per cell) keeps the plain foundation everywhere.
+	var gentle := TerrainRelief.new(_surface([Vector2i(0, 0)], func(x: int, _y: int) -> int: return 100 + 3 * x))
+	gentle.set_pads([TerrainRelief.Pad.new(cells, 115.0)])
+	assert_int(gentle.foundation(cells, 115.0).size()).is_greater(0)
+	for wall: TerrainRelief.Wall in gentle.foundation(cells, 115.0):
+		assert_bool(wall.retaining).is_false()
+
+
+func test_a_lower_side_between_two_retaining_ones_joins_them() -> void:
+	# South of a row of five cells the ground drops 24 units, but not beside the middle one: the
+	# corners there lie 4.2 below the floor (8.4 elsewhere).
+	var drop := func(x: int, y: int) -> int:
+		if y >= 4:
+			return 200
+		return 200 - (0 if x == 5 else 24)
+	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], drop))
+	var cells: Array[Vector2i] = [Vector2i(3, 4), Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4)]
+	relief.set_pads([TerrainRelief.Pad.new(cells, 200.0)])
+
+	var south := 0
+	for wall: TerrainRelief.Wall in relief.foundation(cells, 200.0):
+		if wall.outward == Vector2i(0, -1):
+			south += 1
+			assert_bool(wall.retaining).is_true()
+	assert_int(south).is_equal(5)
+
+
+func test_ground_rising_steeply_beside_a_pad_is_levelled_into_a_terrace() -> void:
+	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], _slope_x))
+	var cells: Array[Vector2i] = [Vector2i(4, 4), Vector2i(5, 4), Vector2i(4, 5), Vector2i(5, 5)]
+
+	relief.set_pads([TerrainRelief.Pad.new(cells, 150.0)])
+
+	# East of the footprint the ground rises to 165 at the ring's outer corners: a terrace, around
+	# the footprint's corners too (they join the terrace beside them).
+	for y: int in range(3, 7):
+		assert_float(relief.levelled_base(6, y)).is_equal(150.0)
+	# Beside the footprint to the north it rises only to 150 on average; west it falls.
+	assert_bool(is_nan(relief.levelled_base(5, 6))).is_true()
+	assert_bool(is_nan(relief.levelled_base(7, 4))).is_true()
+	assert_bool(is_nan(relief.levelled_base(3, 4))).is_true()
+	# The terrace is flat at the base; the ground beyond keeps its natural height at the wall.
+	assert_float(relief.height(6.5, 4.5)).is_equal(150.0)
+	assert_float(relief.height(6.99, 5.5)).is_equal(150.0)
+	assert_float(relief.corner(7, 5)).is_equal_approx(165.0, 0.001)
+	assert_float(relief.height(7.01, 5.5)).is_greater(164.0)
+	assert_int(relief.levelled_in_block(Vector2i(0, 0)).size()).is_equal(4)
+
+	var walls := relief.cut_walls(cells, 150.0)
+
+	var east := 0
+	for wall: TerrainRelief.Wall in walls:
+		assert_bool(wall.cut).is_true()
+		assert_bool(wall.retaining).is_true()
+		assert_float(wall.top_a).is_equal(maxf(relief.corner(wall.a.x, wall.a.y), 150.0))
+		assert_float(wall.top_b).is_equal(maxf(relief.corner(wall.b.x, wall.b.y), 150.0))
+		assert_float(wall.bottom_a).is_equal(150.0)
+		assert_float(wall.bottom_b).is_equal(150.0)
+		if wall.a.x == 7 and wall.b.x == 7:
+			east += 1
+			# It looks back west at the terrace; seen from there, the north end is on the left.
+			assert_that(wall.outward).is_equal(Vector2i(-1, 0))
+			assert_int(wall.a.y).is_equal(wall.b.y + 1)
+			assert_float(wall.top_a).is_equal_approx(165.0, 0.001)
+	assert_int(east).is_equal(4)
+	# Besides: the ends of the terrace (south of (6, 3), north of (6, 6)) and the steps back to the
+	# footprint beside (5, 3) and (5, 6).
+	assert_int(walls.size()).is_equal(8)
+	# Gentle ground keeps the soft cut.
+	var gentle := TerrainRelief.new(_surface([Vector2i(0, 0)], func(x: int, _y: int) -> int: return 100 + 3 * x))
+	gentle.set_pads([TerrainRelief.Pad.new(cells, 115.0)])
+	assert_int(gentle.cut_walls(cells, 115.0).size()).is_equal(0)
+	assert_bool(is_nan(gentle.levelled_base(6, 4))).is_true()
+
+
+func test_no_terrace_beside_another_footprint() -> void:
+	var relief := TerrainRelief.new(_surface([Vector2i(0, 0)], _slope_x))
+	var low: Array[Vector2i] = [Vector2i(4, 4)]
+	var high: Array[Vector2i] = [Vector2i(7, 4)]
+
+	relief.set_pads([TerrainRelief.Pad.new(low, 140.0), TerrainRelief.Pad.new(high, 170.0)])
+
+	# (5, 4) is the low pad's terrace; (6, 4) lies beside the high pad.
+	assert_float(relief.levelled_base(5, 4)).is_equal(140.0)
+	assert_bool(is_nan(relief.levelled_base(6, 4))).is_true()
+	assert_bool(is_nan(relief.levelled_base(7, 4))).is_true()
+
+
+func test_terraces_follow_ground_arriving_beside_a_pad() -> void:
+	var surface := _surface([Vector2i(0, 0)], _slope_x)
+	var relief := TerrainRelief.new(surface)
+	relief.set_reference(245.0)
+	var cells: Array[Vector2i] = [Vector2i(14, 4), Vector2i(15, 4)]
+	relief.set_pads([TerrainRelief.Pad.new(cells, 245.0)])
+	# East of the footprint the ground is not loaded yet: no terrace.
+	assert_bool(is_nan(relief.levelled_base(16, 4))).is_true()
+
+	_load(surface, Vector2i(1, 0), _slope_x)
+	relief.surface_loaded([Vector2i(1, 0)])
+	var touched := relief.refresh_pads([Vector2i(1, 0)])
+
+	assert_float(relief.levelled_base(16, 4)).is_equal(245.0)
+	assert_bool(touched.has(Vector2i(1, 0))).is_true()
+	# Ground arriving far away leaves the pads alone.
+	assert_int(relief.refresh_pads([Vector2i(5, 5)]).size()).is_equal(0)

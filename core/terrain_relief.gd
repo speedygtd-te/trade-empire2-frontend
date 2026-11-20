@@ -12,6 +12,13 @@ extends RefCounted
 ## (FILL) and a foundation (foundation()) closes the rest, from the structure's floor down to the
 ## ground; a ring of BLEND cells around eases back to the natural ground.
 ##
+## Where the difference reaches WALL_HEIGHT the edge gets retaining walls instead (placed by
+## RetainingWalls): on the low side the foundation becomes a buttressed retaining wall
+## (Wall.retaining); on the high side a ring cell whose ground rises that much is levelled at the
+## base (a terrace, levelled_base) and a wall along its outer edges holds back the natural ground,
+## which runs on at its own height right up to the wall's top (cut_walls). Lower edges keep the
+## plain foundation and the soft cut.
+##
 ## Unexplored (fog) and unloaded cells have no elevation: a corner without any known cell around it
 ## takes the mean elevation of the blocks nearby (bilinear between block centres), or the reference
 ## where a block knows nothing. Heights are cached per block (block_heights) and dropped when the
@@ -30,11 +37,18 @@ const FILL := 0.3
 const BLEND := 1
 ## Foundation walls lower than this (elevation units) are left out.
 const MIN_FOUNDATION := 0.05
+## From this height difference (cells) at a structure's edge on, retaining walls stand there
+## (Rudi 2026-11-20: from three quarters of a cell).
+const WALL_HEIGHT := 0.75
+## The same in elevation units.
+const WALL := WALL_HEIGHT / SCALE
 ## Corners per side of a block's cache: the block's BLOCK + 1 and one more on each side (normals).
 const SIDE := SurfaceBlocks.BLOCK + 3
 ## The ground is lit as if its slopes were this much steeper than drawn (a hillshade): most of the
 ## surface rises only a unit or two per cell, which the sun alone would hardly show.
 const HILLSHADE := 3.0
+## The four sides of a cell (south, east, north, west).
+const SIDES: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 
 
 ## A structure standing on the ground: its ground footprint (absolute cells) and the elevation its
@@ -49,20 +63,31 @@ class Pad:
 		base = elevation
 
 
-## One side of a foundation: from corner `a` to corner `b` (absolute) along the footprint's edge,
-## from the structure's floor (`top`) down to the ground at either end. `outward`: the step (cell x,
-## cell y) away from the footprint.
+## One cell edge of a wall, from corner `a` to corner `b` (absolute; seen from the side its face
+## looks to, `a` is on the left), from its top down to its foot at either end (elevation units).
+## `outward`: the step (cell x, cell y) its face looks towards. A foundation (foundation()) runs
+## along a footprint's edge from the floor down to the ground and looks away from it; `retaining`
+## where it is tall enough for a retaining wall. A cut wall (cut_walls(), `cut`) holds back higher
+## ground at the outer edge of a terrace: from the ground there down to the base, looking towards
+## the terrace. `top` is the higher of `top_a` and `top_b`.
 class Wall:
 	extends RefCounted
 	var a := Vector2i.ZERO
 	var b := Vector2i.ZERO
 	var top := 0.0
+	var top_a := 0.0
+	var top_b := 0.0
 	var bottom_a := 0.0
 	var bottom_b := 0.0
 	var outward := Vector2i.ZERO
+	var retaining := false
+	var cut := false
 
 
 var surface: SurfaceBlocks
+## Whether retaining walls and terraces are made (off: plain foundations and soft cuts everywhere,
+## as before them; for measuring). Takes effect with the next set of pads.
+var walls := true
 ## Body width in cells (wraps in x); 0 = no wrapping.
 var size_x := 0
 ## Elevation at scene height 0, and whether it was set (the fog's level until then).
@@ -77,6 +102,10 @@ var _pad_corners: Dictionary = {}
 ## Blocks whose cache holds a corner of a pad (block → true).
 var _pad_blocks: Dictionary = {}
 var _pad_signature := 0
+var _pads: Array[Pad] = []
+## Terrace cells (x wrapped, y) → the base they are levelled at; and per block (block → cells).
+var _levelled: Dictionary = {}
+var _levelled_blocks: Dictionary = {}
 
 
 func _init(blocks: SurfaceBlocks, wrap_width: int = 0) -> void:
@@ -143,9 +172,55 @@ func set_pads(pads: Array[Pad]) -> Dictionary:
 	if signature == _pad_signature:
 		return {}
 	_pad_signature = signature
+	_pads = pads.duplicate()
+	return _apply_pads()
+
+
+## Ground arrived in some blocks: the terraces of the pads near them are decided again (they hang
+## on the natural ground beside the footprints). Returns the blocks whose heights changed.
+func refresh_pads(blocks: Array[Vector2i]) -> Dictionary:
+	if _pads.is_empty() or blocks.is_empty():
+		return {}
+	var wanted := {}
+	for block: Vector2i in blocks:
+		wanted[_wrap_block(block)] = true
+	var b := SurfaceBlocks.BLOCK
+	for pad: Pad in _pads:
+		if pad.cells.is_empty():
+			continue
+		var low := pad.cells[0]
+		var high := pad.cells[0]
+		for cell: Vector2i in pad.cells:
+			low = low.min(cell)
+			high = high.max(cell)
+		# The ring and the cells around its corners reach two cells out.
+		for by: int in range(floori(float(low.y - 2) / b), floori(float(high.y + 2) / b) + 1):
+			for bx: int in range(floori(float(low.x - 2) / b), floori(float(high.x + 2) / b) + 1):
+				if wanted.has(_wrap_block(Vector2i(bx, by))):
+					return _apply_pads()
+	return {}
+
+
+## The base a terrace cell is levelled at (elevation units); NAN for any other cell.
+func levelled_base(x: int, y: int) -> float:
+	var found: Variant = _levelled.get(Vector2i(WorldGrid.wrap_x(x, size_x), y))
+	if found == null:
+		return NAN
+	var base: float = found
+	return base
+
+
+## The terrace cells of a block (wrapped as block_heights takes it): cell (x wrapped, y) → base.
+func levelled_in_block(block: Vector2i) -> Dictionary:
+	var found: Variant = _levelled_blocks.get(_wrap_block(block))
+	return {} if found == null else found as Dictionary
+
+
+func _apply_pads() -> Dictionary:
 	var corners := {}
-	for pad: Pad in pads:
+	for pad: Pad in _pads:
 		_add_pad(corners, pad)
+	var levelled := _terraces(corners)
 	var touched := {}
 	for key: Vector2i in corners.keys():
 		if _pad_corners.get(key) != corners[key]:
@@ -153,10 +228,24 @@ func set_pads(pads: Array[Pad]) -> Dictionary:
 	for key: Vector2i in _pad_corners.keys():
 		if not corners.has(key):
 			_touch_corner(touched, key)
+	for key: Vector2i in levelled.keys():
+		if _levelled.get(key) != levelled[key]:
+			touched[_block_of_cell(key)] = true
+	for key: Vector2i in _levelled.keys():
+		if not levelled.has(key):
+			touched[_block_of_cell(key)] = true
 	_pad_corners = corners
+	_levelled = levelled
+	_levelled_blocks.clear()
+	for key: Vector2i in levelled.keys():
+		var block := _block_of_cell(key)
+		if not _levelled_blocks.has(block):
+			_levelled_blocks[block] = {}
+		var in_block: Dictionary = _levelled_blocks[block]
+		in_block[key] = levelled[key]
 	# Blocks a pad may reach: those around its bounding box (cheaper than every corner).
 	_pad_blocks.clear()
-	for pad: Pad in pads:
+	for pad: Pad in _pads:
 		if pad.cells.is_empty():
 			continue
 		var low := pad.cells[0]
@@ -189,6 +278,11 @@ func height(px: float, py: float) -> float:
 	var x := floori(px)
 	var y := floori(py)
 	var wx := WorldGrid.wrap_x(x, size_x)
+	if not _levelled.is_empty():
+		# A terrace is flat at its base.
+		var levelled: Variant = _levelled.get(Vector2i(wx, y))
+		if levelled != null:
+			return levelled
 	var block := Vector2i(floori(float(wx) / SurfaceBlocks.BLOCK), floori(float(y) / SurfaceBlocks.BLOCK))
 	# The cell's four corners all lie in its block's cache (it reaches one corner beyond).
 	var heights := block_heights(block)
@@ -218,32 +312,21 @@ func block_heights(block: Vector2i) -> PackedFloat32Array:
 
 
 ## The foundation of a pad standing at `base`: a wall along every side of the footprint whose ground
-## lies lower than the floor (cut ground needs none).
+## lies lower than the floor (cut ground needs none). A side is `retaining` where the ground lies
+## WALL or more below the floor at either end, and so is a lower side between two retaining ones
+## if its ground lies at least half that low (no single plain gap in a retaining wall).
 func foundation(cells: Array[Vector2i], base: float) -> Array[Wall]:
-	var walls: Array[Wall] = []
+	var sides: Array[Wall] = []
 	var taken := {}
 	for cell: Vector2i in cells:
 		taken[cell] = true
-	var sides: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 	for cell: Vector2i in cells:
-		for side: Vector2i in sides:
+		for side: Vector2i in SIDES:
 			if taken.has(cell + side):
 				continue
-			var a: Vector2i
-			var b: Vector2i
-			match side:
-				Vector2i(0, -1):
-					a = cell
-					b = cell + Vector2i(1, 0)
-				Vector2i(1, 0):
-					a = cell + Vector2i(1, 0)
-					b = cell + Vector2i(1, 1)
-				Vector2i(0, 1):
-					a = cell + Vector2i(1, 1)
-					b = cell + Vector2i(0, 1)
-				_:
-					a = cell + Vector2i(0, 1)
-					b = cell
+			var ends := _edge(cell, side)
+			var a := ends[0]
+			var b := ends[1]
 			var bottom_a := minf(corner(a.x, a.y), base)
 			var bottom_b := minf(corner(b.x, b.y), base)
 			if minf(bottom_a, bottom_b) > base - MIN_FOUNDATION:
@@ -252,11 +335,78 @@ func foundation(cells: Array[Vector2i], base: float) -> Array[Wall]:
 			wall.a = a
 			wall.b = b
 			wall.top = base
+			wall.top_a = base
+			wall.top_b = base
 			wall.bottom_a = bottom_a
 			wall.bottom_b = bottom_b
 			wall.outward = side
-			walls.append(wall)
-	return walls
+			wall.retaining = walls and base - minf(bottom_a, bottom_b) >= WALL
+			sides.append(wall)
+	# Corner → the walls ending there.
+	var at := {}
+	for wall: Wall in sides:
+		for end: Vector2i in [wall.a, wall.b]:
+			if not at.has(end):
+				at[end] = []
+			var ending: Array = at[end]
+			ending.append(wall)
+	var promoted: Array[Wall] = []
+	for wall: Wall in sides:
+		if wall.retaining or base - minf(wall.bottom_a, wall.bottom_b) < WALL * 0.5:
+			continue
+		if _retaining_beside(at, wall, wall.a) and _retaining_beside(at, wall, wall.b):
+			promoted.append(wall)
+	for wall: Wall in promoted:
+		wall.retaining = true
+	return sides
+
+
+## The walls holding back the higher ground beside a pad standing at `base`: along every edge of
+## its terrace cells (levelled_base) that borders neither the footprint nor another terrace cell,
+## from the ground there (the corner heights, which the ground beyond runs on from) down to the
+## base, looking towards the terrace. Where the terrace ends beside lower ground the wall runs back
+## to the footprint, falling to the base there.
+func cut_walls(cells: Array[Vector2i], base: float) -> Array[Wall]:
+	var found: Array[Wall] = []
+	var taken := {}
+	for cell: Vector2i in cells:
+		taken[cell] = true
+	var seen := {}
+	for cell: Vector2i in cells:
+		for dy: int in [-1, 0, 1]:
+			for dx: int in [-1, 0, 1]:
+				var terrace := cell + Vector2i(dx, dy)
+				if taken.has(terrace) or seen.has(terrace):
+					continue
+				seen[terrace] = true
+				var level := levelled_base(terrace.x, terrace.y)
+				if is_nan(level) or absf(level - base) > 0.001:
+					continue
+				for side: Vector2i in SIDES:
+					var beyond := terrace + side
+					if taken.has(beyond) or absf(levelled_base(beyond.x, beyond.y) - base) <= 0.001:
+						continue
+					# Seen from the terrace, looking at the wall: the edge's ends swap.
+					var ends := _edge(terrace, side)
+					var a := ends[1]
+					var b := ends[0]
+					var top_a := maxf(corner(a.x, a.y), base)
+					var top_b := maxf(corner(b.x, b.y), base)
+					if maxf(top_a, top_b) < base + MIN_FOUNDATION:
+						continue
+					var wall := Wall.new()
+					wall.a = a
+					wall.b = b
+					wall.top_a = top_a
+					wall.top_b = top_b
+					wall.top = maxf(top_a, top_b)
+					wall.bottom_a = base
+					wall.bottom_b = base
+					wall.outward = -side
+					wall.retaining = true
+					wall.cut = true
+					found.append(wall)
+	return found
 
 
 ## Which diagonal a cell is drawn with: true for the one from its south-west to its north-east
@@ -418,6 +568,170 @@ func _add_pad(corners: Dictionary, pad: Pad) -> void:
 				var known: Vector2 = before
 				if distance < known.y or (distance == known.y and pad.base < known.x):
 					corners[key] = value
+
+
+## The terrace cells of every pad (cell → base), and the corners along their walls set to the
+## natural ground in `corners` (the ground beyond runs up to the wall's top). A ring cell (beside a
+## footprint, not on any, nor beside another pad's) becomes a terrace where the natural ground at its
+## corners off the footprint lies WALL or more above the base on average; a ring cell between two
+## terrace cells joins them from half that height, and a cell beside a footprint's corner only joins
+## a terrace beside it (or two), so the wall runs on around the corner.
+func _terraces(corners: Dictionary) -> Dictionary:
+	var levelled := {}
+	if _pads.is_empty() or not walls:
+		return levelled
+	# Footprint cell → the pad standing there.
+	var owners := {}
+	for pad: Pad in _pads:
+		for cell: Vector2i in pad.cells:
+			owners[Vector2i(WorldGrid.wrap_x(cell.x, size_x), cell.y)] = pad
+	for pad: Pad in _pads:
+		if pad.cells.is_empty():
+			continue
+		var edge_ring: Array[Vector2i] = []
+		var corner_ring: Array[Vector2i] = []
+		# Ring cell (x wrapped, y) → whether it lies beside a footprint cell (not only at a corner).
+		# Found on a grid of the footprint's bounding box (a ring of one cell around): far cheaper
+		# than looking up every cell's neighbours in a dictionary.
+		var rings := {}
+		var low := pad.cells[0]
+		var high := pad.cells[0]
+		for cell: Vector2i in pad.cells:
+			low = low.min(cell)
+			high = high.max(cell)
+		var width := high.x - low.x + 3
+		var height_cells := high.y - low.y + 3
+		var grid := PackedByteArray()
+		grid.resize(width * height_cells)
+		for cell: Vector2i in pad.cells:
+			grid[(cell.y - low.y + 1) * width + cell.x - low.x + 1] = 1
+		for j: int in height_cells:
+			for i: int in width:
+				var at := j * width + i
+				if grid[at] == 1:
+					continue
+				var side := (i > 0 and grid[at - 1] == 1) or (i < width - 1 and grid[at + 1] == 1) \
+					or (j > 0 and grid[at - width] == 1) or (j < height_cells - 1 and grid[at + width] == 1)
+				var diagonal := false
+				if not side:
+					diagonal = (i > 0 and j > 0 and grid[at - width - 1] == 1) or (i < width - 1 and j > 0 and grid[at - width + 1] == 1) \
+						or (i > 0 and j < height_cells - 1 and grid[at + width - 1] == 1) \
+						or (i < width - 1 and j < height_cells - 1 and grid[at + width + 1] == 1)
+				if not side and not diagonal:
+					continue
+				var ring := Vector2i(WorldGrid.wrap_x(low.x - 1 + i, size_x), low.y - 1 + j)
+				if not owners.has(ring):
+					rings[ring] = side
+		for ring: Vector2i in rings.keys():
+			if levelled.has(ring) or _beside_other(owners, ring, pad):
+				continue
+			if rings[ring] == true:
+				edge_ring.append(ring)
+			else:
+				corner_ring.append(ring)
+		var rise := {}
+		for ring: Vector2i in rings.keys():
+			rise[ring] = _ring_rise(owners, pad, ring)
+		var mine := {}
+		for ring: Vector2i in edge_ring:
+			if rise[ring] >= WALL:
+				mine[ring] = true
+		var joined: Array[Vector2i] = []
+		for ring: Vector2i in edge_ring:
+			if not mine.has(ring) and rise[ring] >= WALL * 0.5 and _terraces_beside(mine, ring) >= 2:
+				joined.append(ring)
+		for ring: Vector2i in joined:
+			mine[ring] = true
+		for ring: Vector2i in corner_ring:
+			var beside := _terraces_beside(mine, ring)
+			if beside >= 2 or (beside == 1 and rise[ring] >= WALL):
+				mine[ring] = true
+		for ring: Vector2i in mine.keys():
+			levelled[ring] = pad.base
+			# The corners off the footprint carry the natural ground (the wall's top).
+			for offset: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+				var key := Vector2i(WorldGrid.wrap_x(ring.x + offset.x, size_x), ring.y + offset.y)
+				var known: Variant = corners.get(key)
+				if known != null and (known as Vector2).y == 0.0:
+					continue
+				corners[key] = Vector2(pad.base, BLEND + 1.0)
+	return levelled
+
+
+## How far the natural ground at a ring cell's corners off its pad's footprint lies above the
+## pad's base on average (elevation units).
+func _ring_rise(owners: Dictionary, pad: Pad, ring: Vector2i) -> float:
+	var sum := 0.0
+	var count := 0
+	for offset: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		var key := ring + offset
+		var on_footprint := false
+		for cell_offset: Vector2i in [Vector2i(0, 0), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1)]:
+			var cell := key + cell_offset
+			if owners.get(Vector2i(WorldGrid.wrap_x(cell.x, size_x), cell.y)) == pad:
+				on_footprint = true
+				break
+		if on_footprint:
+			continue
+		sum += _natural_corner(key.x, key.y)
+		count += 1
+	return sum / count - pad.base if count > 0 else -INF
+
+
+## Whether a cell lies beside (or on) the footprint of a pad other than `pad`.
+func _beside_other(owners: Dictionary, cell: Vector2i, pad: Pad) -> bool:
+	for dy: int in [-1, 0, 1]:
+		for dx: int in [-1, 0, 1]:
+			var found: Variant = owners.get(Vector2i(WorldGrid.wrap_x(cell.x + dx, size_x), cell.y + dy))
+			if found != null and found != pad:
+				return true
+	return false
+
+
+## How many of a cell's four neighbours are in `terraces`.
+func _terraces_beside(terraces: Dictionary, cell: Vector2i) -> int:
+	var count := 0
+	for side: Vector2i in SIDES:
+		if terraces.has(Vector2i(WorldGrid.wrap_x(cell.x + side.x, size_x), cell.y + side.y)):
+			count += 1
+	return count
+
+
+## The natural height of corner (x, y): the mean of the known cells around it, else the fog's.
+func _natural_corner(x: int, y: int) -> float:
+	var sum := 0.0
+	var count := 0
+	for offset: Vector2i in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(0, 0)]:
+		var found := surface.cell(x + offset.x, y + offset.y)
+		if found != null:
+			sum += found.elevation
+			count += 1
+	return sum / count if count > 0 else _fog(x, y)
+
+
+## Whether a retaining foundation wall other than `wall` ends at corner `end`.
+static func _retaining_beside(at: Dictionary, wall: Wall, end: Vector2i) -> bool:
+	var ending: Array = at.get(end, [])
+	for other: Wall in ending:
+		if other != wall and other.retaining:
+			return true
+	return false
+
+
+## The ends of a cell's side (SIDES) as corners: seen from outside the cell, the left one first.
+static func _edge(cell: Vector2i, side: Vector2i) -> Array[Vector2i]:
+	match side:
+		Vector2i(0, -1):
+			return [cell, cell + Vector2i(1, 0)]
+		Vector2i(1, 0):
+			return [cell + Vector2i(1, 0), cell + Vector2i(1, 1)]
+		Vector2i(0, 1):
+			return [cell + Vector2i(1, 1), cell + Vector2i(0, 1)]
+	return [cell + Vector2i(0, 1), cell]
+
+
+func _block_of_cell(cell: Vector2i) -> Vector2i:
+	return _wrap_block(Vector2i(floori(float(cell.x) / SurfaceBlocks.BLOCK), floori(float(cell.y) / SurfaceBlocks.BLOCK)))
 
 
 ## How far a corner at offset `d` from a cell's south-west corner lies from that cell (0 for its own

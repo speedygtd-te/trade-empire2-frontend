@@ -6,6 +6,9 @@ extends Control
 ## shows). Checks that neighbouring ground blocks share their edge heights (no cracks) and that taps
 ## on the ground hit the cell drawn there, and measures the cost: draw calls, primitives and frame
 ## time with the relief and with flat ground, and how long the ground meshes take to build.
+## Where the ground beside a made-up structure lies TerrainRelief.WALL_HEIGHT or more above or below
+## its floor, retaining walls stand (RetainingLayer): the pictures show them near, mid and far, by
+## day and at night, and their cost is compared with plain foundations and soft cuts (WALLS).
 ## Uses the development account (.local/dev-account.json, node tools/dev-account.cjs). Root script
 ## of smoke/relief_view.tscn:
 ##   godot --path . --resolution 720x1280 res://smoke/relief_view.tscn -- --out=<folder>
@@ -14,6 +17,11 @@ const DEV_ACCOUNT := "res://.local/dev-account.json"
 ## Ids of the made-up structures (far from any real one).
 const FAKE_DOWN := 990001
 const FAKE_UP := 990002
+## Two large made-up structures on the broadest slopes nearby: there the ground beside them lies
+## far enough above and below their floor for retaining walls.
+const BIG_DOWN := 990003
+const BIG_UP := 990004
+const BIG_SIZE := Vector2i(14, 10)
 ## Size of a made-up structure (cells).
 const FAKE_SIZE := Vector2i(5, 4)
 ## How far from the home structure the steep spots are looked for (cells).
@@ -93,8 +101,10 @@ func _run() -> void:
 			var cells: Array[Vector2i] = []
 			if fake != null:
 				cells = ColonyView.footprint_of(fake.layout)
-			print("SLOPE  %s: base e %.1f, lift %.3f, ground e %s .. %s under it, %d foundation walls in view" % [
+			print("SLOPE  %s: base e %.1f, lift %.3f, ground e %s .. %s under it, %d plain foundation walls in view" % [
 				label, view._bases.get(id, NAN), view._lifts.get(id, NAN), _low(cells), _high(cells), view.foundation_walls()])
+			var base: float = view._bases.get(id, NAN)
+			_print_walls(label, cells, base)
 			var centre := Vector3i(at.x, at.y, 0)
 			await _look(centre, 9.0)
 			_day()
@@ -110,11 +120,178 @@ func _run() -> void:
 			_check_picking(centre)
 		await _look(Vector3i(down.x, down.y, 0), 22.0)
 		await _capture("slope_down_wide_day")
+		await _show_big()
 
 	await _look(home, 16.0)
 	_check_seams()
 	await _compare_flat()
 	get_tree().quit()
+
+
+## The large made-up structures where retaining walls stand: near both kinds of wall, mid and far,
+## by day and at night, and the cost against plain foundations and soft cuts.
+func _show_big() -> void:
+	var view := _colony._view
+	var model := _colony._model
+	var spots := _broad_slopes(model.centre_cell())
+	if spots.is_empty():
+		print("BIG  no broad slope found near the home structure")
+		return
+	var down: Vector2i = spots[0]
+	var up: Vector2i = spots[1]
+	print("BIG  %s falls towards the camera at %s, rises towards it at %s (made-up structures, client only)" % [
+		BIG_SIZE, down, up])
+	_fake(BIG_DOWN, down, BIG_SIZE)
+	_fake(BIG_UP, up, BIG_SIZE)
+	await get_tree().create_timer(0.5).timeout
+	for pair: Array in [[BIG_DOWN, down, "big_down"], [BIG_UP, up, "big_up"]]:
+		var id: int = pair[0]
+		var at: Vector2i = pair[1]
+		var label: String = pair[2]
+		_ensure_fake(id, at, BIG_SIZE)
+		var fake := model.neighbours.get(id) as ColonyModel
+		var cells: Array[Vector2i] = []
+		if fake != null:
+			cells = ColonyView.footprint_of(fake.layout)
+		var base: float = view._bases.get(id, NAN)
+		print("SLOPE  %s: base e %.1f, ground e %s .. %s under it" % [label, base, _low(cells), _high(cells)])
+		@warning_ignore("integer_division")
+		var half := BIG_SIZE / 2
+		# Near: the corner facing the camera (south-east, downhill on big_down) and the far one
+		# (north-west, the cut side seen over the structure).
+		await _look(Vector3i(at.x + half.x, at.y - half.y, 0), 6.0)
+		_print_walls(label, cells, base)
+		_day()
+		await _capture(label + "_near_day")
+		_night()
+		await _capture(label + "_near_night")
+		_day()
+		await _look(Vector3i(at.x - half.x, at.y + half.y, 0), 6.0)
+		await _capture(label + "_far_corner_day")
+		await _look(Vector3i(at.x - half.x - 1, at.y, 0), 6.0)
+		await _capture(label + "_west_day")
+		await _look(Vector3i(at.x, at.y, 0), 14.0)
+		await _capture(label + "_mid_day")
+		_night()
+		await _capture(label + "_mid_night")
+		_day()
+		await _look(Vector3i(at.x, at.y, 0), 34.0)
+		await _capture(label + "_far_day")
+		_check_picking(Vector3i(at.x + half.x + 2, at.y, 0))
+		_check_picking(Vector3i(at.x - half.x - 2, at.y, 0))
+	await _look(Vector3i(down.x, down.y, 0), 14.0)
+	await _compare_walls()
+
+
+## The middles of the BIG_SIZE footprints near the home structure, away from every structure, where
+## the ground falls most towards the camera (from its far sides, west and north, to its near sides,
+## east and south) and where it rises most towards it; empty when nothing loaded.
+func _broad_slopes(home: Vector3i) -> Array[Vector2i]:
+	var model := _colony._model
+	var surface := model.surface
+	var taken := {}
+	for structure: ColonyModel in model.drawn_structures():
+		for local: Vector3i in structure.layout.hull_cells():
+			var cell := structure.layout.to_absolute(local)
+			taken[Vector2i(cell.x, cell.y)] = true
+	@warning_ignore("integer_division")
+	var half := BIG_SIZE / 2
+	var best_down := Vector2i.ZERO
+	var best_up := Vector2i.ZERO
+	var down_score := -INF
+	var up_score := -INF
+	for y: int in range(home.y - SEARCH, home.y + SEARCH, 2):
+		for x: int in range(home.x - SEARCH, home.x + SEARCH, 2):
+			var x0 := x - half.x - 3
+			var x1 := x + half.x + 3
+			var y0 := y - half.y - 3
+			var y1 := y + half.y + 3
+			var free := true
+			for key: Vector2i in taken.keys():
+				if key.x >= x0 and key.x <= x1 and key.y >= y0 and key.y <= y1:
+					free = false
+					break
+			if not free:
+				continue
+			# Far sides (west, north) minus near sides (east, south).
+			var far := 0.0
+			var near := 0.0
+			var known := 0
+			for step: int in range(-half.y, half.y):
+				var west := surface.cell(x - half.x, y + step)
+				var east := surface.cell(x + half.x - 1, y + step)
+				if west != null and east != null:
+					far += west.elevation
+					near += east.elevation
+					known += 1
+			for step: int in range(-half.x, half.x):
+				var north := surface.cell(x + step, y + half.y - 1)
+				var south := surface.cell(x + step, y - half.y)
+				if north != null and south != null:
+					far += north.elevation
+					near += south.elevation
+					known += 1
+			if known < BIG_SIZE.x + BIG_SIZE.y:
+				continue
+			var fall := (far - near) / known
+			if fall > down_score:
+				down_score = fall
+				best_down = Vector2i(x, y)
+			if -fall > up_score:
+				up_score = -fall
+				best_up = Vector2i(x, y)
+	if down_score == -INF:
+		return []
+	print("BIG  falls %.1f units from the far to the near sides at %s, rises %.1f at %s" % [down_score, best_down,
+		up_score, best_up])
+	return [best_down, best_up]
+
+
+## The walls of a made-up structure: plain and retaining foundation sides, cut walls, how tall.
+func _print_walls(label: String, cells: Array[Vector2i], base: float) -> void:
+	if cells.is_empty() or is_nan(base):
+		return
+	var relief := _colony._view.relief
+	var plain := 0
+	var retaining := 0
+	var deepest := 0.0
+	for wall: TerrainRelief.Wall in relief.foundation(cells, base):
+		deepest = maxf(deepest, base - minf(wall.bottom_a, wall.bottom_b))
+		if wall.retaining:
+			retaining += 1
+		else:
+			plain += 1
+	var cut := relief.cut_walls(cells, base)
+	var tallest := 0.0
+	for wall: TerrainRelief.Wall in cut:
+		tallest = maxf(tallest, wall.top - base)
+	print("WALLS  %s: foundation %d plain + %d retaining sides (deepest %.2f cells), %d cut walls (tallest %.2f cells); pieces in view %s" % [
+		label, plain, retaining, deepest * TerrainRelief.SCALE, cut.size(), tallest * TerrainRelief.SCALE,
+		_colony._view.retaining_stats()])
+
+
+## Cost of the view with retaining walls and with plain foundations and soft cuts everywhere.
+func _compare_walls() -> void:
+	var view := _colony._view
+	var stats := view.retaining_stats()
+	var with_walls := await _frame_cost()
+	await _set_walls(false)
+	var plain := await _frame_cost()
+	await _capture("big_down_mid_plain_day")
+	await _set_walls(true)
+	print("WALLS  cost: retaining walls %d draw calls, %d primitives, %.2f ms per frame (%s); plain foundations and soft cuts %d draw calls, %d primitives, %.2f ms per frame" % [
+		with_walls[0], with_walls[1], with_walls[2], stats, plain[0], plain[1], plain[2]])
+
+
+func _set_walls(on: bool) -> void:
+	var view := _colony._view
+	view.relief.walls = on
+	view.relief._pad_signature = 0
+	view._update_relief()
+	var deadline := Time.get_ticks_msec() + 10000
+	while not view._relief_queue.is_empty() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	await get_tree().create_timer(0.5).timeout
 
 
 ## Elevations loaded around the home structure.
@@ -183,9 +360,9 @@ func _steep_spots(home: Vector3i) -> Array[Vector2i]:
 	return [best_down, best_up]
 
 
-## A made-up structure of FAKE_SIZE shut hulls with its middle at `centre`, as a neighbour of the
+## A made-up structure of `size` shut hulls with its middle at `centre`, as a neighbour of the
 ## home structure (client only).
-func _fake(id: int, centre: Vector2i) -> void:
+func _fake(id: int, centre: Vector2i, size: Vector2i = FAKE_SIZE) -> void:
 	var model := _colony._model
 	var fake := model._make_sibling(id)
 	fake.name = "Fake%d" % id
@@ -195,10 +372,10 @@ func _fake(id: int, centre: Vector2i) -> void:
 	fake.layout.kind = "base"
 	fake.layout.anchor_type = "surface"
 	@warning_ignore("integer_division")
-	fake.layout.offset = Vector3i(centre.x - FAKE_SIZE.x / 2, centre.y - FAKE_SIZE.y / 2, 0)
+	fake.layout.offset = Vector3i(centre.x - size.x / 2, centre.y - size.y / 2, 0)
 	fake.layout.rev = 1
-	for j: int in FAKE_SIZE.y:
-		for i: int in FAKE_SIZE.x:
+	for j: int in size.y:
+		for i: int in size.x:
 			fake.layout._hulls[Vector3i(i, j, 0)] = "STARTER"
 	model.neighbours[id] = fake
 	model.add_child(fake)
@@ -206,9 +383,9 @@ func _fake(id: int, centre: Vector2i) -> void:
 
 
 ## Puts a made-up structure back if the fleet's sync took it away.
-func _ensure_fake(id: int, centre: Vector2i) -> void:
+func _ensure_fake(id: int, centre: Vector2i, size: Vector2i = FAKE_SIZE) -> void:
 	if not _colony._model.neighbours.has(id):
-		_fake(id, centre)
+		_fake(id, centre, size)
 
 
 func _low(cells: Array[Vector2i]) -> String:
