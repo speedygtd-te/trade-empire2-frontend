@@ -311,8 +311,19 @@ func test_ultra_on_a_device() -> void:
 	assert_bool(DetailGovernor.device_allows_ultra(true, 4 * gib, 4, "PowerVR Rogue GE8320")).is_false()
 	assert_bool(DetailGovernor.device_allows_ultra(true, 12 * gib, 8, "Adreno (TM) 740")).is_true()
 	assert_bool(DetailGovernor.device_allows_ultra(true, 12 * gib, 8, "Mali-G57 MC2")).is_false()
-	assert_bool(DetailGovernor.device_allows_ultra(true, 6 * gib, 8, "Adreno (TM) 740")).is_false()
+	assert_bool(DetailGovernor.device_allows_ultra(true, 5 * gib, 8, "Adreno (TM) 740")).is_false()
 	assert_bool(DetailGovernor.device_allows_ultra(true, 12 * gib, 6, "Adreno (TM) 740")).is_false()
+	# An "8 GB" phone as Android reports it (Pixel 10a: about 6.8 GiB, Mali-G715): allowed.
+	assert_bool(DetailGovernor.device_allows_ultra(true, int(6.8 * gib), 8, "Mali-G715")).is_true()
+
+
+func test_why_a_device_is_not_strong_enough() -> void:
+	var gib := 1024 * 1024 * 1024
+	assert_str(DetailGovernor.ultra_device_block(true, 4 * gib, 8, "Adreno (TM) 740")).is_equal("memory")
+	assert_str(DetailGovernor.ultra_device_block(true, 12 * gib, 4, "Adreno (TM) 740")).is_equal("cores")
+	assert_str(DetailGovernor.ultra_device_block(true, 12 * gib, 8, "PowerVR Rogue GE8320")).is_equal("gpu")
+	assert_str(DetailGovernor.ultra_device_block(true, 0, 8, "Adreno (TM) 740")).is_empty()
+	assert_str(DetailGovernor.ultra_device_block(false, 1, 1, "PowerVR")).is_empty()
 
 
 func test_percentile() -> void:

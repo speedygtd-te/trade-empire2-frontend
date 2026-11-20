@@ -54,8 +54,9 @@ const ULTRA_DOWN_ABOVE_MS := 22.0
 const MAX_ULTRA_FAILS := 1
 ## A phone or tablet gets ULTRA only with this much memory (the textures of the high-detail
 ## models take four times the memory) and this many processor cores, and not with a GPU of the
-## low class (parts of the adapter name, lower case).
-const ULTRA_MIN_MEMORY_BYTES := 7 * 1024 * 1024 * 1024
+## low class (parts of the adapter name, lower case). Android reports the memory without what the
+## system keeps for itself: an "8 GB" phone shows about 6.8 GiB (Pixel 10a), so the bar is 6 GiB.
+const ULTRA_MIN_MEMORY_BYTES := 6 * 1024 * 1024 * 1024
 const ULTRA_MIN_CORES := 8
 const WEAK_GPUS: PackedStringArray = [
 	"powervr", "mali-4", "mali-t", "mali-g31", "mali-g51", "mali-g52", "mali-g57",
@@ -126,15 +127,23 @@ func is_ultra_allowed() -> bool:
 ## Whether the device is strong enough to try ULTRA: always off a phone or tablet; there with
 ## enough memory and cores and a GPU outside the low class (adapter name, any case).
 static func device_allows_ultra(mobile: bool, memory_bytes: int, cores: int, adapter: String) -> bool:
+	return ultra_device_block(mobile, memory_bytes, cores, adapter).is_empty()
+
+
+## Why a device may not use ULTRA, for the performance report: "" when it may, else "memory",
+## "cores" or "gpu". Unknown memory (0 or less: not reported) does not block.
+static func ultra_device_block(mobile: bool, memory_bytes: int, cores: int, adapter: String) -> String:
 	if not mobile:
-		return true
-	if memory_bytes < ULTRA_MIN_MEMORY_BYTES or cores < ULTRA_MIN_CORES:
-		return false
+		return ""
+	if memory_bytes > 0 and memory_bytes < ULTRA_MIN_MEMORY_BYTES:
+		return "memory"
+	if cores < ULTRA_MIN_CORES:
+		return "cores"
 	var name := adapter.to_lower()
 	for weak: String in WEAK_GPUS:
 		if name.contains(weak):
-			return false
-	return true
+			return "gpu"
+	return ""
 
 
 ## Drops the samples, e.g. after loading a new colony.

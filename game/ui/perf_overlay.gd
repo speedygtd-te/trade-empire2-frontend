@@ -85,6 +85,7 @@ func report() -> String:
 		[tr("PERF_SCREEN"), "%d × %d" % [size.x, size.y]],
 		[tr("PERF_APP"), str(ProjectSettings.get_setting("application/config/version", ""))],
 		[tr("PERF_TIER"), tier_name(_tier(), self)],
+		[tr("PERF_ULTRA"), ultra_device_text(self)],
 	]
 	var labels := {"frames": tr("PERF_FRAMES"), "fps": tr("PERF_FPS"), "frame": tr("PERF_FRAME_TIMES"),
 		"slow": tr("PERF_SLOW"), "draws": tr("PERF_DRAWS"), "primitives": tr("PERF_PRIMITIVES"),
@@ -95,6 +96,23 @@ func report() -> String:
 ## Seconds of measurements kept (up to a minute).
 func measured_seconds() -> float:
 	return _stats.summary().seconds
+
+
+## Whether this device may use the high-detail tier, and if not why, with its measured values.
+static func ultra_device_text(translator: Object) -> String:
+	var memory: int = OS.get_memory_info().get("physical", 0)
+	var cores := OS.get_processor_count()
+	var adapter := RenderingServer.get_video_adapter_name()
+	var gib := "%.1f" % (memory / (1024.0 * 1024.0 * 1024.0))
+	var need := "%.0f" % (DetailGovernor.ULTRA_MIN_MEMORY_BYTES / (1024.0 * 1024.0 * 1024.0))
+	match DetailGovernor.ultra_device_block(OS.has_feature("mobile"), memory, cores, adapter):
+		"memory":
+			return translator.tr("PERF_ULTRA_MEMORY").format({"have": gib, "need": need})
+		"cores":
+			return translator.tr("PERF_ULTRA_CORES").format({"have": cores, "need": DetailGovernor.ULTRA_MIN_CORES})
+		"gpu":
+			return translator.tr("PERF_ULTRA_GPU")
+	return translator.tr("PERF_ULTRA_OK").format({"memory": gib, "cores": cores})
 
 
 static func tier_name(tier: int, translator: Object) -> String:
