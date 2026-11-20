@@ -10,6 +10,8 @@ extends Control
 signal closed
 ## The player wants a member's details.
 signal member_requested(structure_id: int)
+## The player wants the fleet's route (its id), or a new route for the fleet (0) (draft.35).
+signal route_requested(route_id: int)
 
 ## How often the countdown is refreshed (seconds).
 const REFRESH_SECONDS := 1.0
@@ -41,6 +43,7 @@ var _capture: Button
 var _actions: VBoxContainer
 var _fly: Button
 var _fly_note: Label
+var _route: Button
 var _rename_row: HBoxContainer
 var _rename_field: LineEdit
 var _disband: Button
@@ -139,6 +142,9 @@ func _ready() -> void:
 	_actions.add_child(_fly)
 	_fly_note = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_actions.add_child(_fly_note)
+	_route = Ui.secondary_button("FLEETS_ROUTE_NEW")
+	_route.pressed.connect(_on_route)
+	_actions.add_child(_route)
 
 	_actions.add_child(Ui.label("FLEETS_SHIPS", AppTheme.VARIATION_MUTED))
 	_members = Ui.column(10)
@@ -258,10 +264,16 @@ func _update() -> void:
 		_stance_note.text = tr("FLEETS_STANCE_NOTE_AGGRESSIVE") if group.is_aggressive() else tr("FLEETS_STANCE_NOTE")
 		_stance_note.remove_theme_color_override("font_color")
 	var fly_reason := _fly_reason(group)
+	var route := _model.routes.book.find(group.route_id) if group.is_on_route() and _model.routes != null else null
+	_route.text = tr("FLEETS_ROUTE_OPEN").format({"name": route.name if route != null else ""}) \
+		if group.is_on_route() else tr("FLEETS_ROUTE_NEW")
+	_route.disabled = _busy or (not group.is_on_route() and not fly_reason.is_empty())
 	_fly.disabled = _busy or not fly_reason.is_empty()
 	_fly_note.text = fly_reason if not fly_reason.is_empty() else tr("FLEETS_FLY_NOTE")
 	var disband_reason := ""
-	if group.has_command():
+	if group.is_on_route():
+		disband_reason = _route_lock(group)
+	elif group.has_command():
 		disband_reason = tr("FLEETS_DISBAND_FLYING")
 	elif not group.is_together():
 		disband_reason = tr("FLEETS_NOT_TOGETHER")
@@ -274,11 +286,30 @@ func _update() -> void:
 
 ## Why the fleet cannot fly now; "" when it can.
 func _fly_reason(group: FleetGroups.Group) -> String:
+	if group.is_on_route():
+		return _route_lock(group)
 	if group.has_command():
 		return tr("FLEETS_FLYING_NOW")
 	if not group.is_together():
 		return tr("FLEETS_NOT_TOGETHER")
 	return ""
+
+
+## Why a fleet on a route takes no other order: delete the route to rebuild.
+func _route_lock(group: FleetGroups.Group) -> String:
+	return tr("FLEETS_ROUTE_LOCK").format({"name": route_name(_model, group, self)})
+
+
+func _on_route() -> void:
+	var group := _group()
+	if group != null:
+		route_requested.emit(group.route_id if group.is_on_route() else 0)
+
+
+## The name of the route a fleet runs; a placeholder while it is not loaded.
+static func route_name(model: FleetModel, group: FleetGroups.Group, translator: Object) -> String:
+	var route := model.routes.book.find(group.route_id) if model.routes != null else null
+	return route.name if route != null else translator.tr("ROUTE_UNKNOWN_STRUCTURE")
 
 
 ## The place or the flight with its countdown, and the shared supply.
@@ -519,8 +550,16 @@ func _on_started() -> void:
 
 # --- texts ----------------------------------------------------------------------------------
 
-## Where a fleet is, or where it flies and when it arrives.
+## Where a fleet is, or where it flies and when it arrives; a fleet on a route says so first.
 static func status_text(model: FleetModel, group: FleetGroups.Group, now: int, translator: Object) -> String:
+	if group.is_on_route():
+		var running := translator.tr("FLEETS_ON_ROUTE").format({"name": route_name(model, group, translator)})
+		if group.is_travelling(now):
+			return running + " · " + translator.tr("FLEETS_ROUTE_LEG").format({"duration": TimeFormat.duration(group.remaining_ms(now))})
+		if group.is_together():
+			var here := model.body_name(group.location_body_id)
+			return running + " · " + translator.tr("FLEETS_AT").format({"body": here if not here.is_empty() else translator.tr("FLEET_UNKNOWN_PLACE")})
+		return running
 	if group.is_travelling(now):
 		var body := model.body_name(group.target_body_id())
 		return translator.tr("FLEETS_FLYING").format({

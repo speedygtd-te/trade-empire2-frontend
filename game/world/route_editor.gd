@@ -1,6 +1,6 @@
 class_name RouteEditor
 extends Control
-## One form for a route, a layer over the Fleet tab ("‹ Back" or Back leaves it). New route: transporter, stations A and B (from
+## One form for a route, a layer over the Fleet tab ("‹ Back" or Back leaves it). New route: transporter or a fleet (draft.35: it runs the route as one ship), stations A and B (from
 ## the own structures), the first stop, and per direction the goods loaded at the departing
 ## station; a live quote (debounced) says whether it can start, where it stops and what the first
 ## trip takes. Existing route: name and rules only (stations, transporter and stops are fixed;
@@ -53,16 +53,20 @@ var _result: Label
 var _action: Button
 
 
-## `route_id` 0 creates a route, prefilled with `transporter_id` when that is not 0.
-func setup(fleet: FleetModel, route_id: int, transporter_id: int = 0) -> void:
+## `route_id` 0 creates a route, prefilled with `transporter_id` or `fleet_id` when not 0.
+func setup(fleet: FleetModel, route_id: int, transporter_id: int = 0, fleet_id: int = 0) -> void:
 	_fleet = fleet
 	_route_id = route_id
 	_draft.transporter_id = transporter_id
+	if fleet_id != 0:
+		_use_fleet(fleet_id)
 	var route := fleet.routes.book.find(route_id) if route_id != 0 else null
 	if route != null:
 		_draft.name = route.name
 		_original_name = route.name
 		_draft.transporter_id = route.transporter_id
+		if route.is_fleet():
+			_use_fleet(route.fleet_id)
 		_draft.station_a = route.station_id(RoutePlan.A)
 		_draft.station_b = route.station_id(RoutePlan.B)
 		_draft.rules_ab = RoutePlan.copy_rules(route.rules_ab)
@@ -73,6 +77,24 @@ func setup(fleet: FleetModel, route_id: int, transporter_id: int = 0) -> void:
 
 func is_new() -> bool:
 	return _route_id == 0
+
+
+## Drive with a fleet: its id and members (members cannot be stations).
+func _use_fleet(fleet_id: int) -> void:
+	var group := _fleet.groups.find(fleet_id)
+	_draft.use_fleet(fleet_id, group.member_ids() if group != null else PackedInt64Array())
+	if _draft.runs(_draft.station_a):
+		_draft.station_a = 0
+	if _draft.runs(_draft.station_b):
+		_draft.station_b = 0
+
+
+## The name of what drives the route: the transporter, or "Fleet “X”".
+func _driver_name() -> String:
+	if _draft.is_fleet():
+		var group := _fleet.groups.find(_draft.fleet_id)
+		return tr("ROUTE_FLEET_NAME").format({"name": group.name if group != null else tr("ROUTE_UNKNOWN_STRUCTURE")})
+	return RouteList.structure_name(_fleet, _draft.transporter_id, self) if _draft.transporter_id != 0 else tr("ROUTE_CHOOSE")
 
 
 func _ready() -> void:
@@ -170,8 +192,7 @@ func _rebuild_ends() -> void:
 		child.queue_free()
 	var a := RouteList.structure_name(_fleet, _draft.station_a, self) if _draft.station_a != 0 else tr("ROUTE_CHOOSE")
 	var b := RouteList.structure_name(_fleet, _draft.station_b, self) if _draft.station_b != 0 else tr("ROUTE_CHOOSE")
-	var transporter := RouteList.structure_name(_fleet, _draft.transporter_id, self) \
-		if _draft.transporter_id != 0 else tr("ROUTE_CHOOSE")
+	var transporter := _driver_name()
 	if not is_new():
 		var fixed := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 		fixed.text = tr("ROUTE_FIXED_ENDS").format({"transporter": transporter, "a": a, "b": b})
@@ -430,6 +451,8 @@ func _fill_picker() -> void:
 		tr("ROUTE_PICK_STATION").format({"letter": _picking})
 	var now := Services.clock.now_ms()
 	var shown := 0
+	if _picking == "transporter":
+		shown += _fill_fleets()
 	for entry: Fleet.Entry in _fleet.fleet.entries():
 		var reason := ""
 		if _picking == "transporter":
@@ -440,7 +463,7 @@ func _fill_picker() -> void:
 			elif _fleet.group_of(entry.structure_id) != null:
 				reason = tr("ROUTE_PICK_IN_FLEET")
 		else:
-			if entry.structure_id == _draft.transporter_id:
+			if _draft.runs(entry.structure_id):
 				continue
 			if entry.is_moving(now):
 				reason = tr("ROUTE_PICK_MOVING")
@@ -450,7 +473,7 @@ func _fill_picker() -> void:
 		var line := FleetPanel.status_text(_fleet, entry, now, self)
 		row.text = "%s\n%s" % [entry.name, line if reason.is_empty() else reason]
 		row.disabled = not reason.is_empty()
-		row.set_chosen(entry.structure_id == _current_pick())
+		row.set_chosen(entry.structure_id == _current_pick() and not (_picking == "transporter" and _draft.is_fleet()))
 		row.tapped.connect(_on_picked.bind(entry.structure_id))
 		_picker_list.add_child(row)
 		shown += 1
@@ -458,6 +481,43 @@ func _fill_picker() -> void:
 		_picker_state.text = tr("ROUTE_PICK_NO_TRANSPORTER") if _picking == "transporter" else tr("ROUTE_PICK_NO_STATION")
 	if not _fleet.loaded:
 		_picker_state.text = tr("FLEET_LOADING")
+
+
+## The fleets as drivers (draft.35): a fleet with a command (a flight or another route) or
+## not together cannot take one. Returns how many rows it added.
+func _fill_fleets() -> int:
+	var groups := _fleet.groups.groups()
+	if groups.is_empty():
+		return 0
+	var now := Services.clock.now_ms()
+	for group: FleetGroups.Group in groups:
+		var reason := ""
+		if group.has_command():
+			reason = tr("ROUTE_PICK_FLEET_BUSY")
+		elif not group.is_together():
+			reason = tr("FLEETS_NOT_TOGETHER")
+		var row := ListButton.new()
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var line := tr("FLEETS_SUBTITLE").format({"count": group.members.size()}) + " · " \
+			+ FleetGroupDetail.status_text(_fleet, group, now, self)
+		row.text = "%s\n%s" % [tr("ROUTE_FLEET_NAME").format({"name": group.name}), line if reason.is_empty() else reason]
+		row.disabled = not reason.is_empty()
+		row.set_chosen(_draft.fleet_id == group.fleet_id)
+		var id := group.fleet_id
+		row.tapped.connect(_on_fleet_picked.bind(id))
+		_picker_list.add_child(row)
+	return groups.size()
+
+
+func _on_fleet_picked(fleet_id: int) -> void:
+	_use_fleet(fleet_id)
+	_fuel_types = PackedStringArray()
+	_load_transporter()
+	_close_picker()
+	_rebuild_ends()
+	_rebuild_rules()
+	_changed()
 
 
 func _current_pick() -> int:
@@ -474,7 +534,7 @@ func _current_pick() -> int:
 func _on_picked(structure_id: int) -> void:
 	match _picking:
 		"transporter":
-			_draft.transporter_id = structure_id
+			_draft.use_transporter(structure_id)
 			if _draft.station_a == structure_id:
 				_draft.station_a = 0
 			if _draft.station_b == structure_id:
@@ -547,11 +607,11 @@ func _fill_goods(letter: String) -> void:
 
 ## The fuel kinds of the transporter's drives, from its layout and the game data.
 func _load_transporter() -> void:
-	var id := _draft.transporter_id
+	var id := _draft.fleet_members[0] if _draft.is_fleet() and not _draft.fleet_members.is_empty() else _draft.transporter_id
 	if id == 0 or Services.definitions == null:
 		return
 	var answer := await Services.api.get_ndjson("/v2/structures/%d/layout" % id)
-	if not answer.is_ok() or id != _draft.transporter_id:
+	if not answer.is_ok() or not _draft.runs(id):
 		return
 	var layout := StructureLayout.new()
 	if not layout.apply(answer.stream):
@@ -655,10 +715,23 @@ static func quote_text(quote: RoutePlan.Quote, draft: RoutePlan.Draft, fleet: Fl
 				lines.append(text)
 		if quote.errors.is_empty():
 			lines.append(translator.tr("ROUTE_QUOTE_REFUSED"))
+	for id: int in quote.member_errors.keys():
+		var reasons := PackedStringArray()
+		var codes: PackedStringArray = quote.member_errors[id]
+		for code: String in codes:
+			reasons.append(RouteList.code_text(code, translator))
+		lines.append(translator.tr("FLEETS_MEMBER_BLOCKED").format({
+			"name": RouteList.structure_name(fleet, id, translator), "reasons": " ".join(reasons)}))
 	if not quote.kind.is_empty():
 		lines.append(translator.tr("ROUTE_QUOTE_KIND").format({
 			"kind": translator.tr("ROUTE_KIND_SHIP") if quote.kind == RoutePlan.KIND_SHIP else translator.tr("ROUTE_KIND_GROUND")}))
 	for letter: String in [RoutePlan.A, RoutePlan.B]:
+		var crew := quote.crew_stops(letter)
+		if draft.is_fleet() and not crew.is_empty():
+			lines.append(translator.tr("ROUTE_QUOTE_CREW_STOPS").format({
+				"station": RouteList.structure_name(fleet, draft.station_id(letter), translator),
+				"sites": RouteList.sites_text(fleet, crew, translator)}))
+			continue
 		var has := quote.has_stop_a if letter == RoutePlan.A else quote.has_stop_b
 		var stop := quote.stop_a if letter == RoutePlan.A else quote.stop_b
 		var station_name := RouteList.structure_name(fleet, draft.station_id(letter), translator)

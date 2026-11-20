@@ -613,7 +613,7 @@ ROUTE_CARGO_HINT,Cargo is unloaded at the other station.
 ROUTE_SUPPLY_HINT,"Own supply (fuel, food) of the transporter: filled up to this amount, never unloaded."
 ROUTE_RULE_TWICE,Each item can be loaded only once as cargo and once as own supply per direction.
 ROUTE_FUEL_ALREADY,Fuel is already topped up in both directions.
-ROUTE_PICK_TRANSPORTER,Choose the transporter (a ship or vehicle):
+ROUTE_PICK_TRANSPORTER,Choose what runs the route (a fleet, a ship or a vehicle):
 ROUTE_PICK_STATION,Choose station {letter}:
 ROUTE_PICK_BUSY,Already drives a route.
 ROUTE_PICK_MOVING,Under way.
@@ -623,7 +623,7 @@ ROUTE_PICK_GOODS,Goods in the store of {station}:
 ROUTE_PICK_GOODS_ROW,{item} · {count}
 ROUTE_PICK_NO_GOODS,The store there is empty.
 ROUTE_PICK_CANCEL,Back to the route
-ROUTE_QUOTE_INCOMPLETE,Choose a transporter and two stations.
+ROUTE_QUOTE_INCOMPLETE,Choose a transporter or a fleet and two stations.
 ROUTE_QUOTE_CHECKING,Checking the route…
 ROUTE_QUOTE_OK,The route can start.
 ROUTE_QUOTE_REFUSED,The route cannot start.
@@ -1296,3 +1296,15 @@ ERROR_FLEET_HAS_COMMAND,The fleet is under way; wait until it has arrived.
 ERROR_FLEET_NOT_CO_LOCATED,"The ships do not rest at one place. A fleet forms, flies and disbands only when all its ships rest at the same body."
 ERROR_FLEET_NOT_READY,Not every ship of the fleet is ready to fly.
 ERROR_FLEET_MEMBER_LOCKED,"This ship is in a fleet: it travels, drives routes and takes a stance only with its fleet. Leave the fleet first."
+ROUTE_FLEET_NAME,Fleet “{name}”
+ROUTE_PICK_FLEET_BUSY,"Busy: it flies or runs a route. Wait for it, or delete its route."
+ROUTE_QUOTE_CREW_STOPS,At {station}: {sites}
+ROUTE_SITE,"{name} lands at {x}, {y}"
+ROUTE_SHARES,Last stop at {station}: {rows}
+ROUTE_SHARE_UNLOADED,unloaded {items}
+ROUTE_SHARE_LOADED,loaded {items}
+FLEETS_ROUTE_NEW,Run a route with this fleet
+FLEETS_ROUTE_OPEN,Show the route “{name}”
+FLEETS_ROUTE_LOCK,"It runs the route “{name}”. To change the fleet, delete the route (it ends at the next station), then form it anew."
+FLEETS_ON_ROUTE,Runs the route “{name}”
+FLEETS_ROUTE_LEG,next stop in {duration}
