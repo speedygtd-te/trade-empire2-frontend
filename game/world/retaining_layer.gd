@@ -1,13 +1,16 @@
 class_name RetainingLayer
 extends Node3D
 ## The retaining walls beside structures on a slope (RetainingWalls places the pieces, TerrainRelief
-## decides where): low-poly models from game/world/models/retaining (scripts/3d/models/retaining.py),
+## decides where), the piers under their edges over water and the caissons of props standing in it
+## (Piers): low-poly models from game/world/models/retaining (scripts/3d/models/retaining.py),
 ## one MultiMesh per model and CHUNK × CHUNK cells so the parts off screen are culled. Each piece is
 ## a little brighter or darker (instance colour), so the long runs of the same panel do not repeat.
 
 const MODELS := "res://game/world/models/retaining/"
 ## Cells per side of one MultiMesh.
 const CHUNK := 32
+## Models that cast shadows.
+const CASTING: Array[String] = [RetainingWalls.PANEL, RetainingWalls.COLUMN, Piers.PILLAR, Piers.BEAM]
 
 var _view: ColonyView
 ## File → Mesh (null when missing).
@@ -20,9 +23,14 @@ func setup(view: ColonyView) -> void:
 	_view = view
 
 
-## Whether every model is there (without them the walls are drawn plain).
+## Whether every model of the walls is there (without them the walls are drawn plain).
 func ready_to_draw() -> bool:
-	for file: String in RetainingWalls.FILES:
+	return has_models(RetainingWalls.FILES)
+
+
+## Whether every model among `files` is there (Piers.FILES: without them no piers).
+func has_models(files: Array[String]) -> bool:
+	for file: String in files:
 		if _mesh(file) == null:
 			return false
 	return true
@@ -84,14 +92,14 @@ func stats() -> Dictionary:
 	return result
 
 
-## Panels and pilasters cast shadows unless the device is slow; the small pieces never do (a shadow
-## pass costs a draw call per MultiMesh).
+## Panels, pilasters, pier pillars and beams cast shadows unless the device is slow; the small
+## pieces never do (a shadow pass costs a draw call per MultiMesh).
 func _apply() -> void:
 	for child: Node in get_children():
 		var instance := child as MultiMeshInstance3D
 		if instance != null:
 			var file: String = instance.get_meta("file", "")
-			var shadows := _tier != DetailGovernor.Tier.SLOW and (file == RetainingWalls.PANEL or file == RetainingWalls.COLUMN)
+			var shadows := _tier != DetailGovernor.Tier.SLOW and file in CASTING
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows \
 				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 

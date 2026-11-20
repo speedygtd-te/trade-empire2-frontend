@@ -21,8 +21,10 @@ extends RefCounted
 ##
 ## Water (a water biome, LevelRules.is_water_biome) lies flat at the body's sea level
 ## (`water_level`, WaterColumn.sea_level) instead of following the hills of its elevation, which
-## describe the sea floor; the corners along a shore take the mean of water and land, so the bank
-## blends. NAN keeps every cell at its own elevation.
+## describe the sea floor; every corner touching water lies at the sea level and is never shaped by
+## a pad. A structure counts a water cell of its footprint DECK above the sea (base_of), so it
+## stands clear of the water on a pier (Piers) where its edge lies over water (corner_wet). NAN
+## keeps every cell at its own elevation.
 ##
 ## Unexplored (fog) and unloaded cells have no elevation: a corner without any known cell around it
 ## takes the mean elevation of the blocks nearby (bilinear between block centres), or the reference
@@ -47,6 +49,9 @@ const MIN_FOUNDATION := 0.05
 const WALL_HEIGHT := 0.75
 ## The same in elevation units.
 const WALL := WALL_HEIGHT / SCALE
+## A structure's footprint counts its water cells this far above the sea level (elevation units):
+## over water it stands on a pier this high (Rudi 2026-11-20).
+const DECK := 3.0
 ## Corners per side of a block's cache: the block's BLOCK + 1 and one more on each side (normals).
 const SIDE := SurfaceBlocks.BLOCK + 3
 ## The ground is lit as if its slopes were this much steeper than drawn (a hillshade): most of the
@@ -157,7 +162,8 @@ func surface_loaded(blocks: Array[Vector2i]) -> Dictionary:
 	return touched
 
 
-## The mean elevation of the known cells among `cells` (absolute); NAN when none is known.
+## The mean elevation of the known cells among `cells` (absolute), water cells DECK above the sea;
+## NAN when none is known.
 func base_of(cells: Array[Vector2i]) -> float:
 	var sum := 0.0
 	var count := 0
@@ -165,8 +171,24 @@ func base_of(cells: Array[Vector2i]) -> float:
 		var found := surface.cell(cell.x, cell.y)
 		if found != null:
 			sum += _drawn(found)
+			if not is_nan(water_level) and LevelRules.is_water_biome(found.biome):
+				sum += DECK
 			count += 1
 	return sum / count if count > 0 else NAN
+
+
+## Whether a loaded cell is water drawn flat at the sea level (false without a sea level).
+func is_water(x: int, y: int) -> bool:
+	if is_nan(water_level):
+		return false
+	var found := surface.cell(WorldGrid.wrap_x(x, size_x), y)
+	return found != null and LevelRules.is_water_biome(found.biome)
+
+
+## Whether corner (x, y) touches water (one of the four cells around it is_water): it lies at the
+## sea level.
+func corner_wet(x: int, y: int) -> bool:
+	return is_water(x - 1, y - 1) or is_water(x, y - 1) or is_water(x - 1, y) or is_water(x, y)
 
 
 ## The elevation a loaded cell is drawn at: water flat at the sea level (WaterColumn.drawn_elevation).

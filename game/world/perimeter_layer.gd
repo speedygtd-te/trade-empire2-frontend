@@ -9,7 +9,8 @@ extends Node3D
 ## floodlight throws a light cone away from the base and a pool of light on the ground: no real
 ## lights (too dear on phones in the Compatibility renderer) but additive, unshaded meshes that
 ## fade with distance (perimeter_cone.gdshader, perimeter_pool.gdshader), invisible by day. On a
-## slow device only the pools stay. Every structure on screen (bases or not) also casts a soft glow
+## slow device only the pools stay. An item on a water cell stands on a concrete caisson (Piers),
+## drawn with the fence posts' caissons by a RetainingLayer of its own. Every structure on screen (bases or not) also casts a soft glow
 ## on the ground around itself at night (StructureGlowLayer, a child of this layer).
 ##
 ## Built around the view's origin; rebuilt with the structure (ColonyView._rebuild_structure),
@@ -79,6 +80,8 @@ static var _plans: Dictionary = {}
 
 ## Fence, wall and concrete around large bases (BaseGroundsLayer), rebuilt with the items.
 var _grounds: BaseGroundsLayer
+## The caissons under items and fence posts standing in the water.
+var _footings: RetainingLayer
 ## The glow of every structure's lamps on the ground at night (StructureGlowLayer), rebuilt with
 ## the items and dark with the cones; hidden with this layer in the cutaway view.
 var _glow: StructureGlowLayer
@@ -98,6 +101,10 @@ func setup(view: ColonyView) -> void:
 	_grounds.name = "Grounds"
 	add_child(_grounds)
 	_grounds.setup(view)
+	_footings = RetainingLayer.new()
+	_footings.name = "Caissons"
+	add_child(_footings)
+	_footings.setup(view)
 	_glow = StructureGlowLayer.new()
 	_glow.name = "StructureGlow"
 	add_child(_glow)
@@ -181,16 +188,22 @@ func rebuild() -> void:
 	if _view == null or _view.model == null:
 		return
 	for child: Node in get_children():
-		if child != _grounds and child != _glow:
+		if child != _grounds and child != _glow and child != _footings:
 			child.queue_free()
 	_items.clear()
 	_dishes.clear()
 	_dish_phases.clear()
 	var model := _view.model
 	var transforms: Dictionary = {}
+	var caissons: Array[RetainingWalls.Piece] = []
+	var water := _view.water_height()
+	var caissons_drawn := _footings.has_models([Piers.CAISSON])
 	for spot: Perimeter.Spot in spots_for(model):
-		# Masts stand upright on the ground as drawn (TerrainRelief).
+		# Masts stand upright on the ground as drawn (TerrainRelief); in the water on a caisson.
 		var at := _view.on_ground(WorldGrid.to_scene(Vector3i(spot.cell.x, spot.cell.y, 0), _view.origin, model.size_x))
+		if caissons_drawn and _view.cell_wet(spot.cell.x, spot.cell.y):
+			caissons.append(Piers.caisson(at, water, Piers.caisson_size(spot.kind)))
+			at.y = Piers.standing_height(at.y, water, true)
 		# The model's front (+Z) looks along the spot's direction (cell y is scene −Z).
 		var turn := Basis(Vector3.UP, atan2(spot.direction.x, -spot.direction.y))
 		if not transforms.has(spot.kind):
@@ -218,6 +231,8 @@ func rebuild() -> void:
 			add_child(glow)
 	if _grounds != null:
 		_grounds.rebuild(grounds_for(model))
+		caissons.append_array(_grounds.caissons)
+	_footings.rebuild(caissons)
 	if _glow != null:
 		_glow.rebuild()
 	_apply()
@@ -235,6 +250,8 @@ func apply_detail(tier: DetailGovernor.Tier) -> void:
 	_tier = tier
 	if _grounds != null:
 		_grounds.apply_detail(tier)
+	if _footings != null:
+		_footings.apply_detail(tier)
 	_apply()
 
 
@@ -245,6 +262,7 @@ func stats() -> Dictionary:
 	for kind: Perimeter.Kind in _items.keys():
 		counts[FILES[kind]] = (_items[kind] as MultiMeshInstance3D).multimesh.instance_count
 	counts["radar_dish"] = _dishes.size()
+	counts["caissons"] = _footings.stats().get(Piers.CAISSON, 0) if _footings != null else 0
 	counts["cones_drawn"] = _cones.multimesh.instance_count if _cones != null and _cones.visible else 0
 	counts["pools_drawn"] = _pool_count if _pools != null and _pools.visible else 0
 	return counts

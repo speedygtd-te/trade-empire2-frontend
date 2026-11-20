@@ -14,9 +14,21 @@ A wall runs along cell edges; the game puts it together from these pieces, one p
   foot of a wall holding back a slope; *drain*: two weep pipes with the stains below them;
   *rail*: the railing on top of a tall wall holding back a slope.
 
+Over water a structure stands on a pier instead of a wall (core/piers.gd):
+
+- *pier_pillar*: a round column, one cell tall and stretched from below the water up under the
+  floor; *pier_head*: the square block on top of it, under the floor's edge; *pier_beam*: the
+  edge beam from head to head under the floor (also a brace between tall pillars);
+  *pier_collar*: the tide band where a pillar meets the water (COLLAR_WATERLINE above its foot),
+  dark and overgrown below.
+- *caisson*: a short round concrete foundation for a mast, lamp or fence post standing in the
+  water: CAISSON_SINK below the waterline, CAISSON_SHOWS above it.
+
+Every piece's origin is its foot (the build checks that); core/piers.gd places them.
+
 Exposed concrete like the foundations and the base grounds, weathered (WEAR).
   blender --background --factory-startup --python scripts/3d/models/retaining.py -- \
-      --output-dir game/world/models/retaining [--only panel,cap]
+      --output-dir game/world/models/retaining [--only panel,cap,pier_pillar]
 """
 
 import os
@@ -42,6 +54,17 @@ FOOTING_DEPTH = 0.2
 GUTTER_DEPTH = 0.06
 RAIL_HEIGHT = 0.12
 FRONT = -THICK / 2.0
+# Pier and caisson (keep in step with core/piers.gd).
+PIER_RADIUS = 0.065
+PIER_HEAD = 0.17
+PIER_HEAD_HEIGHT = 0.06
+PIER_BEAM_WIDTH = 0.09
+PIER_BEAM_HEIGHT = 0.055
+PIER_BEAM_LENGTH = 1.0 - PIER_HEAD
+CAISSON_RADIUS = 0.15
+CAISSON_SHOWS = 0.06
+CAISSON_SINK = 0.3
+COLLAR_WATERLINE = 0.03
 
 
 def panel(name):
@@ -120,6 +143,58 @@ def rail(name):
     return model.finish()
 
 
+def pier_pillar(name):
+    """A round column, one cell tall (stretched to the pier's height)."""
+    model = kit.Builder(name, wear=WEAR)
+    model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), PIER_RADIUS, "concrete", segments=12)
+    return model.finish()
+
+
+def pier_head(name):
+    """The block on a pillar under the floor's edge (PIER_HEAD_TOTAL tall), with a dark seat."""
+    model = kit.Builder(name, wear=WEAR)
+    model.box((0.0, 0.0, 0.008), (PIER_RADIUS * 2.4, PIER_RADIUS * 2.4, 0.016), "concrete_dark")
+    model.box((0.0, 0.0, 0.016 + PIER_HEAD_HEIGHT / 2.0), (PIER_HEAD, PIER_HEAD, PIER_HEAD_HEIGHT), "concrete")
+    return model.finish()
+
+
+def pier_beam(name):
+    """The edge beam between two heads (PIER_BEAM_HEIGHT tall); a drip joint along its face."""
+    model = kit.Builder(name, wear=WEAR)
+    model.box((0.0, 0.0, PIER_BEAM_HEIGHT / 2.0), (PIER_BEAM_LENGTH, PIER_BEAM_WIDTH, PIER_BEAM_HEIGHT),
+              "concrete")
+    model.plate((0.0, -PIER_BEAM_WIDTH / 2.0 - 0.0006, PIER_BEAM_HEIGHT * 0.3),
+                (PIER_BEAM_LENGTH, 0.006), "-y", "concrete_dark")
+    return model.finish()
+
+
+def pier_collar(name):
+    """The tide band around a pillar, the waterline COLLAR_WATERLINE above its foot: an overgrown
+    band at the water and a little below, wet dark concrete above."""
+    model = kit.Builder(name, wear=WEAR)
+    radius = PIER_RADIUS + 0.008
+    model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, COLLAR_WATERLINE + 0.012), radius + 0.004, "moss", segments=12)
+    model.cylinder((0.0, 0.0, COLLAR_WATERLINE + 0.012), (0.0, 0.0, COLLAR_WATERLINE + 0.07), radius,
+                   "concrete_dark", segments=12)
+    return model.finish()
+
+
+def caisson(name):
+    """A round concrete foundation standing in the water for a mast or a post, CAISSON_SINK of it
+    below the waterline and CAISSON_SHOWS above: a chamfered rim on top, a tide band at the water."""
+    model = kit.Builder(name, wear=WEAR)
+    water = CAISSON_SINK
+    top = CAISSON_SINK + CAISSON_SHOWS
+    model.cylinder((0.0, 0.0, 0.0), (0.0, 0.0, top - 0.015), CAISSON_RADIUS, "concrete", segments=14)
+    model.cylinder((0.0, 0.0, top - 0.015), (0.0, 0.0, top), CAISSON_RADIUS, "concrete", segments=14,
+                   end_radius=CAISSON_RADIUS - 0.012)
+    model.cylinder((0.0, 0.0, water - 0.03), (0.0, 0.0, water + 0.014), CAISSON_RADIUS + 0.005, "moss",
+                   segments=14)
+    model.cylinder((0.0, 0.0, water + 0.014), (0.0, 0.0, water + 0.03), CAISSON_RADIUS + 0.002,
+                   "concrete_dark", segments=14)
+    return model.finish()
+
+
 ONE = (1, 1)
 MODELS = {
     "panel": (lambda: panel("te_retaining_panel"), ONE),
@@ -130,6 +205,11 @@ MODELS = {
     "gutter": (lambda: gutter("te_retaining_gutter"), ONE),
     "drain": (lambda: drain("te_retaining_drain"), ONE),
     "rail": (lambda: rail("te_retaining_rail"), ONE),
+    "pier_pillar": (lambda: pier_pillar("te_pier_pillar"), ONE),
+    "pier_head": (lambda: pier_head("te_pier_head"), ONE),
+    "pier_beam": (lambda: pier_beam("te_pier_beam"), ONE),
+    "pier_collar": (lambda: pier_collar("te_pier_collar"), ONE),
+    "caisson": (lambda: caisson("te_caisson"), ONE),
 }
 
 if __name__ == "__main__":

@@ -9,7 +9,8 @@ extends Node3D
 ## The ground has relief (TerrainRelief, display only): every structure stands flat at the mean
 ## elevation of its ground footprint (lift_of), cuts the ground down where it is higher and stands
 ## on a concrete foundation where it is lower, with retaining walls where either reaches
-## TerrainRelief.WALL_HEIGHT (RetainingLayer); whatever stands on the ground follows its height
+## TerrainRelief.WALL_HEIGHT (RetainingLayer), and on concrete piers where its edge lies over water
+## (Piers; masts and posts in the water stand on caissons); whatever stands on the ground follows its height
 ## (ground_height), and taps on the ground hit the relief (cell_at). The home structure's base is
 ## the reference: it keeps scene height 0 (for levels, camera and picking).
 
@@ -431,6 +432,18 @@ func ground_height(point: Vector3) -> float:
 	if relief == null or model == null:
 		return 0.0
 	return relief.scene_height(relief.height(origin.x + point.x, origin.y - point.z)) - origin.z
+
+
+## Scene height of the water surface (the body's sea level as drawn); NAN without a sea.
+func water_height() -> float:
+	if relief == null or model == null or is_nan(relief.water_level):
+		return NAN
+	return relief.scene_height(relief.water_level) - origin.z
+
+
+## Whether an absolute cell is water drawn at the sea level (a prop there stands on a caisson).
+func cell_wet(x: int, y: int) -> bool:
+	return relief != null and model != null and relief.is_water(x, y)
 
 
 ## A scene point (x, z) put on the ground as drawn.
@@ -1408,7 +1421,8 @@ func _build_structure(structure: ColonyModel) -> void:
 ## it): a wall along every side of a footprint whose ground lies lower than its floor, from the
 ## floor down to the ground as drawn (TerrainRelief.foundation); one mesh for all. Where the ground
 ## lies TerrainRelief.WALL_HEIGHT or more below the floor, or above it beside a terrace
-## (TerrainRelief.cut_walls), retaining walls stand instead (RetainingLayer).
+## (TerrainRelief.cut_walls), retaining walls stand instead (RetainingLayer); where a side lies over
+## water, a pier (Piers).
 func _build_foundations() -> void:
 	if _foundations == null:
 		return
@@ -1419,8 +1433,10 @@ func _build_foundations() -> void:
 		_retaining.rebuild(RetainingWalls.pieces(retaining, relief, origin, 0))
 		return
 	var walls: Array[TerrainRelief.Wall] = []
+	var wet: Array[TerrainRelief.Wall] = []
 	var now := Services.clock.now_ms()
 	var pieces := _retaining.ready_to_draw()
+	var piers := _retaining.has_models(Piers.FILES)
 	for structure: ColonyModel in _structures():
 		if structure.is_guest() or not _bases.has(structure.structure_id):
 			continue
@@ -1432,11 +1448,15 @@ func _build_foundations() -> void:
 		var sides := relief.foundation(footprint, base)
 		sides.append_array(relief.cut_walls(footprint, base))
 		for wall: TerrainRelief.Wall in sides:
-			if wall.retaining and pieces:
+			if piers and Piers.is_wet(wall, relief):
+				wet.append(wall)
+			elif wall.retaining and pieces:
 				retaining.append(wall)
 			else:
 				walls.append(wall)
-	_retaining.rebuild(RetainingWalls.pieces(retaining, relief, origin, model.size_x))
+	var placed := RetainingWalls.pieces(retaining, relief, origin, model.size_x)
+	placed.append_array(Piers.pieces(wet, relief, origin, model.size_x))
+	_retaining.rebuild(placed)
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
