@@ -160,3 +160,31 @@ func test_route_events_mark_the_transporter() -> void:
 
 	fleet.apply_event("route.deleted", {"routeId": 3})
 	assert_int(fleet.find(2).route_id).is_equal(0)
+
+
+func test_enterprise_structures_stay_apart_from_the_own_ones() -> void:
+	var fleet := Fleet.new()
+	fleet.apply_list(_list())
+	var ref := EnterpriseFlagship.StructureRef.new()
+	ref.structure_id = 40
+	ref.name = "Flagship"
+	ref.flagship = true
+	var refs: Array[EnterpriseFlagship.StructureRef] = [ref]
+	fleet.apply_enterprise(refs, "7")
+	fleet.apply_details({"structureId": 40, "ownerKind": "enterprise", "enterpriseId": "7", "kind": "ship",
+		"capabilities": ["SPACE_DRIVE"], "anchor": {"type": "free", "kind": "orbit", "bodyId": "p1"}})
+
+	assert_int(fleet.entries().size()).is_equal(5)
+	assert_int(fleet.enterprise_entries().size()).is_equal(1)
+	var flagship := fleet.find(40)
+	assert_bool(flagship.is_enterprise()).is_true()
+	assert_bool(flagship.flagship).is_true()
+	assert_str(flagship.enterprise_id).is_equal("7")
+	assert_bool(fleet.movables().has(flagship)).is_false()
+	# A new own list keeps the enterprise's; a new enterprise list (left it) drops them.
+	fleet.apply_list(_list())
+	assert_object(fleet.find(40)).is_not_null()
+	var none: Array[EnterpriseFlagship.StructureRef] = []
+	fleet.apply_enterprise(none, "")
+	assert_object(fleet.find(40)).is_null()
+	assert_int(fleet.size()).is_equal(5)

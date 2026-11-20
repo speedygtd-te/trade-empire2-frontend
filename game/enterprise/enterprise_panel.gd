@@ -1,9 +1,10 @@
 class_name EnterprisePanel
 extends Control
 ## The enterprise over the whole screen, a layer of the Profile tab. Without one: browse the
-## enterprises (invitations first) or found one. As a member: logo, name, ticker and members on
-## top, and the tabs Overview, Members, Roles, Diplomacy, Taxes and Log in one row (it scrolls
-## sideways when it is wider than the screen). "‹ Back" or Back returns (Back first closes
+## enterprises (invitations first) or found one. As a member: logo, name, ticker and members (of
+## the cap) on top, and the tabs Overview, Flagship, Research, Factory, Members, Roles, Diplomacy,
+## Taxes and Log in one row (it scrolls sideways when it is wider than the screen). Flagship,
+## Research and Factory (draft.37) are hidden on a server without them. "‹ Back" or Back returns (Back first closes
 ## whatever is open inside a tab).
 
 signal closed
@@ -11,9 +12,12 @@ signal closed
 ## Tab keys in the order they are shown.
 const OUTSIDE_TABS: Array[String] = ["ENTERPRISE_TAB_BROWSE", "ENTERPRISE_TAB_FOUND"]
 const MEMBER_TABS: Array[String] = [
-	"ENTERPRISE_TAB_OVERVIEW", "ENTERPRISE_TAB_MEMBERS", "ENTERPRISE_TAB_ROLES",
+	"ENTERPRISE_TAB_OVERVIEW", "ENTERPRISE_TAB_FLAGSHIP", "ENTERPRISE_TAB_RESEARCH",
+	"ENTERPRISE_TAB_FACTORY", "ENTERPRISE_TAB_MEMBERS", "ENTERPRISE_TAB_ROLES",
 	"ENTERPRISE_TAB_DIPLOMACY", "ENTERPRISE_TAB_TAXES", "ENTERPRISE_TAB_LOG",
 ]
+## The tabs only a draft.37 server has.
+const ASSET_TABS: Array[String] = ["ENTERPRISE_TAB_FLAGSHIP", "ENTERPRISE_TAB_RESEARCH", "ENTERPRISE_TAB_FACTORY"]
 const HEADER_LOGO := 128
 
 var _model: EnterpriseModel
@@ -23,6 +27,8 @@ var _header: LayerHeader
 ## The enterprise the body was built for ("" outside one); null before the first build.
 var _built_for: Variant = null
 var _tabs: Array[EnterpriseTab] = []
+## The text key of each tab, in the order of `_tabs`.
+var _keys: Array[String] = []
 var _strip: TabStrip = null
 var _current := 0
 var _header_logo: EnterpriseLogo
@@ -70,6 +76,15 @@ func current_tab() -> EnterpriseTab:
 	return _tabs[_current] if _current < _tabs.size() else null
 
 
+## Shows the tab with text key `key` (ENTERPRISE_TAB_…); false when it is not offered.
+func show_tab_key(key: String) -> bool:
+	var index := _keys.find(key)
+	if index < 0 or not _offered(index):
+		return false
+	show_tab(index)
+	return true
+
+
 ## Shows tab `index` of the current set.
 func show_tab(index: int) -> void:
 	if index < 0 or index >= _tabs.size():
@@ -92,6 +107,23 @@ func _on_changed() -> void:
 	if _built_for == null or str(_built_for) != id:
 		_build(mine)
 	_update_header()
+	_update_offered()
+
+
+## Whether tab `index` is offered (the draft.37 ones only where the server has them).
+func _offered(index: int) -> bool:
+	return not ASSET_TABS.has(_keys[index]) or _model.has_assets()
+
+
+func _update_offered() -> void:
+	if _strip == null:
+		return
+	for index: int in _keys.size():
+		var button := _strip.tab(index)
+		if button != null:
+			button.visible = _offered(index)
+	if _current < _keys.size() and not _offered(_current):
+		show_tab(0)
 
 
 ## Before membership is known: loading, or why it failed with a retry.
@@ -100,6 +132,7 @@ func _build_state() -> void:
 		return
 	EnterpriseTab.clear(_body)
 	_tabs.clear()
+	_keys.clear()
 	_strip = null
 	var state := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_body.add_child(state)
@@ -116,6 +149,7 @@ func _build(mine: Enterprise) -> void:
 	_built_for = mine.enterprise_id if mine != null else ""
 	EnterpriseTab.clear(_body)
 	_tabs.clear()
+	_keys.clear()
 	_strip = null
 	_header_logo = null
 	if mine != null:
@@ -143,6 +177,7 @@ func _build(mine: Enterprise) -> void:
 		tab.visible = false
 		_body.add_child(tab)
 		_tabs.append(tab)
+		_keys.append(key)
 	show_tab(0)
 
 
@@ -162,6 +197,12 @@ func _make_tab(key: String) -> EnterpriseTab:
 			return EnterpriseTaxesTab.new()
 		"ENTERPRISE_TAB_LOG":
 			return EnterpriseLogTab.new()
+		"ENTERPRISE_TAB_FLAGSHIP":
+			return EnterpriseFlagshipTab.new()
+		"ENTERPRISE_TAB_RESEARCH":
+			return EnterpriseResearchTab.new()
+		"ENTERPRISE_TAB_FACTORY":
+			return EnterpriseFactoryTab.new()
 	return EnterpriseOverviewTab.new()
 
 
@@ -171,7 +212,7 @@ func _update_header() -> void:
 		return
 	_header_logo.show_logo(mine.logo)
 	_header_name.text = mine.name
-	var line := "%s · %s" % [mine.ticker, EnterpriseTab.members_text(mine.member_count, self)]
+	var line := "%s · %s" % [mine.ticker, EnterpriseTab.cap_text(mine, self)]
 	if mine.logo.is_pending():
 		line += " · " + tr("ENTERPRISE_LOGO_PENDING")
 	_header_line.text = line

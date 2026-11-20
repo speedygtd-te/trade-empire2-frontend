@@ -1006,7 +1006,7 @@ func _fill_palette() -> void:
 	for key: String in definitions.module_keys():
 		var item := definitions.module(key).item
 		units[item] = supply.units(item, now)
-	var entries := BuildCatalog.entries(definitions, units)
+	var entries := BuildCatalog.entries(definitions, units, _focus.owner_kind if _focus != null else "player")
 	var hidden := PackedStringArray()
 	if _uses_levels():
 		var environment := _level_environment()

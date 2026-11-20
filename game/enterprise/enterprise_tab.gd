@@ -128,6 +128,73 @@ static func members_text(count: int, translator: Object) -> String:
 		translator.tr("ENTERPRISE_MEMBERS_COUNT").format({"count": count})
 
 
+## "3 members", or with a cap (draft.37) "3 of 10 members" ("… · full" when no one can join).
+static func cap_text(view: Enterprise, translator: Object) -> String:
+	if view == null:
+		return ""
+	if view.member_cap < 0:
+		return members_text(view.member_count, translator)
+	var text := translator.tr("ENTERPRISE_MEMBERS_OF_CAP").format({"count": view.member_count, "cap": view.member_cap})
+	if view.is_full():
+		text += " · " + translator.tr("ENTERPRISE_FULL_SHORT")
+	return text
+
+
+## Whether the player holds `flag` in the own enterprise.
+func holds(flag: String) -> bool:
+	return model.mine != null and model.mine.has_flag(flag)
+
+
+## "Needs the right: …" for a missing right.
+func right_needed(flag: String) -> String:
+	return tr("ENTERPRISE_NEEDS_RIGHT").format({"right": flag_text(flag, self)})
+
+
+## A bar for progress (0..1).
+static func bar(parent: Container, value: float) -> ProgressBar:
+	var progress := Ui.progress_bar()
+	progress.min_value = 0.0
+	progress.max_value = 1.0
+	progress.value = clampf(value, 0.0, 1.0)
+	parent.add_child(progress)
+	return progress
+
+
+## "1 234 Iron, 56 Water" for [resource, micro-units] rows.
+static func costs_text(cost: Array[Array], translator: Object) -> String:
+	var parts := PackedStringArray()
+	for item: Array in cost:
+		var key: String = item[0]
+		var amount: int = item[1]
+		parts.append(goods_text(key, amount, translator))
+	return ", ".join(parts)
+
+
+## The name of a module, hull or resource item key; a neutral word when the data does not know it.
+static func item_text(key: String, translator: Object) -> String:
+	var definitions := Services.definitions
+	if definitions != null:
+		var shown := definitions.resource_name(key)
+		if shown.is_empty():
+			var module_def := definitions.module(key)
+			shown = module_def.display_name if module_def != null else ""
+		if shown.is_empty():
+			var hull := definitions.hull(key)
+			shown = hull.display_name if hull != null else ""
+		if not shown.is_empty():
+			return shown
+	return translator.tr("STORE_UNKNOWN_ITEM")
+
+
+## The name of a blueprint ("Enterprise Dock Manufacturing"); a neutral word when unknown.
+static func blueprint_text(key: String, translator: Object) -> String:
+	var definitions := Services.definitions
+	var found: GameDefinitions.BlueprintDef = definitions.blueprint(key) if definitions != null else null
+	if found != null and not found.display_name.is_empty():
+		return found.display_name
+	return translator.tr("STORE_UNKNOWN_ITEM")
+
+
 ## A panel with a column for its rows.
 static func card(parent: Container) -> VBoxContainer:
 	var panel := PanelContainer.new()

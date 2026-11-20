@@ -42,6 +42,9 @@ const DEPOSIT_BLOCK := 4
 
 var structure_id := 0
 var structure_name := ""
+## "player", or "enterprise" for a structure of the player's enterprise (draft.37): it has no
+## store of its own (the inventory is the enterprise's) and builds only enterprise items.
+var owner_kind := "player"
 ## The structure this one is docked on; null for the home structure.
 var host: ColonyModel = null
 ## Guests docked on this structure: structure id → ColonyModel (home structure only).
@@ -175,6 +178,13 @@ func load_structure(preferred: int) -> void:
 		var summary := Wire.as_dict(entry)
 		by_id[Wire.as_int(summary.get("structureId"))] = summary
 	var chosen: Dictionary = by_id.get(preferred, {})
+	owner_kind = "player"
+	if chosen.is_empty() and preferred != 0:
+		# Not in the own list: a structure of the player's enterprise (draft.37) loads by itself.
+		var other := await Services.api.get_json("/v2/structures/%d" % preferred)
+		if other.is_ok() and Wire.as_string(other.data.get("ownerKind")) == "enterprise":
+			chosen = other.data
+			owner_kind = "enterprise"
 	for _step: int in 8:
 		var anchor := Wire.as_dict(chosen.get("anchor"))
 		if Wire.as_string(anchor.get("type")) != "docked":

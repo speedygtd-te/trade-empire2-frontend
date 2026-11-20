@@ -61,11 +61,14 @@ func _applications(view: Enterprise) -> void:
 	rows.add_child(Ui.label("ENTERPRISE_APPLICATIONS", AppTheme.VARIATION_MUTED))
 	if view.applications.is_empty():
 		rows.add_child(Ui.label("ENTERPRISE_NO_APPLICATIONS", AppTheme.VARIATION_MUTED))
+	elif view.is_full():
+		var full := text_label(rows, tr("ENTERPRISE_FULL_ADMIT_NOTE").format({"members": cap_text(view, self)}))
+		full.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
 	for applicant: Enterprise.PlayerRef in view.applications:
 		text_label(rows, applicant.player_name)
 		var actions := button_row(rows)
 		var admit := action_button(actions, tr("ENTERPRISE_ADMIT"), false, true)
-		admit.disabled = busy
+		admit.disabled = busy or view.is_full()
 		admit.pressed.connect(_on_admit.bind(applicant.player_id))
 		var key := "reject:" + applicant.player_id
 		var reject := action_button(actions, tr("ENTERPRISE_REJECT_CONFIRM") if armed == key else tr("ENTERPRISE_REJECT"), true)
