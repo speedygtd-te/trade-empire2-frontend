@@ -68,3 +68,12 @@ func test_a_fleet_may_not_mix_owners() -> void:
 	assert_bool(EnterpriseStructures.is_mixed(["enterprise", "enterprise"])).is_false()
 	assert_bool(EnterpriseStructures.is_mixed(["enterprise", "player"])).is_true()
 	assert_bool(EnterpriseStructures.is_mixed([])).is_false()
+
+
+func test_reasons_map_to_server_codes_and_texts() -> void:
+	assert_str(EnterpriseStructures.error_code(EnterpriseStructures.NEEDS_TREASURY)).is_equal("MISSING_FLAG")
+	assert_str(EnterpriseStructures.error_code(EnterpriseStructures.NEEDS_FLEET)).is_equal("MISSING_FLAG")
+	assert_str(EnterpriseStructures.error_code(EnterpriseStructures.NO_FLAGSHIP)).is_equal("FLAGSHIP_NOT_FOUND")
+	assert_str(EnterpriseStructures.error_code(EnterpriseStructures.OK)).is_empty()
+	assert_str(EnterpriseStructures.reason_key(EnterpriseStructures.NO_FLAGSHIP)).is_equal("ENTERPRISE_NEEDS_FLAGSHIP")
+	assert_str(EnterpriseStructures.reason_key(EnterpriseStructures.OK)).is_empty()

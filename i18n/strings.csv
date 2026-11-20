@@ -1414,3 +1414,12 @@ ENTERPRISE_FACTORY_CATALOG_CLOSE,Hide blueprints
 ENTERPRISE_FACTORY_READY,ready
 ENTERPRISE_FACTORY_NEEDS_TECH,needs {tech}
 ENTERPRISE_FACTORY_NEEDS_FLAGSHIP,needs the flagship
+ENTERPRISE_NEEDS_TREASURY,"Building and managing enterprise structures needs the right: {right}."
+ENTERPRISE_NEEDS_FLEET,"Flying, landing and fleets of enterprise structures need the right: {right}."
+ENTERPRISE_NEEDS_FLAGSHIP,"No flagship stands: enterprise structures are built from its store, the enterprise inventory."
+STORE_ENTERPRISE_INVENTORY,"Enterprise inventory: every enterprise structure builds and flies from it."
+STORE_ENTERPRISE_TOPPED_UP,"Own store, topped up from the enterprise inventory (24 h of need when below half, checked every 6 h). Building and fuel come straight from the enterprise inventory."
+COLONY_STRUCTURE_FOUNDED,A new structure was founded on the dock.
+TRAVEL_FUEL_ENTERPRISE,"{resource}: {amount} needed, {on_board} in the enterprise inventory"
+FLEETS_FUEL_ENTERPRISE,"{resource}: needs {amount}, the enterprise inventory holds {on_board}"
+FLEETS_ENTERPRISE_MARK,Enterprise fleet

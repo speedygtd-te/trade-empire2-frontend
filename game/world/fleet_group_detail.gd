@@ -245,7 +245,8 @@ func _update() -> void:
 			node.visible = false
 		return
 	_header.set_title(group.name)
-	_header.set_subtitle(tr("FLEETS_SUBTITLE").format({"count": group.members.size()}))
+	var subtitle := tr("FLEETS_SUBTITLE").format({"count": group.members.size()})
+	_header.set_subtitle("%s · %s" % [tr("FLEETS_ENTERPRISE_MARK"), subtitle] if is_enterprise(group) else subtitle)
 	_actions.visible = not _travelling
 	_fill_members(group)
 	if _candidates.visible:
@@ -388,7 +389,12 @@ func _fill_candidates(group: FleetGroups.Group) -> void:
 	for child: Node in _candidates.get_children():
 		child.queue_free()
 	var now := Services.clock.now_ms()
-	var found := _model.groups.candidates(_model.fleet, group.location_body_id, now)
+	# A fleet of the enterprise takes only the enterprise's structures, an own one only own ships.
+	var enterprise := is_enterprise(group)
+	var found: Array[Fleet.Entry] = []
+	for entry: Fleet.Entry in _model.groups.candidates(_model.fleet, group.location_body_id, now, enterprise):
+		if entry.is_enterprise() == enterprise:
+			found.append(entry)
 	if found.is_empty():
 		var empty := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 		empty.text = tr("FLEETS_ADD_NONE")
@@ -405,6 +411,13 @@ func _fill_candidates(group: FleetGroups.Group) -> void:
 
 
 # --- commands -------------------------------------------------------------------------------
+
+## Whether a fleet is the enterprise's (draft.38: owned by its internal account; fuel from the
+## enterprise inventory, commanded by members with COMMAND_ENTERPRISE_FLEET).
+static func is_enterprise(group: FleetGroups.Group) -> bool:
+	var account := Services.session.account
+	return account != null and group.is_enterprise(account.player_id)
+
 
 func _join(structure_id: int) -> void:
 	await _command(func() -> ApiResult: return await _model.join_group(_fleet_id, structure_id), "FLEETS_JOINED")

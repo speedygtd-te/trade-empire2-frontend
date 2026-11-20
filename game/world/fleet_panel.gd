@@ -293,7 +293,8 @@ func _add_groups() -> void:
 		row.tapped.connect(func() -> void: open_group(id))
 		_list.add_child(row)
 	var create := Ui.secondary_button("FLEETS_CREATE_OPEN")
-	create.disabled = _fleet.groups.candidates(_fleet.fleet, "", Services.clock.now_ms()).is_empty()
+	create.disabled = _fleet.groups.candidates(_fleet.fleet, "", Services.clock.now_ms(),
+		FleetGroupCreate.commands_enterprise()).is_empty()
 	create.pressed.connect(func() -> void: open_group_create())
 	_list.add_child(create)
 	_list.add_child(Ui.spacer(8))
@@ -321,7 +322,7 @@ func _update_lines() -> void:
 			var group := _fleet.groups.find(group_id)
 			if group != null:
 				button.text = "%s
-%s · %s" % [group.name, tr("FLEETS_SUBTITLE").format({"count": group.members.size()}),
+%s · %s" % [(tr("FLEETS_ENTERPRISE_MARK") + " · " if FleetGroupDetail.is_enterprise(group) else "") + group.name, tr("FLEETS_SUBTITLE").format({"count": group.members.size()}),
 					FleetGroupDetail.status_text(_fleet, group, now, self)]
 			continue
 		var id: int = button.get_meta("structure", 0)

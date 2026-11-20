@@ -25,6 +25,12 @@ var _note: Label
 var _start: Button
 
 
+## Whether the fleet is the enterprise's: its fuel comes from the enterprise inventory (draft.38).
+func _enterprise() -> bool:
+	var group := _model.groups.find(_fleet_id) if _model != null else null
+	return group != null and FleetGroupDetail.is_enterprise(group)
+
+
 func setup(model: FleetModel, fleet_id: int) -> void:
 	_model = model
 	_fleet_id = fleet_id
@@ -100,7 +106,7 @@ func _show() -> void:
 	if not pace.is_empty():
 		_line(" · ".join(pace), AppTheme.COLOR_MUTED)
 	for row: TravelPlan.FuelRow in trip.fuel:
-		_line(tr("FLEETS_FUEL").format({"resource": _resource_name(row.resource),
+		_line(tr("FLEETS_FUEL_ENTERPRISE" if _enterprise() else "FLEETS_FUEL").format({"resource": _resource_name(row.resource),
 			"amount": _whole(row.amount, scale), "on_board": _whole(row.self_use, scale)}),
 			AppTheme.COLOR_DANGER if row.is_short() else AppTheme.COLOR_OK)
 	for code: String in trip.errors:

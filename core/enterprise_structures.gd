@@ -111,3 +111,26 @@ static func is_mixed(owner_kinds: Array[String]) -> bool:
 		if is_enterprise(kind):
 			enterprise += 1
 	return enterprise > 0 and enterprise < owner_kinds.size()
+
+
+## The server's error code for a reason (refusing locally gives the same text): MISSING_FLAG or
+## FLAGSHIP_NOT_FOUND; "" for OK.
+static func error_code(reason: String) -> String:
+	match reason:
+		NEEDS_TREASURY, NEEDS_FLEET:
+			return "MISSING_FLAG"
+		NO_FLAGSHIP:
+			return "FLAGSHIP_NOT_FOUND"
+	return ""
+
+
+## The text key of a reason line ("" for OK): which right is missing, or that the flagship is.
+static func reason_key(reason: String) -> String:
+	match reason:
+		NEEDS_TREASURY:
+			return "ENTERPRISE_NEEDS_TREASURY"
+		NEEDS_FLEET:
+			return "ENTERPRISE_NEEDS_FLEET"
+		NO_FLAGSHIP:
+			return "ENTERPRISE_NEEDS_FLAGSHIP"
+	return ""
