@@ -84,6 +84,17 @@ func test_quote_without_phases_has_zero_durations() -> void:
 	assert_bool(drive.mass_within_limit()).is_false()
 
 
+func test_atmosphere_factor_is_read_and_defaults_to_none() -> void:
+	var quote := TravelPlan.Quote.from_wire({"ok": true, "errors": [],
+		"atmosphereFactor": {"departure": 1250000.0, "arrival": 1000000.0}})
+	assert_int(quote.atmosphere_departure).is_equal(1250000)
+	assert_bool(quote.air_on_launch()).is_true()
+	assert_bool(quote.air_on_landing()).is_false()
+	var older := TravelPlan.Quote.from_wire({"ok": true, "errors": []})
+	assert_int(older.atmosphere_arrival).is_equal(TravelPlan.ATMOSPHERE_NONE)
+	assert_bool(older.air_on_launch()).is_false()
+
+
 func test_fuel_rows_against_the_own_supply() -> void:
 	var quote := _quote()
 	var short := quote.short_fuel()

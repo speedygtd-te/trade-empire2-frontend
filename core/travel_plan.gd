@@ -13,6 +13,8 @@ const MODE_GROUND := "ground"
 ## Waypoints a drive may have (TravelRequest.waypoints, maxItems).
 const MAX_WAYPOINTS := 16
 const DOCK := "DOCK"
+## Atmosphere factor ×1.0 in micro-units (`atmosphereFactor`, draft.36).
+const ATMOSPHERE_NONE := 1000000
 
 ## The client's check of a landing or stopping site.
 enum Site {
@@ -72,6 +74,10 @@ class Quote:
 	var cruise_end_at := 0
 	var arrival_at := 0
 	var fuel: Array[FuelRow] = []
+	## How much the air lengthens launch and landing and raises the launch fuel (draft.36,
+	## `atmosphereFactor`), micro-units: ATMOSPHERE_NONE = ×1.0 (no air, orbit, older servers).
+	var atmosphere_departure := ATMOSPHERE_NONE
+	var atmosphere_arrival := ATMOSPHERE_NONE
 
 	## Reads a quote; null when the answer is not one.
 	static func from_wire(value: Variant) -> Quote:
@@ -94,6 +100,9 @@ class Quote:
 		quote.liftoff_at = Wire.as_int(data.get("liftoffAt"), quote.depart_at)
 		quote.cruise_end_at = Wire.as_int(data.get("cruiseEndAt"), quote.liftoff_at)
 		quote.arrival_at = Wire.as_int(data.get("arrivalAt"), quote.cruise_end_at)
+		var atmosphere := Wire.as_dict(data.get("atmosphereFactor"))
+		quote.atmosphere_departure = Wire.as_int(atmosphere.get("departure"), ATMOSPHERE_NONE)
+		quote.atmosphere_arrival = Wire.as_int(atmosphere.get("arrival"), ATMOSPHERE_NONE)
 		if typeof(data.get("fuel")) == TYPE_ARRAY:
 			var rows: Array = data.get("fuel")
 			for entry: Variant in rows:
@@ -105,6 +114,14 @@ class Quote:
 				fuel_row.in_transport = Wire.as_int(row.get("inTransport"))
 				quote.fuel.append(fuel_row)
 		return quote
+
+	## Whether air slows the launch (factor above ×1.0).
+	func air_on_launch() -> bool:
+		return atmosphere_departure > ATMOSPHERE_NONE
+
+	## Whether air slows the landing (factor above ×1.0).
+	func air_on_landing() -> bool:
+		return atmosphere_arrival > ATMOSPHERE_NONE
 
 	## Duration of the launch phase (0 without one: from orbit, vehicles).
 	func launch_ms() -> int:
