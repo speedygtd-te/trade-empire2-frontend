@@ -243,7 +243,7 @@ func _ultra_governor() -> DetailGovernor:
 	return governor
 
 
-func test_ultra_is_left_early_and_not_tried_again() -> void:
+func test_ultra_is_left_early_and_tried_again_after_a_pause() -> void:
 	var governor := _ultra_governor()
 	var now := 1000000
 
@@ -251,17 +251,23 @@ func test_ultra_is_left_early_and_not_tried_again() -> void:
 	assert_int(_evaluate_times(governor, 25.0, 1, now)).is_equal(1)
 	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
 
+	# Calm again, but within the pause: no climb.
 	now += DetailGovernor.EVAL_INTERVAL_MS
 	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2, now)
 	assert_int(governor.tier).is_equal(DetailGovernor.Tier.FAST)
 
-	# Also not after a restart.
+	# After the pause the way up is open again (a stutter may come from outside).
+	now += DetailGovernor.ULTRA_RETRY_MS
+	_evaluate_with_work(governor, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA, now)
+	assert_int(governor.tier).is_equal(DetailGovernor.Tier.ULTRA)
+
+	# Nothing of it is kept across a restart; an old stored "ultraFails" is ignored.
 	var restored := DetailGovernor.new()
-	restored.restore(governor.to_dict())
+	restored.restore({"tier": int(DetailGovernor.Tier.FAST), "order": DetailGovernor.STATE_ORDER, "ultraFails": 3})
 	restored.allow_ultra(true)
 	_feed(restored, 16.7, DetailGovernor.WARMUP_FRAMES)
-	_evaluate_with_work(restored, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA * 2)
-	assert_int(restored.tier).is_equal(DetailGovernor.Tier.FAST)
+	_evaluate_with_work(restored, 16.7, 5.0, DetailGovernor.GOOD_EVALUATIONS_TO_ULTRA)
+	assert_int(restored.tier).is_equal(DetailGovernor.Tier.ULTRA)
 
 
 func test_frames_in_the_ultra_band_keep_ultra() -> void:

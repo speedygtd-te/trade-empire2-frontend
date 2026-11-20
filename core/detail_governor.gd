@@ -50,8 +50,10 @@ const ULTRA_UP_P90_MS := 19.0
 const ULTRA_UP_WORK_MS := 9.0
 ## ULTRA is left for FAST when the median frame time passes this (below ~45 fps).
 const ULTRA_DOWN_ABOVE_MS := 22.0
-## How often ULTRA may be left for being too slow before it is not tried again.
-const MAX_ULTRA_FAILS := 1
+## After leaving ULTRA for being too slow, the way up starts again only after this pause (ms):
+## a stutter may come from outside (a call, updates installing), so ULTRA is never given up for
+## good (Rudi, 2026-11-20).
+const ULTRA_RETRY_MS := 120000
 ## A phone or tablet gets ULTRA only with this much memory (the textures of the high-detail
 ## models take four times the memory) and this many processor cores, and not with a GPU of the
 ## low class (parts of the adapter name, lower case). Android reports the memory without what the
@@ -78,7 +80,8 @@ var _last_eval_ms := -1
 var _good_in_row := 0
 var _fails: Dictionary = {}
 var _ultra_allowed := false
-var _ultra_fails := 0
+## Game-independent time (ms) before which ULTRA is not climbed again; -1: no pause.
+var _ultra_paused_until := -1
 ## The measuring window on the slowest tier: whether it runs, until when, and the next start
 ## (-1: not planned yet).
 var _probing := false
@@ -202,13 +205,13 @@ func evaluate(now_ms: int) -> bool:
 		_clear_samples()
 
 	if tier == Tier.ULTRA and metric_ms > ULTRA_DOWN_ABOVE_MS:
-		_ultra_fails += 1
+		_ultra_paused_until = now_ms + ULTRA_RETRY_MS
 		return _change(Tier.FAST)
 	if metric_ms > DOWN_ABOVE_MS and tier != Tier.SLOW:
 		_fails[tier] = Wire.as_int(_fails.get(tier, 0)) + 1
 		return _change((tier + 1) as Tier)
 	if tier == Tier.FAST:
-		if not _counts_towards_ultra(calm):
+		if not _counts_towards_ultra(calm, now_ms):
 			_good_in_row = 0
 			return false
 		_good_in_row += 1
@@ -225,7 +228,7 @@ func evaluate(now_ms: int) -> bool:
 
 ## State worth keeping across starts (a device property).
 func to_dict() -> Dictionary:
-	return {"tier": int(tier), "metric": metric_ms, "order": STATE_ORDER, "ultraFails": _ultra_fails}
+	return {"tier": int(tier), "metric": metric_ms, "order": STATE_ORDER}
 
 
 ## Restores a stored state; anything invalid keeps the default. A stored ULTRA starts as FAST:
@@ -241,7 +244,7 @@ func restore(data: Dictionary) -> void:
 	if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
 		var number: float = value
 		metric_ms = number
-	_ultra_fails = maxi(0, Wire.as_int(data.get("ultraFails"), 0))
+	# Older builds stored "ultraFails" (ULTRA given up for good): ignored now.
 
 
 static func median(values: PackedFloat32Array) -> float:
@@ -258,8 +261,8 @@ static func percentile(values: PackedFloat32Array, share: float) -> float:
 
 
 ## Whether one evaluation on FAST counts towards ULTRA.
-func _counts_towards_ultra(calm_ms: float) -> bool:
-	if not _ultra_allowed or _ultra_fails >= MAX_ULTRA_FAILS:
+func _counts_towards_ultra(calm_ms: float, now_ms: int) -> bool:
+	if not _ultra_allowed or now_ms < _ultra_paused_until:
 		return false
 	if metric_ms >= UP_BELOW_MS or calm_ms >= ULTRA_UP_P90_MS:
 		return false
