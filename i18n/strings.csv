@@ -57,16 +57,16 @@ COLONY_FREE_GROUND,Free ground.
 COLONY_CELL_HULL,{hull} (empty)
 COLONY_CELL_MODULE,{hull} + {module}
 COLONY_CELL_MODULE_BUILDING,"{hull} + {module} · ready in {duration}"
-COLONY_GROUND_TERRAIN,{biome}
-COLONY_GROUND_DEPOSITS,{deposits}
+COLONY_GROUND_TERRAIN,Ground: {biome}
+COLONY_GROUND_DEPOSITS,Deposits: {deposits}
 COLONY_GROUND_NO_DEPOSITS,No deposits in the ground here.
-COLONY_GROUND_TRACES,{count} more below {limit} %
+COLONY_GROUND_TRACES,{count} more below {limit} %
 COLONY_GROUND_LOADING,Reading the ground…
 COLONY_GROUND_FAILED,The ground could not be read. Trying again…
-COLONY_DEPOSIT,{resource} {richness} %
+COLONY_DEPOSIT,{resource} {richness} %
 COLONY_AIR,Air: {gases}
 COLONY_AIR_NONE,No air here to collect from.
-COLONY_GAS,{gas} {share} %
+COLONY_GAS,{gas} {share} %
 COLONY_YIELD_HERE,Here at full staff and power: {yields}
 COLONY_YIELD_TILE,{resource} {richness} % → {rate}
 COLONY_YIELD_GAS,{resource} ({share} % of the air) → {rate}
@@ -136,6 +136,9 @@ COLONY_CANCEL,Done
 COLONY_REMOVE_MODULE,Remove module
 COLONY_REMOVE_HULL,Remove hull
 COLONY_CONFIRM_REMOVE,Tap again to remove
+COLONY_MORE,More
+COLONY_LESS,Less
+COLONY_BUILD_ON_HULL,Build module
 COLONY_SENDING,Sending…
 COLONY_DONE,Done.
 SLOT_INDOOR,indoor

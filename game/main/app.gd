@@ -2,6 +2,8 @@ extends Control
 ## Root scene: shows the screen that matches the session state.
 
 var _screen: Control = null
+## One Back press closes one layer, even when Android hands it over twice (BackGate).
+var _back := BackGate.new()
 
 
 func _ready() -> void:
@@ -20,6 +22,8 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	# Android back: close the topmost layer, never quit the app from here.
 	if what != NOTIFICATION_WM_GO_BACK_REQUEST:
+		return
+	if not _back.accept(Time.get_ticks_msec()):
 		return
 	if _screen is LoginScreen:
 		(_screen as LoginScreen).handle_back()

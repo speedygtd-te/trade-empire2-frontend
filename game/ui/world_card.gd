@@ -1,22 +1,26 @@
 class_name WorldCard
 extends PanelContainer
-## A half-transparent card that stands over a point of the 3D view and follows it while the
+## A half-transparent card that stands beside a point of the 3D view and follows it while the
 ## camera pans and zooms: the structure card outside ("Enter structure"), the inspect card of a
 ## field inside. It stays readable on a phone: at most MAX_WIDTH wide, kept inside the free
-## room (above the point, below it when there is no room above, slid in from the edges), and
-## content taller than MAX_SHARE of the room scrolls.
+## room (above the point, below it when there is no room above, slid in from the edges, never on
+## it: CardPlacement), and content taller than MAX_SHARE of the room scrolls. A head (header())
+## and a foot (footer(), the buttons) stay in sight while the content between them scrolls.
 
 ## Widest a card gets (canvas px).
 const MAX_WIDTH := 560.0
 ## Distance between the point and the card.
 const GAP := 28.0
-## Distance kept from the edges of the free room.
-const EDGE := 16.0
 ## Highest share of the free room's height a card takes before its content scrolls.
 const MAX_SHARE := 0.6
+## Space between head, content and foot.
+const SEPARATION := 12
 
+var _column: VBoxContainer
+var _header: VBoxContainer
 var _scroll: ScrollContainer
 var _content: VBoxContainer
+var _footer: VBoxContainer
 
 
 func _init() -> void:
@@ -29,36 +33,60 @@ func _init() -> void:
 	box.set_corner_radius_all(16)
 	box.set_content_margin_all(20)
 	add_theme_stylebox_override("panel", box)
+	_column = Ui.column(SEPARATION)
+	add_child(_column)
+	_header = Ui.column(SEPARATION)
+	_column.add_child(_header)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(_scroll)
-	_content = Ui.column(12)
+	_column.add_child(_scroll)
+	_content = Ui.column(SEPARATION)
 	_scroll.add_child(_content)
+	_footer = Ui.column(SEPARATION)
+	_column.add_child(_footer)
 
 
-## The column the card's controls go into.
+## The column the card's controls go into (scrolls when the card is short).
 func content() -> VBoxContainer:
 	return _content
 
 
-## Puts the card over `anchor` (in the parent's coordinates) inside `room`: above the point when
-## it fits there, otherwise on the side with more room (the point stays in sight), its content
-## scrolling when that side is too short.
-func place(anchor: Vector2, room: Rect2) -> void:
-	var width := minf(MAX_WIDTH, room.size.x - EDGE * 2.0)
-	var wanted := _content.get_combined_minimum_size().y
+## Above the content, always in sight (a title with "×").
+func header() -> VBoxContainer:
+	return _header
+
+
+## Below the content, always in sight (the buttons).
+func footer() -> VBoxContainer:
+	return _footer
+
+
+## Puts the card beside `anchor` (in the parent's coordinates) inside `room`, `clear` away from it.
+func place(anchor: Vector2, room: Rect2, clear: float = GAP) -> void:
+	place_beside(Rect2(anchor, Vector2.ZERO).grow(clear), room)
+
+
+## Puts the card inside `room` beside the area `avoid` (CardPlacement): above it when it fits
+## there, otherwise on the side with more room, its content scrolling when that side is too short.
+func place_beside(avoid: Rect2, room: Rect2) -> void:
 	var box := get_theme_stylebox("panel")
 	var frame := box.get_minimum_size() if box != null else Vector2.ZERO
-	var shortest := float(AppTheme.TOUCH_MIN) * 2.0
-	var above := anchor.y - GAP - room.position.y - EDGE - frame.y
-	var below := room.end.y - EDGE - anchor.y - GAP - frame.y
-	var on_top := above >= minf(wanted, room.size.y * MAX_SHARE) or above >= below
-	var space := above if on_top else below
-	var height := clampf(minf(wanted, room.size.y * MAX_SHARE), 0.0, maxf(space, shortest))
-	_scroll.custom_minimum_size = Vector2(width - frame.x, height)
-	var card := Vector2(width, height + frame.y)
-	var x := clampf(anchor.x - card.x * 0.5, room.position.x + EDGE, room.end.x - card.x - EDGE)
-	var y := anchor.y - GAP - card.y if on_top else anchor.y + GAP
-	y = clampf(y, room.position.y + EDGE, maxf(room.end.y - card.y - EDGE, room.position.y + EDGE))
-	position = Vector2(x, y).round()
-	size = card
+	# Head and foot do not scroll: they count like the frame.
+	for part: VBoxContainer in [_header, _footer]:
+		part.visible = _shows_something(part)
+		if part.visible:
+			frame.y += part.get_combined_minimum_size().y + SEPARATION
+	var wanted := _content.get_combined_minimum_size().y
+	var shortest := float(AppTheme.TOUCH_MIN)
+	var card := CardPlacement.rect(avoid, room, MAX_WIDTH, wanted, frame, room.size.y * MAX_SHARE, shortest)
+	_scroll.custom_minimum_size = Vector2(card.size.x - (box.get_minimum_size().x if box != null else 0.0),
+		card.size.y - frame.y)
+	position = card.position
+	size = card.size
+
+
+static func _shows_something(part: Control) -> bool:
+	for child: Node in part.get_children():
+		if child is Control and (child as Control).visible:
+			return true
+	return false
