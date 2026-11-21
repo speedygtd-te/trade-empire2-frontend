@@ -97,6 +97,41 @@ class Wall:
 
 
 var surface: SurfaceBlocks
+## The cells of a footprint on a grid over its bounding box (and one cell around): far cheaper to
+## ask than a dictionary for a base of 100 000 hulls. Cells as given (not wrapped).
+class Footprint:
+	extends RefCounted
+	var low := Vector2i.ZERO
+	var width := 0
+	var height := 0
+	var grid := PackedByteArray()
+
+	func _init(cells: Array[Vector2i]) -> void:
+		if cells.is_empty():
+			return
+		low = cells[0]
+		var high := cells[0]
+		for cell: Vector2i in cells:
+			low = low.min(cell)
+			high = high.max(cell)
+		low -= Vector2i.ONE
+		width = high.x - low.x + 2
+		height = high.y - low.y + 2
+		grid.resize(width * height)
+		for cell: Vector2i in cells:
+			grid[(cell.y - low.y) * width + cell.x - low.x] = 1
+
+	func has(cell: Vector2i) -> bool:
+		var i := cell.x - low.x
+		var j := cell.y - low.y
+		return i >= 0 and j >= 0 and i < width and j < height and grid[j * width + i] == 1
+
+	## Whether all eight cells around a cell of the footprint belong to it too.
+	func inner(cell: Vector2i) -> bool:
+		var at := (cell.y - low.y) * width + cell.x - low.x
+		return grid[at - 1] == 1 and grid[at + 1] == 1 and grid[at - width] == 1 and grid[at + width] == 1 			and grid[at - width - 1] == 1 and grid[at - width + 1] == 1 and grid[at + width - 1] == 1 			and grid[at + width + 1] == 1
+
+
 ## Whether retaining walls and terraces are made (off: plain foundations and soft cuts everywhere,
 ## as before them; for measuring). Takes effect with the next set of pads.
 var walls := true
@@ -379,10 +414,11 @@ func block_heights(block: Vector2i) -> PackedFloat32Array:
 ## if its ground lies at least half that low (no single plain gap in a retaining wall).
 func foundation(cells: Array[Vector2i], base: float) -> Array[Wall]:
 	var sides: Array[Wall] = []
-	var taken := {}
+	var taken := Footprint.new(cells)
 	for cell: Vector2i in cells:
-		taken[cell] = true
-	for cell: Vector2i in cells:
+		# A cell inside the footprint has no outer side.
+		if taken.inner(cell):
+			continue
 		for side: Vector2i in SIDES:
 			if taken.has(cell + side):
 				continue
@@ -430,11 +466,14 @@ func foundation(cells: Array[Vector2i], base: float) -> Array[Wall]:
 ## to the footprint, falling to the base there.
 func cut_walls(cells: Array[Vector2i], base: float) -> Array[Wall]:
 	var found: Array[Wall] = []
-	var taken := {}
-	for cell: Vector2i in cells:
-		taken[cell] = true
+	if _levelled.is_empty():
+		return found
+	var taken := Footprint.new(cells)
 	var seen := {}
 	for cell: Vector2i in cells:
+		# Terraces lie beside the footprint: a cell inside it has none around.
+		if taken.inner(cell):
+			continue
 		for dy: int in [-1, 0, 1]:
 			for dx: int in [-1, 0, 1]:
 				var terrace := cell + Vector2i(dx, dy)
@@ -639,17 +678,9 @@ func _block_mean(block: Vector2i) -> float:
 ## Marks the corners of a pad's footprint (distance 0) and the ring around (up to BLEND); where pads
 ## meet, the nearer one wins, then the lower one.
 func _add_pad(corners: Dictionary, pad: Pad) -> void:
-	var taken := {}
+	var taken := Footprint.new(pad.cells)
 	for cell: Vector2i in pad.cells:
-		taken[cell] = true
-	for cell: Vector2i in pad.cells:
-		var inner := true
-		for side: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
-				Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
-			if not taken.has(cell + side):
-				inner = false
-				break
-		var reach := 0 if inner else BLEND
+		var reach := 0 if taken.inner(cell) else BLEND
 		for dy: int in range(-reach, reach + 2):
 			for dx: int in range(-reach, reach + 2):
 				var distance := maxi(_side_distance(dx), _side_distance(dy))
@@ -840,6 +871,13 @@ static func _side_distance(d: int) -> int:
 ## Marks the blocks whose cache holds a corner.
 func _touch_corner(touched: Dictionary, key: Vector2i) -> void:
 	var b := SurfaceBlocks.BLOCK
+	var own := Vector2i(floori(float(key.x) / b), floori(float(key.y) / b))
+	var lx := key.x - own.x * b
+	var ly := key.y - own.y * b
+	# Most corners lie in one block's cache only (it reaches one corner beyond its edge each way).
+	if lx >= 2 and lx <= b - 2 and ly >= 2 and ly <= b - 2:
+		touched[_wrap_block(own)] = true
+		return
 	for by: int in range(ceili(float(key.y - b - 1) / b), floori(float(key.y + 1) / b) + 1):
 		for bx: int in range(ceili(float(key.x - b - 1) / b), floori(float(key.x + 1) / b) + 1):
 			touched[_wrap_block(Vector2i(bx, by))] = true
