@@ -12,7 +12,7 @@ const CAMERA_PITCH_DEGREES := 35.0
 const CAMERA_YAW_DEGREES := 45.0
 const ENTERPRISE_MODULES: Array[String] = [
 	"enterprise_factory", "enterprise_lab", "enterprise_supply_hub", "enterprise_generator",
-	"enterprise_habitat_t3", "enterprise_sublight_thruster",
+	"enterprise_habitat_t3", "enterprise_sublight_thruster", "protein_synthesizer",
 ]
 const ENTERPRISE_HULLS: Array[String] = [
 	"hull_enterprise_hull_standard", "hull_enterprise_hull_standard_closed",
@@ -25,6 +25,7 @@ const MODULE_PAIRS: Array = [
 	["factory", "enterprise_factory", 3], ["research_lab", "enterprise_lab", 2],
 	["trade_module", "enterprise_supply_hub", 2], ["fusion_reactor", "enterprise_generator", 1],
 	["habitat_t3", "enterprise_habitat_t3", 1], ["fusion_drive", "enterprise_sublight_thruster", 1],
+	["hydroponic_bay", "protein_synthesizer", 1],
 ]
 ## The habitats, drives, weapons, protection and running gear (enterprise_systems.py) beside
 ## theirs, in two shots.
