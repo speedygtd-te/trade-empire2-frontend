@@ -12,7 +12,9 @@ extends Control
 ## `--only=map` (tools\screenshots.ps1 -Only map) goes from the colony straight to the system map and
 ## the galaxy (`--only=galaxy` does the same); `--only=shapes` goes from the opened colony straight to the hull
 ## shapes in Build; `--only=storage` to a storage module in Inspect, switched for real (with
-## `--account=<name>` for an account whose store has room, e.g. `routes`).
+## `--account=<name>` for an account whose store has room, e.g. `routes`); `--only=inspect` to the
+## inspect card (module, empty hull, "More", armed removal, fields near the edges, Back), e.g. with
+## `--account=showcase`.
 
 const DEV_ACCOUNT := "res://.local/dev-account.json"
 ## The account of `--only=probes_live` (fresh draft.31 accounts own probes and launchers).
@@ -138,6 +140,10 @@ func _run() -> void:
 	await _capture("colony_opened")
 	print("ENTER  double tap opened: %s, shell nav %s, structure nav %s" % [colony._opened, shell.nav_visible(),
 		colony._structure_nav.visible])
+	if OS.get_cmdline_user_args().has("--only=inspect"):
+		await _capture_inspect(shell, colony)
+		await _finish(shell, session, had_session)
+		return
 	if OS.get_cmdline_user_args().has("--only=shapes"):
 		await _capture_shapes(colony)
 		await _finish(shell, session, had_session)
@@ -1488,6 +1494,83 @@ func _launcher_of(model: ColonyModel) -> StructureLayout.Module:
 
 
 ## A hull of the ground level without a module (local); NO_CELL when every hull carries one.
+## The inspect card (`--only=inspect`): a module and an empty hull, "More" opened, the removal
+## armed (never confirmed; a tap on another field must disarm it), the
+## card beside fields near the edges of the view, and Back closing only the card.
+func _capture_inspect(shell: MainShell, colony: ColonyScreen) -> void:
+	var layout := colony._focus.layout
+	var module: StructureLayout.Module = null
+	for placed: StructureLayout.Module in layout.modules():
+		if placed.module_type != ColonyScreen.CORE_MODULE and not layout.is_shaft(placed) and placed.origin.z == 0:
+			module = placed
+			break
+	if module == null:
+		print("INSPECT  no module to show")
+		return
+	var at := layout.to_absolute(module.origin)
+	colony._select(at)
+	await _ground_ready(colony, at)
+	await _capture("inspect_module")
+	_print_card(colony, "module")
+	colony._toggle_more()
+	await _capture("inspect_more")
+	_print_card(colony, "more")
+	colony._on_remove()
+	await _capture("inspect_armed")
+	_print_card(colony, "armed")
+	# Never a second tap here: it would remove for real (the bounce guard is in tests/core).
+	# Another field while armed disarms.
+	var other := layout.to_absolute(_free_neighbour(layout))
+	colony._select(other)
+	print("INSPECT  other field: armed %s" % colony._arm.is_set())
+	colony._select(at)
+	print("INSPECT  back on the module: armed %s, more open %s" % [colony._arm.is_set(), colony._more_open])
+	var free_hull := _free_hull(layout)
+	if free_hull != NO_CELL:
+		colony._select(layout.to_absolute(free_hull))
+		await _ground_ready(colony, layout.to_absolute(free_hull))
+		await _capture("inspect_hull")
+		_print_card(colony, "hull")
+	# Near the edges: the field is moved there, the card must stay beside it and on screen.
+	var spots := {"top": Vector2(0.5, 0.22), "bottom": Vector2(0.5, 0.78), "left": Vector2(0.08, 0.5),
+		"right": Vector2(0.9, 0.35)}
+	for spot: String in spots.keys():
+		colony._select(at)
+		var share: Vector2 = spots[spot]
+		var room := colony._free_rect()
+		var wanted := room.position + room.size * share
+		for _step: int in 4:
+			var now := colony._view.cell_point(at) / colony._scale()
+			colony._view.pan((wanted - now) * colony._scale(), Vector2(colony._viewport.size))
+			await get_tree().process_frame
+		await _capture("inspect_edge_" + spot)
+		var anchor := colony._view.cell_point(at) / colony._scale()
+		var card := colony._inspect.get_rect()
+		var field := CardPlacement.field_box(colony._field_points(at), 0.0)
+		print("INSPECT  edge %s: field %s, card %s, covers field %s, inside %s" % [spot, anchor.round(), card,
+			card.intersects(field), colony.get_rect().encloses(card)])
+	colony.recentre()
+	# Back closes the card only; the structure stays open.
+	colony._select(at)
+	await get_tree().process_frame
+	shell.handle_back()
+	await get_tree().process_frame
+	print("BACK  card closed %s, structure still open %s" % [not colony._inspect.visible, colony._opened])
+	await _capture("inspect_after_back")
+	shell.handle_back()
+	await get_tree().process_frame
+	print("BACK  second press left the structure: %s" % (not colony._opened))
+
+
+func _print_card(colony: ColonyScreen, what: String) -> void:
+	var buttons := PackedStringArray()
+	for button: Button in [colony._staff, colony._secondary, colony._primary, colony._more, colony._remove]:
+		if button.is_visible_in_tree():
+			buttons.append("%s%s" % [button.text, " (off)" if button.disabled else ""])
+	print("INSPECT  %s: %s | %s | buttons %s | card %s" % [what, colony._info.text.replace("\n", " / "),
+		colony._ground.text.replace("\n", " / "), ", ".join(buttons), colony._inspect.get_rect()])
+
+
 func _free_hull(layout: StructureLayout) -> Vector3i:
 	for cell: Vector3i in layout.hull_cells():
 		if cell.z == 0 and layout.module_at(cell) == null and layout.hull_at(cell) == "STARTER":

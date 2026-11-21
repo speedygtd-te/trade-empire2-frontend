@@ -12,12 +12,13 @@ extends Control
 ## Inside ("structure mode") the shut hulls give way to the modules on their floors, the head
 ## names the structure (a tap opens StructureDetails: production, workers, log, research — over
 ## everything) and its "×" leaves it. The structure's own navigation replaces the shell's at the
-## bottom: Inspect, Build, Inventory. Inspect: a tap on a field puts a card over it with what is
-## there, its ground (terrain, deposits at that level, the air for collectors), what an extracting
-## module yields there (ExtractionYield) and what can be done (recipe, staff, extend a shaft,
-## upgrade a telescope — level, range, countdown and cost from `/v2/structures/{id}/telescopes` —,
-## two-step removal); a tap beside it
-## or on the same field again clears it. Build: the palette at the bottom; building is two taps —
+## bottom: Inspect, Build, Inventory. Inspect: a tap on a field puts a card beside it (never on it,
+## CardPlacement) with what is there, its ground (terrain, deposits at that level, the air for
+## collectors), what an extracting module yields there (ExtractionYield) and what can be done
+## (recipe, staff, extend a shaft, upgrade a telescope — level, range, countdown and cost from
+## `/v2/structures/{id}/telescopes` —, build on an empty hull); the removal waits behind "More" at
+## the card's foot and takes two taps on the same field (RemoveArm). "×" on the card, Back, a tap
+## beside it or on the same field again clears it. Build: the palette at the bottom; building is two taps —
 ## choose the field (an extracting module says what it would yield there), then confirm.
 ## Inventory: the store.
 ##
@@ -109,6 +110,8 @@ const SHAFT_DOWN_ICON := preload("res://game/ui/icons/shaft_down.svg")
 const DEPOSIT_TRACE := 10
 ## Cells around the middle of the view whose environment decides the level's (no field selected).
 const LEVEL_ENV_RADIUS := 4
+## Room for the finger (canvas px) the inspect card keeps beyond the field's edge.
+const CARD_FINGER := 48.0
 
 ## The structure to show when the screen opens; 0 for the home colony. Set before adding it.
 var start_structure := 0
@@ -140,6 +143,14 @@ var _card_line: Label
 var _card_button: Button
 ## The card over the inspected field inside; it holds _info, _status and _actions in Inspect.
 var _inspect: WorldCard
+## The card's head: _info and "×" (closes the card) next to it.
+var _inspect_head: HBoxContainer
+## Below a line at the card's foot: "More" opens the removal (module, hull, shaft), which never
+## stands where the field was tapped and asks for a second tap.
+var _more_row: VBoxContainer
+var _more: Button
+var _remove: Button
+var _more_open := false
 ## The structure's navigation at the bottom while one is open.
 var _structure_nav: BottomNav
 var _info: Label
@@ -212,8 +223,8 @@ var _cell: Variant = null
 var _tool := ""
 var _rotation := 0
 var _busy := false
-## The removal that waits for its second tap: "module" or "hull"; "" when none.
-var _armed := ""
+## The removal that waits for its second tap (module or hull on one field).
+var _arm := RemoveArm.new()
 var _refresh_left := 0.0
 var _sun_left := 0.0
 var _detail := DetailGovernor.new()
@@ -570,6 +581,14 @@ func _build_overlay() -> void:
 	_card.content().add_child(_card_button)
 	_inspect = WorldCard.new()
 	add_child(_inspect)
+	_inspect_head = HBoxContainer.new()
+	_inspect_head.add_theme_constant_override("separation", 12)
+	_inspect.header().add_child(_inspect_head)
+	var inspect_close := LayerHeader.close_button()
+	inspect_close.size_flags_horizontal = Control.SIZE_SHRINK_END
+	inspect_close.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	inspect_close.pressed.connect(_select.bind(null))
+	_inspect_head.add_child(inspect_close)
 	_shape_badge = ShapeBadge.new()
 	add_child(_shape_badge)
 
@@ -726,6 +745,30 @@ func _build_overlay() -> void:
 	_primary = Ui.primary_button("COLONY_BUILD_HERE")
 	_primary.pressed.connect(_on_primary)
 	_actions.add_child(_primary)
+	# The card's foot: a line, then "More" (right) that opens the removal next to it.
+	_more_row = Ui.column(12)
+	_more_row.visible = false
+	_rows.add_child(_more_row)
+	var line := ColorRect.new()
+	line.color = AppTheme.COLOR_BORDER
+	line.custom_minimum_size = Vector2(0, 2)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_more_row.add_child(line)
+	var more_buttons := HBoxContainer.new()
+	more_buttons.add_theme_constant_override("separation", 16)
+	more_buttons.alignment = BoxContainer.ALIGNMENT_END
+	_more_row.add_child(more_buttons)
+	_remove = Ui.secondary_button("COLONY_REMOVE_MODULE")
+	_remove.theme_type_variation = AppTheme.VARIATION_DANGER_BUTTON
+	_remove.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_remove.pressed.connect(_on_remove)
+	more_buttons.add_child(_remove)
+	_more = Ui.secondary_button("COLONY_MORE")
+	_more.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_more.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_more.custom_minimum_size = Vector2(AppTheme.TOUCH_MIN * 2, AppTheme.TOUCH_MIN)
+	_more.pressed.connect(_toggle_more)
+	more_buttons.add_child(_more)
 
 	# The structure's own navigation, over the whole width at the very bottom.
 	_structure_nav = BottomNav.new()
@@ -785,16 +828,32 @@ func _place_cards() -> void:
 			badge_room.size.x = maxf(left_of - badge_room.position.x, float(AppTheme.TOUCH_MIN) * 2.0)
 		_shape_badge.place(_view.cell_point(_shape_end as Vector3i) / _scale(), badge_room)
 	if _inspect.visible and _cell != null:
-		var anchor := _view.cell_point(_target() as Vector3i, _focus.is_guest()) / _scale()
+		# On the card an empty status line and a row without buttons take no room.
+		_status.visible = not _status.text.is_empty()
+		_actions.visible = _staff.visible or _secondary.visible or _primary.visible
+		# Beside the field, never on it: the field with its module plus room for the finger.
+		var avoid := CardPlacement.field_box(_field_points(_target() as Vector3i), CARD_FINGER)
 		var room := _free_rect()
-		_inspect.place(anchor, room)
+		_inspect.place_beside(avoid, room)
 		# The level selector stands over the colony at the right edge: a card that would slide
 		# under it keeps to the room left of it.
 		if _levels.visible:
 			var selector := Rect2(_levels.global_position - global_position, _levels.size)
 			if _inspect.get_rect().intersects(selector):
 				room.size.x = maxf(selector.position.x - room.position.x, float(AppTheme.TOUCH_MIN) * 4.0)
-				_inspect.place(anchor, room)
+				_inspect.place_beside(avoid, room)
+
+
+## The field on screen (canvas px): the top of a module standing on it and the corners of its
+## floor (one level height, ColonyView.cell_point, below the top).
+func _field_points(cell: Vector3i) -> PackedVector2Array:
+	var guest := _focus.is_guest()
+	var top := _view.cell_point(cell, guest) / _scale()
+	var half_x := (_view.cell_point(cell + Vector3i(1, 0, 0), guest) / _scale() - top) * 0.5
+	var half_y := (_view.cell_point(cell + Vector3i(0, 1, 0), guest) / _scale() - top) * 0.5
+	var floor_middle := top + (_view.cell_point(cell - Vector3i(0, 0, 1), guest) / _scale() - top) * 0.9
+	return PackedVector2Array([top, floor_middle + half_x + half_y, floor_middle + half_x - half_y,
+		floor_middle - half_x + half_y, floor_middle - half_x - half_y])
 
 
 # --- data -----------------------------------------------------------------------------------
@@ -969,7 +1028,8 @@ func _set_mode(mode: Mode) -> void:
 		_store.show_inventory(_focus.inventory)
 		_store.show_balance(_focus)
 	_tool = ""
-	_armed = ""
+	_arm.clear()
+	_more_open = false
 	_forget_shape()
 	_status.text = ""
 	_update_levels()
@@ -1023,10 +1083,18 @@ func _update_layout() -> void:
 ## Puts info, status and actions on the inspect card or into the bottom panel.
 func _move_details(on_card: bool) -> void:
 	var target: Control = _inspect.content() if on_card else _rows
-	if _info.get_parent() == target:
+	if _ground.get_parent() == target:
 		return
-	for node: Control in [_info, _path_note, _staff_row, _scope, _scope_next, _scope_block, _ground, _status, _actions]:
+	# On the card _info heads it next to its "×", status and buttons stay in sight at its foot.
+	var head: Control = _inspect_head if on_card else _rows
+	_info.reparent(head, false)
+	if on_card:
+		_inspect_head.move_child(_info, 0)
+	for node: Control in [_path_note, _staff_row, _scope, _scope_next, _scope_block, _ground]:
 		node.reparent(target, false)
+	var foot: Control = _inspect.footer() if on_card else _rows
+	for node: Control in [_status, _actions, _more_row]:
+		node.reparent(foot, false)
 
 
 ## The palette offers what the store that builds the open structure holds: its own, or the
@@ -1229,7 +1297,7 @@ func _set_level(z: int) -> void:
 	if _cell != null:
 		var at: Vector3i = _cell
 		_cell = Vector3i(at.x, at.y, z)
-	_armed = ""
+	_arm.clear()
 	_forget_shape()
 	_status.text = ""
 	_update_levels()
@@ -1654,7 +1722,9 @@ func _select(cell: Variant) -> void:
 	if _recipes.visible:
 		_close_recipes()
 	_cell = cell
-	_armed = ""
+	# Another field (or none) never confirms a removal armed on the last one.
+	_arm.clear()
+	_more_open = false
 	_status.text = ""
 	if cell == null:
 		_view.select_cell(null)
@@ -1755,6 +1825,7 @@ func _refresh() -> void:
 		return
 	_staff.visible = false
 	_jump.visible = false
+	_more_row.visible = false
 	_ground.visible = false
 	_scope.visible = false
 	_scope_next.visible = false
@@ -1805,11 +1876,12 @@ func _refresh_view() -> void:
 	_info.remove_theme_color_override("font_color")
 	_staff_row.visible = false
 	_secondary.visible = false
-	# Everything the inspect card offers on the main button removes something.
-	_primary.theme_type_variation = AppTheme.VARIATION_DANGER_BUTTON
+	# The card's main action (recipe, upgrade, build on a hull …) leads; the removal waits behind
+	# "More" at its foot (_show_removal).
+	_primary.visible = false
+	_secondary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
 	if _cell == null:
 		_info.text = ""
-		_primary.visible = false
 		return
 	var target: Vector3i = _target()
 	var layout := _focus.layout
@@ -1830,13 +1902,14 @@ func _refresh_view() -> void:
 			_ground.visible = false
 		if target.z == 0:
 			_info.text += _wreck_text(_view.impacts_at(target.x, target.y))
-		_primary.visible = false
 		return
 	var hull_name := definitions.hull(hull_type).display_name if definitions.hull(hull_type) != null else ""
 	if placed == null:
 		_info.text = tr("COLONY_CELL_HULL").format({"hull": hull_name})
-		_primary.visible = true
-		_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "hull" else tr("COLONY_REMOVE_HULL")
+		# An empty hull: building a module on it comes first.
+		_secondary.visible = true
+		_secondary.text = tr("COLONY_BUILD_ON_HULL")
+		_show_removal("hull", "COLONY_REMOVE_HULL")
 		var host_cell := _model.layout.to_local(target)
 		var verdict := DockRules.check_remove_hull(_model.layout, _model.guest_layouts(), layout, host_cell)
 		if verdict == BuildRules.Verdict.OK:
@@ -1844,10 +1917,10 @@ func _refresh_view() -> void:
 			var path := PathAccess.of(layout, definitions).check_remove_hull(local)
 			if not path.ok():
 				_info.text += "\n" + _path_text(path, layout)
-				_primary.disabled = true
+				_remove.disabled = true
 		if verdict != BuildRules.Verdict.OK:
 			_info.text += "\n" + _verdict_text(verdict)
-			_primary.disabled = true
+			_remove.disabled = true
 		elif DockRules.removes_guest(layout, host_cell):
 			_info.text += "\n" + tr("COLONY_REMOVES_GUEST")
 		return
@@ -1874,8 +1947,7 @@ func _refresh_view() -> void:
 	# A module that needs staff or houses inhabitants but reaches no corridor (it keeps working).
 	var paths := PathAccess.of(layout, definitions)
 	_path_note.visible = paths.is_required(placed.module_id) and not paths.module_connected(placed.module_id)
-	_primary.visible = true
-	_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "module" else tr("COLONY_REMOVE_MODULE")
+	_show_removal("module", "COLONY_REMOVE_MODULE")
 	if layout.is_shaft(placed):
 		_refresh_shaft(placed, local)
 		return
@@ -1885,7 +1957,7 @@ func _refresh_view() -> void:
 	# The core module shields the home colony; neither it nor its hull can be removed.
 	if placed.module_type == CORE_MODULE:
 		_info.text += "\n" + tr("COLONY_CORE_MODULE")
-		_primary.disabled = true
+		_more_row.visible = false
 	var module_def := definitions.module(placed.module_type)
 	if module_def != null and module_def.blueprint_driven and not placed.is_building():
 		_secondary.visible = true
@@ -2183,8 +2255,8 @@ func _refresh_shaft(placed: StructureLayout.Module, local: Vector3i) -> void:
 		"floors": floors.size(), "low": _level_text(ends.x), "high": _level_text(ends.y)})])
 	if layout.is_shaft_head(local):
 		lines.append(tr("LEVEL_SHAFT_HEAD"))
-	_primary.text = tr("COLONY_CONFIRM_REMOVE") if _armed == "module" else tr("LEVEL_REMOVE_SHAFT")
-	if _armed == "module":
+	_show_removal("module", "LEVEL_REMOVE_SHAFT")
+	if _arm.is_armed("module", _target()):
 		lines.append(tr("LEVEL_SHAFT_REMOVES").format({"floors": floors.size()}))
 	_secondary.visible = true
 	_secondary.text = tr("LEVEL_EXTEND_SHAFT")
@@ -2199,7 +2271,7 @@ func _refresh_shaft(placed: StructureLayout.Module, local: Vector3i) -> void:
 	var path := PathAccess.of(layout, Services.definitions).check_remove_modules(ids)
 	if not path.ok():
 		lines.append(_path_text(path, layout))
-		_primary.disabled = true
+		_remove.disabled = true
 	if _uses_levels():
 		_jump.visible = true
 		_jump.icon = SHAFT_UP_ICON if _level < ends.y else SHAFT_DOWN_ICON
@@ -2388,6 +2460,7 @@ func _recipe_yields(placed: StructureLayout.Module) -> Dictionary:
 func _refresh_build() -> void:
 	_info.remove_theme_color_override("font_color")
 	_primary.theme_type_variation = AppTheme.VARIATION_PRIMARY_BUTTON
+	_secondary.theme_type_variation = ""
 	_secondary.visible = true
 	_secondary.text = tr("COLONY_CANCEL")
 	_primary.visible = true
@@ -2556,18 +2629,45 @@ func _on_primary() -> void:
 		return
 	if _mode == Mode.BUILD:
 		_build()
+
+
+## "More" at the card's foot: shows or hides the removal (closing it disarms).
+func _toggle_more() -> void:
+	_more_open = not _more_open
+	if not _more_open:
+		_arm.clear()
+	_refresh()
+	_place_cards()
+
+
+## The removal on the inspect card: the first tap arms it for this field, only a second tap on
+## the same field (not too soon, RemoveArm) removes.
+func _on_remove() -> void:
+	if not _opened or _busy or _cell == null or _mode != Mode.VIEW:
 		return
 	var at: Vector3i = _target()
 	var placed := _focus.layout.module_at(_focus.layout.to_local(at))
 	var target := "module" if placed != null else "hull"
-	if _armed != target:
-		_armed = target
+	if not _arm.press(target, at, Time.get_ticks_msec()):
 		_refresh()
 		return
-	_armed = ""
 	if placed != null:
 		at = _focus.layout.to_absolute(placed.origin)
 	_send([{"op": "removeModule" if target == "module" else "removeHull", "x": at.x, "y": at.y, "z": at.z}])
+
+
+## The card's foot for a removal of `kind` ("module", "hull"): "More" (or "Less") and, opened, the
+## danger button naming what goes ("Tap again to remove" once armed). Callers disable it when the
+## removal is refused.
+func _show_removal(kind: String, label_key: String) -> void:
+	var armed := _arm.is_armed(kind, _target())
+	if armed:
+		_more_open = true
+	_more_row.visible = true
+	_more.text = tr("COLONY_LESS") if _more_open else tr("COLONY_MORE")
+	_remove.visible = _more_open
+	_remove.text = tr("COLONY_CONFIRM_REMOVE") if armed else tr(label_key)
+	_remove.disabled = _busy
 
 
 func _on_secondary() -> void:
@@ -2594,6 +2694,9 @@ func _on_secondary() -> void:
 			_switch_storage(placed)
 		elif placed != null:
 			_open_recipes(placed)
+		else:
+			# An empty hull: Build with this field chosen, the palette picks the module.
+			_set_mode(Mode.BUILD)
 		return
 	# Build without a tool or field: start over.
 	_tool = ""
