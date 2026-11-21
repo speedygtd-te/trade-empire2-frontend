@@ -338,6 +338,109 @@ def sublight_thruster():
     return model.finish()
 
 
+# --- Protein Synthesizer (1x1, the enterprise version of the hydroponic bay) --------------------
+
+CULTURE = "glow_green"
+WATER = "water_blue"
+
+
+def _bioreactor(model, position, z: float, height: float, radius: float = 0.062, fill: float = 0.68) -> None:
+    """A slim glass bioreactor column at *position* on *z*: a white foot with a cyan band, a glass
+    tube *fill* full of glowing green culture, a lit sparger rod and a bubble in the head space,
+    a chrome band, a white cap with a cyan band and a chrome feed stub."""
+    x, y = position
+    cap = radius + 0.014
+    model.cylinder((x, y, z), (x, y, z + 0.035), cap, SMOOTH, segments=14)
+    model.cylinder((x, y, z + 0.010), (x, y, z + 0.016), cap + 0.002, LIGHT, segments=14)
+    glass_bottom, glass_top = z + 0.035, z + height - 0.03
+    model.cylinder((x, y, glass_bottom), (x, y, glass_top), radius, kit.PANE, segments=14)
+    level = glass_bottom + (glass_top - glass_bottom) * fill
+    model.cylinder((x, y, glass_bottom), (x, y, level), radius - 0.006, CULTURE, segments=14)
+    model.cylinder((x, y, level), (x, y, glass_top), 0.006, LIGHT, segments=6)
+    parts.ent_sphere(model, (x + 0.02, y - 0.012, level + 0.025), 0.009, LAMP, rings=3, segments=6)
+    _ring(model, (x, y, glass_bottom + (glass_top - glass_bottom) * 0.40), radius + 0.002, 0.005, CHROME,
+          segments=14)
+    model.cylinder((x, y, glass_top), (x, y, z + height), cap, SMOOTH, segments=14)
+    model.cylinder((x, y, glass_top + 0.008), (x, y, glass_top + 0.014), cap + 0.002, LIGHT, segments=14)
+    model.cylinder((x, y, z + height), (x, y, z + height + 0.025), 0.016, CHROME, segments=8)
+
+
+def protein_synthesizer():
+    """The clean, high-tech sister of the hydroponic bay: instead of plant trays under grow lights,
+    three glass bioreactor columns of glowing green culture on a white rack along the back wall,
+    fed by a chrome header from a glass water tank that comes in through that wall at the right;
+    in front a round glass culture vat whose agitator turns (moving part rotor), a white packer
+    with a display that puts out finished food crates, a console beside the tank, a display on
+    the left wall."""
+    model = kit.Builder("te_protein_synthesizer", style=STYLE)
+    top = parts.ent_room(model, 0.42, height=0.46)
+    # The rack of bioreactors along the back wall.
+    rack = top + 0.05
+    model.rounded_box((-0.07, 0.25, top + 0.025), (0.58, 0.20, 0.05), 0.04, WHITE)
+    model.rounded_box((-0.07, 0.25, top + 0.004), (0.59, 0.21, 0.008), 0.04, CARBON)
+    parts.light_strip(model, (-0.32, 0.147, top + 0.035), (0.18, 0.147, top + 0.035), 0.008)
+    columns = (-0.27, -0.07, 0.13)
+    for index, x in enumerate(columns):
+        _bioreactor(model, (x, 0.25), rack, 0.34 - 0.02 * (index % 2), fill=0.70 - 0.08 * index)
+    # The water: a glass tank in the back right corner, fed through the back wall, up into a
+    # chrome header over the columns.
+    tank = (0.31, 0.25)
+    model.cylinder((tank[0], tank[1], top), (tank[0], tank[1], top + 0.03), 0.062, SMOOTH, segments=14)
+    model.cylinder((tank[0], tank[1], top + 0.010), (tank[0], tank[1], top + 0.016), 0.064, LIGHT, segments=14)
+    model.cylinder((tank[0], tank[1], top + 0.03), (tank[0], tank[1], top + 0.26), 0.052, kit.PANE, segments=14)
+    model.cylinder((tank[0], tank[1], top + 0.03), (tank[0], tank[1], top + 0.21), 0.046, WATER, segments=14)
+    model.cylinder((tank[0], tank[1], top + 0.26), (tank[0], tank[1], top + 0.29), 0.062, SMOOTH, segments=14)
+    header = top + 0.415
+    inlet = top + 0.12
+    parts.pipe(model, [(tank[0], 0.37, inlet), (tank[0], tank[1] + 0.05, inlet)], 0.013, CHROME, 8)
+    model.cylinder((tank[0], 0.372, inlet), (tank[0], 0.355, inlet), 0.02, LIGHT, segments=10)
+    parts.pipe(model, [(tank[0], tank[1], top + 0.29), (tank[0], tank[1], header), (columns[0], tank[1], header)],
+               0.012, CHROME, 8)
+    # The culture vat at the front left, its agitator turning.
+    vat = (-0.17, -0.16)
+    model.cylinder((vat[0], vat[1], top), (vat[0], vat[1], top + 0.04), 0.13, SMOOTH, segments=20)
+    model.cylinder((vat[0], vat[1], top), (vat[0], vat[1], top + 0.008), 0.135, CARBON, segments=20)
+    model.cylinder((vat[0], vat[1], top + 0.022), (vat[0], vat[1], top + 0.030), 0.132, LIGHT, segments=20)
+    model.cylinder((vat[0], vat[1], top + 0.04), (vat[0], vat[1], top + 0.17), 0.11, kit.PANE, segments=20)
+    model.cylinder((vat[0], vat[1], top + 0.04), (vat[0], vat[1], top + 0.145), 0.104, CULTURE, segments=20)
+    _ring(model, (vat[0], vat[1], top + 0.17), 0.11, 0.007, CHROME, segments=20)
+    # The bridge over the vat with the agitator's motor, on a post at its left.
+    bridge = top + 0.24
+    model.rounded_box((vat[0] - 0.15, vat[1], top + 0.12), (0.03, 0.05, 0.24), 0.012, SMOOTH)
+    model.rounded_box((vat[0] - 0.06, vat[1], bridge), (0.21, 0.05, 0.025), 0.012, SMOOTH)
+    parts.light_strip(model, (vat[0] - 0.13, vat[1] - 0.026, bridge), (vat[0] + 0.03, vat[1] - 0.026, bridge), 0.006)
+    model.cylinder((vat[0], vat[1], bridge + 0.012), (vat[0], vat[1], bridge + 0.05), 0.03, WHITE, segments=12)
+    model.cylinder((vat[0], vat[1], bridge + 0.05), (vat[0], vat[1], bridge + 0.06), 0.022, CHROME, segments=10)
+    with model.moving("rotor", (vat[0], vat[1], top + 0.15)):
+        model.cylinder((vat[0], vat[1], top + 0.10), (vat[0], vat[1], bridge - 0.012), 0.008, CHROME, segments=6)
+        model.cylinder((vat[0], vat[1], top + 0.145), (vat[0], vat[1], top + 0.165), 0.02, CHROME, segments=8)
+        for index in range(3):
+            angle = index * 2.0 * math.pi / 3.0
+            model.box((vat[0] + math.cos(angle) * 0.05, vat[1] + math.sin(angle) * 0.05, top + 0.155),
+                      (0.07, 0.016, 0.006), CHROME, turn=angle)
+            model.box((vat[0] + math.cos(angle) * 0.088, vat[1] + math.sin(angle) * 0.088, top + 0.157),
+                      (0.008, 0.02, 0.012), LIGHT, turn=angle)
+    # Culture from the rack down into the vat, from the vat into the packer.
+    parts.pipe(model, [(-0.07, 0.15, top + 0.03), (-0.07, 0.04, top + 0.03), (vat[0], 0.04, top + 0.03),
+                       (vat[0], vat[1] + 0.13, top + 0.03)], 0.011, CHROME, 8)
+    parts.pipe(model, [(vat[0] + 0.13, vat[1] - 0.04, top + 0.03), (0.11, vat[1] - 0.04, top + 0.03)], 0.011,
+               CHROME, 8)
+    # The packer at the front right: a soft white block with a display, crates of food on its tray.
+    packer = (0.24, -0.20)
+    model.rounded_box((packer[0], packer[1], top + 0.08), (0.24, 0.20, 0.16), 0.04, WHITE)
+    model.rounded_box((packer[0], packer[1], top + 0.005), (0.25, 0.21, 0.01), 0.04, CARBON)
+    model.rounded_box((packer[0], packer[1], top + 0.115), (0.244, 0.204, 0.012), 0.04, LIGHT)
+    parts.display(model, (packer[0] - 0.02, packer[1] - 0.101, top + 0.06), (0.14, 0.07), "-y", seed=71, depth=0.006)
+    model.box((packer[0], packer[1], top + 0.164), (0.20, 0.16, 0.008), CARBON)
+    _pod(model, (packer[0] - 0.045, packer[1] + 0.02, top + 0.168), (0.07, 0.07, 0.05))
+    _pod(model, (packer[0] + 0.05, packer[1] - 0.02, top + 0.168), (0.07, 0.07, 0.05))
+    _pod(model, (packer[0] + 0.05, packer[1] + 0.045, top + 0.168), (0.06, 0.06, 0.045))
+    # A console in front of the water tank, a display on the left wall.
+    parts.console(model, (0.20, 0.04), top, width=0.17, turn=-0.4, seed=72)
+    parts.display(model, (-0.37 + 0.001, 0.08, top + 0.13), (0.14, 0.09), "+x", seed=73, depth=0.006)
+    return model.finish()
+
+
 ONE = (1, 1)
 MODELS = {
     "enterprise_factory": (factory, (3, 3)),
@@ -346,6 +449,7 @@ MODELS = {
     "enterprise_generator": (generator, ONE),
     "enterprise_habitat_t3": (habitat_t3, ONE),
     "enterprise_sublight_thruster": (sublight_thruster, ONE),
+    "protein_synthesizer": (protein_synthesizer, ONE),
 }
 
 if __name__ == "__main__":
