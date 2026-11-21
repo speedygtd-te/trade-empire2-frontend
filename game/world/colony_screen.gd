@@ -302,6 +302,9 @@ func _ready() -> void:
 	_model.ready_to_show.connect(_on_ready_to_show)
 	_model.structures_founded.connect(_on_structures_founded)
 	_model.load_failed.connect(_on_load_failed)
+	# The sign-in was step 1 of the way in (App); the colony's steps follow.
+	_model.load_step.connect(func(key: String, step: int) -> void:
+		_loading.set_progress(key, step + 1, ColonyModel.LOAD_STEPS + 1))
 	Services.events.event_received.connect(_on_travel_event)
 	if Services.definitions == null:
 		Services.definitions_loaded.connect(_on_definitions_loaded, CONNECT_ONE_SHOT)
@@ -387,6 +390,10 @@ func _apply_rendering() -> void:
 		return
 	var draw := _rendering and not _model.detached
 	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE if draw else SubViewport.UPDATE_DISABLED
+	# Nothing of the 3D world works while it is not drawn (ground blocks, moving parts, props,
+	# masts, route stops); the screen itself rests while another tab or a layer covers it.
+	_viewport.process_mode = Node.PROCESS_MODE_INHERIT if draw else Node.PROCESS_MODE_DISABLED
+	set_process(_rendering)
 	_update_heat()
 
 
@@ -864,7 +871,8 @@ func _on_definitions_loaded() -> void:
 
 func _on_ready_to_show() -> void:
 	_loading.visible = false
-	_fleet.reload()
+	# The fleet starts from the structure list the colony just read.
+	_fleet.reload(_model.structure_list())
 	if _model.asked_guest != 0 and _model.structure(_model.asked_guest) != null:
 		_focus = _model.structure(_model.asked_guest)
 		if not _model.detached:
@@ -986,8 +994,10 @@ func _on_inventory_changed() -> void:
 ## A guest was founded, removed or named. When the guest on screen is gone (its last hull was
 ## removed), the home structure takes its place.
 func _on_guests_changed() -> void:
-	# A guest founded or gone is a structure more or less in the fleet.
-	_fleet.reload()
+	# A guest founded or gone is a structure more or less in the fleet. While the colony still
+	# loads, the fleet loads once it is shown (_on_ready_to_show).
+	if not _loading.visible:
+		_fleet.reload()
 	if _focus != _model and not _model.guests.has(_focus.structure_id) and not _focus.is_neighbour():
 		var was_open := _opened
 		_focus = _model

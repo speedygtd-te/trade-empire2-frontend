@@ -28,6 +28,9 @@ const NAV_ICONS: Array[String] = [
 
 ## The structure Base shows first; 0 for the home colony. Set before adding.
 var start_structure := 0
+## Whether the shell switches low-processor mode per tab (`_process`); the app sets it, review
+## scenes that wait for drawn frames leave it off.
+var saves_power := false
 
 var _content: Control
 var _nav: BottomNav
@@ -71,6 +74,22 @@ func _ready() -> void:
 	add_child(performance)
 	_show_colony(start_structure)
 	show_tab(Tab.BASE)
+
+
+## Screens without moving 3D are drawn only when something on them changed (low-processor
+## mode): everything but the colony while it draws and the Map tab (its views animate by
+## themselves). Whatever changes a screen from code (`_process`, tweens, timers) still shows.
+func _process(_delta: float) -> void:
+	if not saves_power:
+		return
+	var animated := (_colony != null and _colony.is_rendering()) or _active == Tab.MAP
+	if OS.low_processor_usage_mode == animated:
+		OS.low_processor_usage_mode = not animated
+
+
+func _exit_tree() -> void:
+	if saves_power:
+		OS.low_processor_usage_mode = true
 
 
 ## The models every tab shares: the fleet (Base, Map, Fleet) and the enterprise (Profile).
@@ -156,9 +175,14 @@ func current_structure() -> int:
 ## Shows a tab (its root is built the first time).
 func show_tab(tab: Tab) -> void:
 	_active = tab
+	var had_root := _stacks[tab].root() != null
 	_ensure_root(tab)
 	for index: int in _stacks.size():
 		_stacks[index].visible = index == tab
+		# Hidden tabs rest (their timers, clocks and animations); Base rests by itself
+		# (ColonyScreen.set_rendering), its models keep listening.
+		if index != Tab.BASE:
+			_stacks[index].process_mode = Node.PROCESS_MODE_INHERIT if index == tab else Node.PROCESS_MODE_DISABLED
 	_nav.select(tab)
 	match tab:
 		Tab.FLEET:
@@ -169,7 +193,9 @@ func show_tab(tab: Tab) -> void:
 			var profile := _stacks[tab].root() as ProfileScreen
 			if profile != null:
 				profile.set_detail_tier(_colony.detail_tier() if _colony != null else -1)
-				profile.refresh()
+				# A new profile loads by itself (_ready).
+				if had_root:
+					profile.refresh()
 	_update_rendering()
 
 

@@ -22,6 +22,11 @@ var account: Account = null
 ## Why the last attempt to reach the backend failed; null otherwise.
 var last_error: ApiError = null
 
+## The last answer of `/v2/me` and when it came (ticks ms): the enterprise model starts from it
+## instead of asking again right after the sign-in (`recent_me`).
+var _me: ApiResult = null
+var _me_at_ms := 0
+
 var _server: ServerUrl
 var _api: ApiClient
 var _events: EventStream
@@ -117,6 +122,8 @@ func _load_account() -> void:
 	var result := await _api.get_json("/v2/me")
 	if result.is_ok():
 		last_error = null
+		_me = result
+		_me_at_ms = Time.get_ticks_msec()
 		account = Account.from_me(result.data)
 		_events.start(_server, _api.token, result.rev)
 		_set_status(Status.SIGNED_IN)
@@ -130,7 +137,15 @@ func _load_account() -> void:
 		_set_status(Status.UNREACHABLE)
 
 
+## The answer of `/v2/me` when it is at most `max_age_ms` old; null otherwise.
+func recent_me(max_age_ms: int) -> ApiResult:
+	if _me == null or status != Status.SIGNED_IN or Time.get_ticks_msec() - _me_at_ms > max_age_ms:
+		return null
+	return _me
+
+
 func _forget_session() -> void:
+	_me = null
 	_events.stop()
 	_api.token = ""
 	account = null
