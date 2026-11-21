@@ -13,7 +13,9 @@ extends Control
 ## session is restored, and the colony's view at each step it reached.
 ##
 ##   godot --path . --resolution 720x1280 res://smoke/startup_measure.tscn [-- --account=<name>]
+##   ... -- --server=https://dev.trade-empire.net --dev-account=DevLarge1   (dev instance, test_accounts.gd)
 
+const TestAccounts := preload("res://smoke/test_accounts.gd")
 const QUIET_MS := 2000
 const MEASURE_SECONDS := 3.0
 
@@ -31,16 +33,13 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	var account_path := "res://.local/dev-account.json"
-	for argument: String in OS.get_cmdline_user_args():
-		if argument.begins_with("--account="):
-			account_path = "res://.local/%s-account.json" % argument.trim_prefix("--account=")
-	var account := Wire.parse_object(FileAccess.get_file_as_string(ProjectSettings.globalize_path(account_path)))
-	if account.is_empty():
-		print("SKIP  no %s (run node tools/dev-account.cjs)" % account_path)
+	await _until(func() -> bool: return Services.definitions != null, 15000)
+	var account := TestAccounts.load()
+	if account.has("error"):
+		print("SKIP  %s" % account["error"])
 		get_tree().quit(2)
 		return
-	await _until(func() -> bool: return Services.definitions != null, 15000)
+	print("ACCOUNT  %s on %s" % [account["label"], Services.server.base])
 	var api := Services.api
 	api.request_done.connect(_on_request_done)
 	var had_session := not SessionStore.new().load_token(Services.server.base).is_empty()
@@ -129,16 +128,27 @@ func _measure(label: String) -> void:
 	var drawn := Engine.get_frames_drawn()
 	var processed := Engine.get_process_frames()
 	var process_time := 0.0
+	var worst := 0.0
+	var draws := 0.0
+	var primitives := 0.0
 	var samples := 0
 	var until := Time.get_ticks_msec() + int(MEASURE_SECONDS * 1000.0)
+	var last := Time.get_ticks_usec()
 	while Time.get_ticks_msec() < until:
 		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		worst = maxf(worst, (now - last) / 1000.0)
+		last = now
 		process_time += Performance.get_monitor(Performance.TIME_PROCESS)
+		draws += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		primitives += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 		samples += 1
-	print("IDLE  %-10s %5.1f frames drawn/s, %5.1f process frames/s, %.2f ms process per frame, low-processor %s" % [
+	var count := maxf(float(samples), 1.0)
+	print("IDLE  %-10s %5.1f frames drawn/s, %5.1f process frames/s, %.2f ms process per frame, worst frame %.0f ms, %.0f draws, %.0fk primitives, %.0f MB, low-processor %s" % [
 		label, float(Engine.get_frames_drawn() - drawn) / MEASURE_SECONDS,
 		float(Engine.get_process_frames() - processed) / MEASURE_SECONDS,
-		process_time * 1000.0 / maxf(float(samples), 1.0), OS.low_processor_usage_mode])
+		process_time * 1000.0 / count, worst, draws / count, primitives / count / 1000.0,
+		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, OS.low_processor_usage_mode])
 
 
 func _on_request_done(method_name: String, path: String, status: int, ms: int) -> void:
