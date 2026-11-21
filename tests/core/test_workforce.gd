@@ -87,6 +87,34 @@ func test_fill_starts_at_the_base_tier_and_stops_when_nothing_is_left() -> void:
 	assert_array(plan[1]).is_equal([0, 2, 0, 0, 0])
 
 
+func test_max_for_a_tier_is_what_is_at_hand_up_to_the_need() -> void:
+	var lab: Workforce.Group = _workforce.groups["RESEARCH_LAB"]
+	var factory: Workforce.Group = _workforce.groups["FACTORY"]
+	var store: Array[int] = [10, 2, 0, 0, 0]
+	var none: Array[int] = [0, 0, 0, 0, 0]
+	# The lab needs 8; tier 1 has 10 free people for it: capped at the need.
+	assert_int(_workforce.max_for(lab, 1, true, none, none, store)).is_equal(8)
+	# Others already give 5 of 8: only 3 more.
+	assert_int(_workforce.max_for(lab, 1, true, none, [5, 0, 0, 0, 0], store)).is_equal(3)
+	# The factory (base tier 2, needs 6) has only 4 free tier-2 people: all of them.
+	assert_int(_workforce.max_for(factory, 2, true, none, none, store)).is_equal(4)
+	# Robots: store plus the type's own.
+	assert_int(_workforce.max_for(factory, 2, false, none, none, store)).is_equal(2)
+	# Below the base tier nothing.
+	assert_int(_workforce.max_for(factory, 1, true, none, none, store)).is_equal(0)
+
+
+func test_lowering_is_allowed_even_when_the_population_fell() -> void:
+	var mine: Workforce.Group = _workforce.groups["MINE"]
+	var none: Array[int] = [0, 0, 0, 0, 0]
+	var store: Array[int] = [0, 0, 0, 0, 0]
+	# Tier 1 shrank to 10 people: the mine's 20 are more than are free (8) now.
+	_workforce.population[0] = 10
+	assert_str(_workforce.check(mine, [15, 0, 0, 0, 0], none, store)).is_empty()
+	assert_str(_workforce.check(mine, [20, 0, 0, 0, 0], none, store)).is_empty()
+	assert_str(_workforce.check(mine, [21, 0, 0, 0, 0], none, store)).is_equal("INSUFFICIENT_WORKERS")
+
+
 func test_check_previews_the_servers_refusals() -> void:
 	var factory: Workforce.Group = _workforce.groups["FACTORY"]
 	var store: Array[int] = [5, 1, 0, 0, 0]

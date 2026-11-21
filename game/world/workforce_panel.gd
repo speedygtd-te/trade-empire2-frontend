@@ -11,6 +11,11 @@ signal closed
 
 const STEP_WIDTH := 88.0
 const COUNT_WIDTH := 64.0
+## Holding + or − (Rudi 2026-11-20): after HOLD_DELAY seconds it steps by HOLD_STEP every
+## HOLD_EVERY seconds, until 0 or the tier's most (Workforce.max_for).
+const HOLD_DELAY := 1.0
+const HOLD_EVERY := 0.1
+const HOLD_STEP := 10
 ## Height of the scrolling list of tiers (about three rows).
 const ROWS_HEIGHT := 300
 
@@ -25,6 +30,16 @@ var _busy := false
 ## Why the staffing may not be changed here (an enterprise structure without MANAGE_TREASURY,
 ## draft.38); "" when it may.
 var _blocked := ""
+## Tier → the label with its count (a step updates it without rebuilding the rows, so a held
+## button stays).
+var _count_labels: Dictionary = {}
+## The stepper being held: its button, tier and direction; time to the next repeat; whether it
+## repeated (then the release is no tap).
+var _hold_button: ListButton = null
+var _hold_tier := 0
+var _hold_delta := 0
+var _hold_left := 0.0
+var _hold_repeated := false
 
 var _title: Label
 var _need: Label
@@ -127,6 +142,8 @@ func _rebuild() -> void:
 	_robots_tab.set_pressed_no_signal(not _people)
 	for child: Node in _rows.get_children():
 		child.queue_free()
+	_count_labels.clear()
+	_hold_button = null
 	for tier: int in range(_group.base_tier, Workforce.TIERS + 1):
 		# Only tiers that could staff anything (or already do); the base tier always shows.
 		var people := _workforce.free_humans(tier, _group.module_type)
@@ -159,31 +176,88 @@ func _tier_row(tier: int) -> Control:
 	names.add_child(at_hand)
 	row.add_child(names)
 	# A swipe that starts on a stepper scrolls the list (ListButton).
-	var less := ListButton.new()
-	less.text = "−"
-	less.custom_minimum_size = Vector2(STEP_WIDTH, AppTheme.TOUCH_MIN)
-	less.tapped.connect(_on_step.bind(tier, -1))
-	row.add_child(less)
+	row.add_child(_stepper("−", tier, -1))
 	var count := Ui.dynamic_label()
 	count.custom_minimum_size = Vector2(COUNT_WIDTH, 0)
 	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	count.text = str(_humans[tier - 1] if _people else _robots[tier - 1])
+	count.text = str(_count(tier))
+	_count_labels[tier] = count
 	row.add_child(count)
-	var more := ListButton.new()
-	more.text = "+"
-	more.custom_minimum_size = Vector2(STEP_WIDTH, AppTheme.TOUCH_MIN)
-	more.tapped.connect(_on_step.bind(tier, 1))
-	row.add_child(more)
+	row.add_child(_stepper("+", tier, 1))
 	return row
 
 
-func _on_step(tier: int, delta: int) -> void:
+## A − or + button: a tap steps by one, holding it steps by HOLD_STEP (see _process).
+func _stepper(text: String, tier: int, delta: int) -> ListButton:
+	var button := ListButton.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(STEP_WIDTH, AppTheme.TOUCH_MIN)
+	button.button_down.connect(_on_hold_start.bind(button, tier, delta))
+	button.button_up.connect(_on_hold_end)
+	button.tapped.connect(_on_tap.bind(tier, delta))
+	return button
+
+
+func _count(tier: int) -> int:
+	return _humans[tier - 1] if _people else _robots[tier - 1]
+
+
+## Sets the edited kind's count of a tier (never below 0) and shows it without a rebuild.
+func _set_count(tier: int, value: int) -> void:
 	if _people:
-		_humans[tier - 1] = maxi(0, _humans[tier - 1] + delta)
+		_humans[tier - 1] = maxi(0, value)
 	else:
-		_robots[tier - 1] = maxi(0, _robots[tier - 1] + delta)
-	_rebuild()
+		_robots[tier - 1] = maxi(0, value)
+	var label: Label = _count_labels.get(tier)
+	if label != null and is_instance_valid(label):
+		label.text = str(_count(tier))
+	_refresh()
+
+
+func _max_for(tier: int) -> int:
+	return _workforce.max_for(_group, tier, _people, _humans, _robots, _store)
+
+
+func _on_tap(tier: int, delta: int) -> void:
+	# A release after holding is no tap: the repeats did the work.
+	if _hold_repeated:
+		return
+	_set_count(tier, _count(tier) + delta)
+
+
+func _on_hold_start(button: ListButton, tier: int, delta: int) -> void:
+	_hold_button = button
+	_hold_tier = tier
+	_hold_delta = delta
+	_hold_left = HOLD_DELAY
+	_hold_repeated = false
+
+
+func _on_hold_end() -> void:
+	_hold_button = null
+
+
+func _process(delta: float) -> void:
+	if _hold_button == null:
+		return
+	# A swipe that started on the button scrolls the list: no repeating then.
+	if not is_instance_valid(_hold_button) or _hold_button.moved_since_press():
+		_hold_button = null
+		return
+	_hold_left -= delta
+	if _hold_left > 0.0:
+		return
+	_hold_left += HOLD_EVERY
+	_hold_repeated = true
+	var current := _count(_hold_tier)
+	var target := current + _hold_delta * HOLD_STEP
+	if _hold_delta > 0:
+		# Up to the tier's most, but never below what is already set.
+		target = mini(target, maxi(_max_for(_hold_tier), current))
+	_set_count(_hold_tier, target)
+	if _count(_hold_tier) == current:
+		_hold_button = null
 
 
 func _on_fill(people: bool, robots: bool) -> void:

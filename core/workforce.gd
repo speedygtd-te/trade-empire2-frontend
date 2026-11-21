@@ -182,6 +182,22 @@ func fill_plan(group: Group, robots_in_store: Array[int], use_people: bool = tru
 	return [humans, robots]
 
 
+## The most of one kind (people or robots) a tier can take in an assignment being edited: as many
+## as are at hand (free people of the tier; robots in the store plus the type's own), but no
+## more than the type still needs beside what the other tiers and kinds already give.
+func max_for(group: Group, tier: int, people: bool, humans: Array[int], robots: Array[int],
+		robots_in_store: Array[int]) -> int:
+	if tier < group.base_tier:
+		return 0
+	var at_hand := free_humans(tier, group.module_type) if people \
+		else robots_in_store[tier - 1] + group.robots[tier - 1]
+	var others := 0
+	for index: int in TIERS:
+		others += humans[index] + robots[index]
+	others -= humans[tier - 1] if people else robots[tier - 1]
+	return clampi(group.needed() - others, 0, at_hand)
+
+
 ## Preview of the server's checks for an assignment of a module type: "" when it looks fine,
 ## otherwise the code the server would answer (TIER_TOO_LOW, INSUFFICIENT_WORKERS,
 ## INSUFFICIENT_ROBOTS).
@@ -189,11 +205,14 @@ func check(group: Group, humans: Array[int], robots: Array[int], robots_in_store
 	for tier: int in range(1, group.base_tier):
 		if humans[tier - 1] > 0 or robots[tier - 1] > 0:
 			return "TIER_TOO_LOW"
+	# Lowering a count always works (draft.43), even when the tier's population has fallen below
+	# what is assigned: only a raise beyond what is at hand is refused.
 	for tier: int in range(1, TIERS + 1):
-		if humans[tier - 1] > free_humans(tier, group.module_type):
+		if humans[tier - 1] > group.humans[tier - 1] and humans[tier - 1] > free_humans(tier, group.module_type):
 			return "INSUFFICIENT_WORKERS"
 	for tier: int in range(1, TIERS + 1):
-		if robots[tier - 1] > robots_in_store[tier - 1] + group.robots[tier - 1]:
+		if robots[tier - 1] > group.robots[tier - 1] \
+				and robots[tier - 1] > robots_in_store[tier - 1] + group.robots[tier - 1]:
 			return "INSUFFICIENT_ROBOTS"
 	return ""
 

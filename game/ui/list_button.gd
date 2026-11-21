@@ -47,6 +47,11 @@ func _offset() -> Vector2:
 	return Vector2(_scroll.scroll_horizontal, _scroll.scroll_vertical)
 
 
+## Whether the list scrolled since the press began (the gesture is a swipe, not a tap).
+func moved_since_press() -> bool:
+	return _offset().distance_to(_offset_at_press) > TAP_SLOP
+
+
 func _on_down() -> void:
 	_offset_at_press = _offset()
 
