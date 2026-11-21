@@ -9,7 +9,9 @@ extends VBoxContainer
 ## really takes is the server's decision — the panel only previews it. Progress ticks locally on
 ## the game clock between the server's updates.
 
-const LIST_HEIGHT := 380
+## The list of labs and techs takes all the height the page has left (tall screens show more);
+## below this it would be too short to use, so the page keeps at least this much for it.
+const MIN_LIST_HEIGHT := 240
 ## Multiples of the minimum slot rate on offer: more input researches faster.
 const RATE_FACTORS: Array[int] = [1, 2, 4]
 ## Lab states and research fields with a text each (RESEARCH_STATUS_*, RESEARCH_CATEGORY_*).
@@ -53,7 +55,8 @@ func _ready() -> void:
 	add_child(_summary)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(0, LIST_HEIGHT)
+	scroll.custom_minimum_size = Vector2(0, MIN_LIST_HEIGHT)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(scroll)
 	_list = Ui.column(12)
 	scroll.add_child(_list)

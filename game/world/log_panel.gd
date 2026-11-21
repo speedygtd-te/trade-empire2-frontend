@@ -3,7 +3,9 @@ extends VBoxContainer
 ## The colony's log: what happened, newest first, with how long ago. Older pages load on
 ## request. Entry types the client does not know yet are left out (new types are not breaking).
 
-const LIST_HEIGHT := 520
+## The list takes all the height the page has left (tall screens show more); below this it would
+## be too short to use, so the page keeps at least this much for it.
+const MIN_LIST_HEIGHT := 240
 const PAGE := 50
 
 var _model: ColonyModel
@@ -26,7 +28,8 @@ func _ready() -> void:
 	add_theme_constant_override("separation", 12)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(0, LIST_HEIGHT)
+	scroll.custom_minimum_size = Vector2(0, MIN_LIST_HEIGHT)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(scroll)
 	_list = Ui.column(14)
 	scroll.add_child(_list)

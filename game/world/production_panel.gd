@@ -45,8 +45,16 @@ func _ready() -> void:
 func reload() -> void:
 	if _column == null:
 		return
+	# The page is rebuilt on every production, store and layout change: it stays where it was.
+	var keep := scroll_vertical
 	for child: Node in _column.get_children():
+		_column.remove_child(child)
 		child.queue_free()
+	_build()
+	_restore_scroll.call_deferred(keep)
+
+
+func _build() -> void:
 	_countdowns.clear()
 	if Services.definitions == null or not _structure.production_known():
 		if _structure.production_error != null:
@@ -59,6 +67,12 @@ func reload() -> void:
 	_add_supply()
 	_add_resources()
 	_add_modules()
+
+
+## Puts the page back where it was before a rebuild (after the new rows took their place).
+func _restore_scroll(offset: int) -> void:
+	if scroll_vertical != offset:
+		scroll_vertical = offset
 
 
 ## Counts the running-empty times down (once a second).
@@ -98,6 +112,10 @@ func _add_error(parent: Control) -> void:
 ## A titled panel; returns the container for its rows.
 func _section(title_key: String) -> VBoxContainer:
 	var panel := PanelContainer.new()
+	# A PanelContainer stops pointer input by default: a swipe on a section (or on a row inside it,
+	# which passes its input up) would never reach this ScrollContainer, and the page could not be
+	# scrolled by touch at all.
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	_column.add_child(panel)
 	var rows := Ui.column(10)
 	panel.add_child(rows)
