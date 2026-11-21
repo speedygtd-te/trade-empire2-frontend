@@ -609,6 +609,91 @@ def cow(model, position, z: float, turn: float = 0.0, patch: str = "dark") -> No
         model.beam((-0.075, 0.0, 0.095), (-0.09, 0.0, 0.05), 0.008, "dark")
 
 
+# --- Commerce -----------------------------------------------------------------------------------
+# Market and customs pieces of the player look (trade host): price boards, cargo scanner gates,
+# glass domes. Player colours only; the enterprise items have their own displays below.
+
+def price_board(model, center, size, facing: str, seed: int = 0, frame: str = "steel_dark",
+                rows: int = 4, depth: float = 0.02) -> None:
+    """A market's price board looking along *facing* (+x, -x, +y or -y): a bezel *depth* deep
+    whose front is at *center*, a dark screen with a cyan header and *rows* lines of prices, each
+    an amber name on the left and a green or red value on the right as seen from the front
+    (different for every *seed*). *size* is (across, up) of the bezel."""
+    generator = random.Random(seed)
+    width, height = size
+    box = (depth, width, height) if facing in ("+x", "-x") else (width, depth, height)
+    model.box(_on_face(center, facing, 0.0, 0.0, -depth / 2.0), box, frame)
+    border = min(width, height) * 0.08
+    inner_w, inner_h = width - 2.0 * border, height - 2.0 * border
+    model.plate(_on_face(center, facing, 0.0, 0.0, _HAIR), (inner_w, inner_h), facing, "dark")
+    # Plate axes run to the viewer's left on faces looking along +y and -x.
+    mirror = -1.0 if facing in ("+y", "-x") else 1.0
+
+    def mark(across: float, up: float, mark_size, color: str) -> None:
+        # *across*, *up*: shares of the screen from its lower left corner as seen from the front.
+        point = _on_face(center, facing, mirror * (across - 0.5) * inner_w, (up - 0.5) * inner_h, 2.0 * _HAIR)
+        model.plate(point, (mark_size[0] * inner_w, mark_size[1] * inner_h), facing, color)
+
+    pitch = 1.0 / (rows + 1)
+    mark(0.5, 1.0 - pitch * 0.5, (0.92, pitch * 0.55), "glow_cyan")
+    for row in range(rows):
+        up = 1.0 - pitch * (row + 1.5)
+        name = generator.uniform(0.20, 0.34)
+        mark(0.05 + name / 2.0, up, (name, pitch * 0.42), "glow_yellow")
+        value = generator.uniform(0.14, 0.26)
+        mark(0.95 - value / 2.0, up, (value, pitch * 0.42),
+             generator.choice(("glow_green", "glow_green", "glow_red")))
+
+
+def scanner_gate(model, center, width: float, height: float, z: float = SLAB_TOP, along: str = "y",
+                 color: str = "white", scan: str = "glow_cyan", weigh: bool = True) -> None:
+    """A cargo scanner gate over a lane running along *along* ("x" or "y"): two posts *width*
+    apart with glowing scan strips on their inner faces, a head beam with a scan bar under it and
+    a green status light on top, and with *weigh* a weighing plate in the floor between the
+    posts. *center* (x, y) is the middle of the lane under the gate; it stands on *z*, *height*
+    tall up to the underside of its head."""
+    post = 0.05
+    with model.placed((center[0], center[1], z), turn=0.0 if along == "y" else math.pi / 2.0):
+        if weigh:
+            model.box((0.0, 0.0, 0.004), (width - post, 0.24, 0.008), "steel_dark")
+            model.box((0.0, 0.0, 0.0095), (width - post - 0.03, 0.21, 0.003), "steel_light")
+        for side in (-1, 1):
+            x = side * width / 2.0
+            model.box((x, 0.0, height / 2.0), (post, 0.07, height), color)
+            inner = "-x" if side > 0 else "+x"
+            model.plate((x - side * (post / 2.0 + _HAIR), 0.0, height * 0.5), (0.03, height * 0.7), inner, scan)
+            model.box((x, 0.0, 0.012), (post + 0.02, 0.09, 0.024), "steel_dark")
+        model.box((0.0, 0.0, height + 0.025), (width + post + 0.02, 0.09, 0.05), color)
+        model.plate((0.0, 0.0, height - _HAIR), (width - post, 0.03), "-z", scan)
+        for face, y in (("-y", -0.045), ("+y", 0.045)):
+            model.plate((0.0, y + (-_HAIR if face == "-y" else _HAIR), height + 0.025), (width * 0.55, 0.014),
+                        face, scan)
+        model.box((width / 2.0 - 0.01, 0.0, height + 0.062), (0.03, 0.03, 0.024), "glow_green")
+
+
+def glass_dome(model, center, radius: float, rise: float, ribs: int = 8, oval: float = 1.0,
+               rib: str = "white", segments: int = 20, rings: int = 4) -> float:
+    """A see-through glass dome on *center* (its foot): a quarter ellipse of *radius* across
+    (times *oval* along y) and *rise* high, *ribs* steel ribs up its sides meeting a small cap at
+    the top, a ring round its foot. Returns the height of the cap's top."""
+    profile = []
+    for step in range(rings + 1):
+        angle = math.pi / 2.0 * step / rings
+        profile.append((radius * math.cos(angle), rise * math.sin(angle)))
+    profile[-1] = (0.0, rise)
+    model.revolve(center, profile, _PANE, segments=segments, scale=(1.0, oval))
+    cx, cy, cz = center
+    for index in range(ribs):
+        turn = 2.0 * math.pi * index / ribs
+        points = [(cx + math.cos(turn) * r, cy + math.sin(turn) * r * oval, cz + h + 0.004) for r, h in profile]
+        for start, end in zip(points, points[1:]):
+            model.beam(start, end, 0.018, rib)
+    model.revolve(center, [(radius + 0.012, 0.0), (radius + 0.012, 0.025), (radius - 0.02, 0.025)], rib,
+                  segments=segments, scale=(1.0, oval))
+    model.cylinder((cx, cy, cz + rise - 0.01), (cx, cy, cz + rise + 0.03), radius * 0.09, rib, segments=10)
+    return cz + rise + 0.03
+
+
 # --- Enterprise style ---------------------------------------------------------------------------
 # The clean, modern look of the enterprise items (Rudi 2026-11-20): white satin panels with fine
 # seams, exposed carbon fibre and graphite as accents, a little chrome, cyan light strips, sleek
