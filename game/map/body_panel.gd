@@ -14,8 +14,11 @@ const BODY_TYPES: PackedStringArray = ["EARTH_LIKE", "DESERT", "OCEAN", "ICE", "
 	"TOXIC", "GAS_GIANT", "ICE_GIANT", "ASTEROID_M", "ASTEROID_C", "ASTEROID_S", "MOON_ROCKY",
 	"MOON_ICY", "MOON_VOLCANIC"]
 const STAR_TYPES: PackedStringArray = ["O", "B", "A", "F", "G", "K", "M", "WHITE_DWARF", "RED_GIANT", "NEUTRON"]
-## Highest the list of details grows before it scrolls (canvas px).
+## Highest the list of details grows before it scrolls: at least this (canvas px), on taller screens
+## this share of the screen's height, so the details mostly show whole instead of in a small window
+## of their own.
 const MAX_LIST_HEIGHT := 300.0
+const MAX_LIST_SHARE := 0.3
 
 var _title: Label
 var _kind: Label
@@ -179,10 +182,12 @@ func _physics_lines(map: SystemMap, body: SystemMap.Body, surface_c: float) -> v
 		_line(tr("MAP_PHYSICS_WARMER" if warming >= 1 else "MAP_PHYSICS_NO_WARMING").format(temperatures))
 
 
-## The list takes the room its lines need, up to MAX_LIST_HEIGHT; beyond that it scrolls.
+## The list takes the room its lines need, up to MAX_LIST_HEIGHT or MAX_LIST_SHARE of the screen;
+## beyond that it scrolls.
 func _fit_height() -> void:
 	await get_tree().process_frame
-	_scroll.custom_minimum_size = Vector2(0.0, minf(_lines.get_combined_minimum_size().y, MAX_LIST_HEIGHT))
+	var highest := maxf(MAX_LIST_HEIGHT, get_viewport_rect().size.y * MAX_LIST_SHARE)
+	_scroll.custom_minimum_size = Vector2(0.0, minf(_lines.get_combined_minimum_size().y, highest))
 
 
 ## How much of the shown body is explored (translated); `none` (nothing yet) shows it amber.

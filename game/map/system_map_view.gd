@@ -17,9 +17,10 @@ extends Control
 
 ## A body was tapped; "" for a tap beside every body.
 signal body_tapped(body_id: String)
+## A tap where several bodies lie under the finger, none clearly the one meant: the nearest few,
+## nearest first, to choose from.
+signal bodies_tapped(body_ids: PackedStringArray)
 
-## Pointer travel (canvas px) below which a press counts as a tap, not a drag.
-const TAP_SLOP := 18.0
 ## Moons show once their rings are this many pixels apart.
 const MOON_SHOW_PX := 6.0
 ## Smallest drawn marker radius (px) per kind, so even a tiny body stays visible.
@@ -85,14 +86,22 @@ var system_position := Vector3.ZERO
 var _centre := Vector2.ZERO
 var _zoom := 1.0
 var _fit_zoom := 1.0
+## The view shows the whole system (fit) and was not moved since: it fits again when the free area
+## changes (e.g. the details below close a frame later).
+var _fitted := false
 ## Part of the view not covered by the screen's bars, in view coordinates.
 var _free := Rect2()
 var _font: Font
-var _touches: Dictionary = {}
-var _press_travel := 0.0
-var _mouse_down := false
+var _tap := MapTap.new()
 var _backdrop := PackedVector2Array()
 var _belt_dots := PackedVector2Array()
+## The backdrop's stars as one mesh for the view's size; the belts' bands as one mesh each (belt id →
+## ArrayMesh) for _belt_zoom, turned and placed when drawn. Built again when the size or zoom
+## changes, not every frame.
+var _backdrop_mesh: ArrayMesh = null
+var _backdrop_size := Vector2.ZERO
+var _belt_meshes: Dictionary = {}
+var _belt_zoom := 0.0
 
 
 func _ready() -> void:
@@ -112,6 +121,7 @@ func _ready() -> void:
 ## Shows a system; the view fits it into the free area.
 func show_map(system: SystemMap) -> void:
 	map = system
+	_belt_meshes.clear()
 	fit()
 
 
@@ -120,7 +130,7 @@ func set_free_area(area: Rect2) -> void:
 	var first := _free.size == Vector2.ZERO
 	_free = area
 	_fit_zoom = _zoom_to_fit()
-	if first:
+	if first or _fitted:
 		fit()
 	queue_redraw()
 
@@ -130,6 +140,7 @@ func fit() -> void:
 	_fit_zoom = _zoom_to_fit()
 	_zoom = _fit_zoom
 	_centre = Vector2.ZERO
+	_fitted = true
 	queue_redraw()
 
 
@@ -143,6 +154,7 @@ func focus_body(body_id: String, close: bool = true) -> void:
 		var span := maxf(host.reach(), host.marker * 4.0) * 3.0
 		_zoom = _clamp_zoom(minf(_area().size.x, _area().size.y) / maxf(span, 1.0))
 	_centre = map.position(body_id, time_s)
+	_fitted = false
 	queue_redraw()
 
 
@@ -169,12 +181,15 @@ func zoom_at(factor: float, at: Vector2) -> void:
 	_zoom = _clamp_zoom(_zoom * factor)
 	_centre = anchor - (at - _area().get_center()) / _zoom
 	_clamp_centre()
+	_fitted = false
 	queue_redraw()
 
 
 func pan(by: Vector2) -> void:
 	_centre -= by / _zoom
 	_clamp_centre()
+	if by != Vector2.ZERO:
+		_fitted = false
 	queue_redraw()
 
 
@@ -186,11 +201,26 @@ func zoom() -> float:
 	return _zoom
 
 
-## The body under a tap at `at` (view coordinates); generous, so small markers stay tappable.
+## The body under a tap at `at` (view coordinates): the one meant, else the nearest; "" for none.
 func body_at(at: Vector2) -> String:
+	var found := bodies_at(at)
+	return found[0] if not found.is_empty() else ""
+
+
+## The bodies a tap at `at` (view coordinates) meant (MapTap.meant): none, the one, or the nearest
+## few to choose from. Generous: a finger within half a touch target of a disc's edge reaches it.
+func bodies_at(at: Vector2) -> PackedStringArray:
 	if map == null:
-		return ""
-	return map.pick(to_map(at), time_s, AppTheme.TOUCH_MIN * 0.5 / _zoom, moons_visible())
+		return PackedStringArray()
+	var show_moons := moons_visible()
+	var ids := PackedStringArray()
+	var distances := PackedFloat64Array()
+	for body: SystemMap.Body in map.bodies:
+		if body.is_moon() and not show_moons:
+			continue
+		ids.append(body.id)
+		distances.append(to_view(map.position(body.id, time_s)).distance_to(at) - _drawn_radius(body))
+	return MapTap.meant(ids, distances, AppTheme.TOUCH_MIN * 0.5)
 
 
 func _area() -> Rect2:
@@ -307,9 +337,14 @@ func _draw_diamond(at: Vector2, radius: float, color: Color) -> void:
 
 
 func _draw_backdrop() -> void:
-	var dim := Color(AppTheme.COLOR_TEXT, 0.18)
-	for point: Vector2 in _backdrop:
-		draw_circle(point * size, 1.2, dim)
+	if _backdrop_mesh == null or _backdrop_size != size:
+		var centres := PackedVector2Array()
+		for point: Vector2 in _backdrop:
+			centres.append(point * size)
+		_backdrop_mesh = MapShapes.dot_mesh(centres, 1.2)
+		_backdrop_size = size
+	if _backdrop_mesh != null:
+		draw_mesh(_backdrop_mesh, null, Transform2D.IDENTITY, Color(AppTheme.COLOR_TEXT, 0.18))
 
 
 func _draw_star(at: Vector2, color: Color) -> void:
@@ -364,22 +399,29 @@ func _draw_dashed_ring(at: Vector2, radius: float, color: Color, width: float) -
 	step = maxf(step, span / FROST_MAX_DASHES)
 	# Dashes start on a fixed grid round the circle, so they do not crawl while panning.
 	var start := floorf(from / step) * step
-	for index: int in dashes + 1:
-		var angle := start + index * step
-		draw_arc(at, radius, angle, angle + step * 0.5, 6, color, width, true)
+	# All dashes in one call (as `draw_arc` with 6 points each would draw them).
+	draw_set_transform(at)
+	draw_multiline(MapShapes.dash_segments(radius, start, step, dashes + 1), color, width, true)
+	draw_set_transform(Vector2.ZERO)
 
 
-## An asteroid belt: a band of dots that turns with the belt's body.
+## An asteroid belt: a band of dots that turns with the belt's body. The band is one mesh for the
+## zoom (dots keep their size in pixels), turned and placed on the star when drawn.
 func _draw_belt(body: SystemMap.Body, star_at: Vector2) -> void:
 	var turn := SystemMap.orbit_angle(body.phase0, body.period_s, time_s)
 	var color := Color(_color_of(body.type), 0.55)
 	if _orbit_selected(body):
 		color = Color(AppTheme.COLOR_ACCENT, 0.7)
-	var dot := clampf(1.6 * _zoom, 1.2, 3.0)
-	var half_width := SystemMap.BELT_HALF_WIDTH
-	for entry: Vector2 in _belt_dots:
-		var radius := (body.ring + entry.y * half_width) * _zoom
-		draw_circle(star_at + SystemMap.on_ring(radius, entry.x + turn), dot, color)
+	if _belt_zoom != _zoom:
+		_belt_meshes.clear()
+		_belt_zoom = _zoom
+	var mesh := _belt_meshes.get(body.id) as ArrayMesh
+	if mesh == null:
+		var dot := clampf(1.6 * _zoom, 1.2, 3.0)
+		mesh = MapShapes.dot_mesh(MapShapes.belt_dots(_belt_dots, body.ring, SystemMap.BELT_HALF_WIDTH, _zoom), dot)
+		_belt_meshes[body.id] = mesh
+	# on_ring counts angles counter-clockwise on screen: turning by `turn` is a rotation by −turn.
+	draw_mesh(mesh, null, Transform2D(-turn, star_at), color)
 
 
 ## A body: a disc lit from the star's side, with rings for home, own structures and selection.
@@ -552,37 +594,30 @@ func _color_of(type: String) -> Color:
 
 # --- input ----------------------------------------------------------------------------------
 
+## Taps (MapTap): one finger or the mouse, pressed and released without travelling; press and
+## release may come in the same frame. One finger or the left button drags the map, two fingers
+## pinch, the wheel and a trackpad's magnify zoom.
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
-		if touch.pressed:
-			_touches[touch.index] = touch.position
-			if _touches.size() == 1:
-				_press_travel = 0.0
-		else:
-			var was_single := _touches.size() == 1
-			_touches.erase(touch.index)
-			if was_single and _press_travel < TAP_SLOP:
-				body_tapped.emit(body_at(touch.position))
+		if touch.canceled:
+			_tap.cancel(touch.index)
+		elif touch.pressed:
+			_tap.press(touch.index, touch.position)
+		elif _tap.release(touch.index, touch.position):
+			_on_tap(touch.position)
 		accept_event()
 	elif event is InputEventScreenDrag:
 		var drag := event as InputEventScreenDrag
-		if _touches.size() >= 2 and _touches.has(drag.index):
-			var other := Vector2.ZERO
-			for index: int in _touches.keys():
-				if index != drag.index:
-					other = _touches[index]
-					break
-			var before: Vector2 = _touches[drag.index]
-			var old_distance := before.distance_to(other)
+		if _tap.count() >= 2 and _tap.is_down(drag.index):
+			var other := _tap.other_than(drag.index)
+			var old_distance := _tap.position_of(drag.index).distance_to(other)
 			var new_distance := drag.position.distance_to(other)
 			if old_distance > 1.0 and new_distance > 1.0:
 				zoom_at(new_distance / old_distance, (drag.position + other) * 0.5)
-			_touches[drag.index] = drag.position
-			_press_travel = TAP_SLOP
+			_tap.move(drag.index, drag.position)
 		else:
-			_touches[drag.index] = drag.position
-			_press_travel += drag.relative.length()
+			_tap.move(drag.index, drag.position)
 			pan(drag.relative)
 		accept_event()
 	elif event is InputEventMouseButton:
@@ -598,21 +633,27 @@ func _gui_input(event: InputEvent) -> void:
 					zoom_at(1.0 / 1.15, button.position)
 			MOUSE_BUTTON_LEFT:
 				if button.pressed:
-					_mouse_down = true
-					_press_travel = 0.0
-				else:
-					_mouse_down = false
-					if _press_travel < TAP_SLOP:
-						body_tapped.emit(body_at(button.position))
+					_tap.press(MapTap.MOUSE, button.position)
+				elif _tap.release(MapTap.MOUSE, button.position):
+					_on_tap(button.position)
 		accept_event()
 	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		if motion.device == InputEvent.DEVICE_ID_EMULATION or not _mouse_down:
+		if motion.device == InputEvent.DEVICE_ID_EMULATION or not _tap.is_down(MapTap.MOUSE):
 			return
-		_press_travel += motion.relative.length()
+		_tap.move(MapTap.MOUSE, motion.position)
 		pan(motion.relative)
 		accept_event()
 	elif event is InputEventMagnifyGesture:
 		var gesture := event as InputEventMagnifyGesture
 		zoom_at(gesture.factor, gesture.position)
 		accept_event()
+
+
+## A tap at `at`: the body meant, a few to choose from, or "" beside every body.
+func _on_tap(at: Vector2) -> void:
+	var found := bodies_at(at)
+	if found.size() > 1:
+		bodies_tapped.emit(found)
+	else:
+		body_tapped.emit(found[0] if not found.is_empty() else "")

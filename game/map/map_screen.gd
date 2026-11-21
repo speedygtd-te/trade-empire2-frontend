@@ -17,6 +17,9 @@ signal body_picked(body_id: String)
 
 ## Game seconds per real second while time-lapse is on.
 const TIME_LAPSE := 86400.0
+## Live, the bodies move too slowly to see it from one frame to the next: the map is drawn again
+## this often (seconds). With time-lapse every frame; gestures, zoom and selection at once.
+const LIVE_REDRAW_S := 1.0
 ## What the body details offer to pick: nothing, the orbit of a body, or a body to land on.
 const PICK_NONE := ""
 const PICK_ORBIT := "orbit"
@@ -44,6 +47,8 @@ var _structures: Dictionary = {}
 var _lapse_s := 0.0
 var _lapse := false
 var _shown_s := 0.0
+## Seconds since the map last moved with the clock.
+var _since_redraw := 0.0
 
 var _view: SystemMapView
 var _top: PanelContainer
@@ -52,6 +57,7 @@ var _header: LayerHeader
 var _hint: Label
 var _status: Label
 var _details: BodyPanel
+var _choices: BodyChoices
 var _lapse_button: Button
 var _fit_button: Button
 var _state: CenterContainer
@@ -84,6 +90,7 @@ func _ready() -> void:
 	_view = SystemMapView.new()
 	_view.home_body = _home_body
 	_view.body_tapped.connect(_on_body_tapped)
+	_view.bodies_tapped.connect(_on_bodies_tapped)
 	_content.add_child(_view)
 	_view.add_child(RouteLines.new())
 	_build_overlay()
@@ -97,6 +104,10 @@ func _process(delta: float) -> void:
 		return
 	if _lapse:
 		_lapse_s += delta * TIME_LAPSE
+	_since_redraw += delta
+	if not _lapse and _since_redraw < LIVE_REDRAW_S:
+		return
+	_since_redraw = 0.0
 	var before := _shown_s
 	_shown_s = Services.clock.now_ms() / 1000.0 + _lapse_s
 	_view.time_s = _shown_s
@@ -122,9 +133,12 @@ func _update_fleet_marks() -> void:
 	_view.queue_redraw()
 
 
-## Back closes the details; false when none were open (the stack takes the layer off, or the
-## shell goes back to Base from the root).
+## Back closes the list to choose from or the details; false when neither was open (the stack
+## takes the layer off, or the shell goes back to Base from the root).
 func handle_back() -> bool:
+	if _choices.visible:
+		_show_choices(PackedStringArray())
+		return true
 	if not _view.selected.is_empty():
 		_select("")
 		return true
@@ -165,6 +179,11 @@ func _build_overlay() -> void:
 	_details.closed.connect(_select.bind(""))
 	_details.chosen.connect(func(body_id: String) -> void: body_picked.emit(body_id))
 	rows.add_child(_details)
+	_choices = BodyChoices.new()
+	_choices.visible = false
+	_choices.chosen.connect(_select)
+	_choices.closed.connect(_show_choices.bind(PackedStringArray()))
+	rows.add_child(_choices)
 	_hint = Ui.label("MAP_HINT")
 	_hint.add_theme_font_size_override("font_size", AppTheme.FONT_SIZE_SMALL)
 	rows.add_child(_hint)
@@ -289,7 +308,23 @@ func _on_body_tapped(body_id: String) -> void:
 	_select(body_id)
 
 
+## Several bodies under the finger: a short list to choose from instead of the details.
+func _on_bodies_tapped(body_ids: PackedStringArray) -> void:
+	_select("")
+	_show_choices(body_ids)
+
+
+## Shows the list to choose from (nearest first); an empty list hides it.
+func _show_choices(body_ids: PackedStringArray) -> void:
+	_choices.visible = not body_ids.is_empty()
+	if _choices.visible:
+		_choices.show_bodies(_map, body_ids)
+	_hint.visible = not _choices.visible and _view.selected.is_empty()
+	_status.visible = _hint.visible
+
+
 func _select(body_id: String) -> void:
+	_choices.visible = false
 	_view.selected = body_id
 	_details.visible = not body_id.is_empty()
 	_hint.visible = body_id.is_empty()
@@ -346,6 +381,8 @@ func _pick_reason(body_id: String) -> String:
 
 func _on_lapse_toggled(on: bool) -> void:
 	_lapse = on
+	# Drawn at the new time in the next frame.
+	_since_redraw = LIVE_REDRAW_S
 	if not on:
 		_lapse_s = 0.0
 	_show_status()

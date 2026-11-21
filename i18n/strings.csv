@@ -399,6 +399,8 @@ MAP_TIME_LAPSE,Time-lapse
 MAP_TIME_LAPSE_ON,Time-lapse: one game day per second. Switch it off to return to now.
 MAP_SHOW_ALL,Show all
 MAP_MOON_OF,{type} of {planet}
+MAP_WHICH_BODY,Which one?
+MAP_BODY_CHOICE,{name} · {type}
 MAP_HOME_HERE,Your home colony is here.
 MAP_STRUCTURES_HERE,Your structures here: {names}
 MAP_SIZE,Radius {radius} km · gravity {gravity} g · {temperature} °C
