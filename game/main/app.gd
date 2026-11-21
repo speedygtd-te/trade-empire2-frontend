@@ -6,6 +6,8 @@ var _screen: Control = null
 
 func _ready() -> void:
 	theme = AppTheme.build()
+	# Sign-in and loading screens are drawn only when they change; MainShell switches it per tab.
+	OS.low_processor_usage_mode = true
 	var background := ColorRect.new()
 	background.color = AppTheme.COLOR_BACKGROUND
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -37,7 +39,9 @@ func _on_session_changed() -> void:
 				_show(LoginScreen.new())
 		SessionController.Status.SIGNED_IN:
 			if not _screen is MainShell:
-				_show(MainShell.new())
+				var shell := MainShell.new()
+				shell.saves_power = true
+				_show(shell)
 		SessionController.Status.UNREACHABLE:
 			_show(_build_unreachable())
 
@@ -52,7 +56,10 @@ func _show(screen: Control) -> void:
 ## While the session is restored: the boot splash picture with "Loading…" (no visible hand-over
 ## from the engine's splash).
 func _build_loading() -> Control:
-	return SplashScreen.new("COMMON_LOADING")
+	var splash := SplashScreen.new("COMMON_LOADING")
+	# The first step of the way in; the colony's loading view goes on with the next ones.
+	splash.set_progress("APP_STEP_SESSION", 1, ColonyModel.LOAD_STEPS + 1)
+	return splash
 
 
 ## A stored session exists but the backend did not answer. The session is kept.

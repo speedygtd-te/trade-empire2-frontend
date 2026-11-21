@@ -40,6 +40,8 @@ var _performance_status: Label
 var _high_detail: Button
 var _hd_status: Label
 var _hd_retry: Button
+## The game second the clock lines were written for (-1 while the clock stands).
+var _shown_second := -2
 
 
 func _ready() -> void:
@@ -71,6 +73,11 @@ func _process(delta: float) -> void:
 		return
 	var clock := Services.clock
 	var now := clock.now_ms()
+	# The lines show seconds at most: written once a second, not every frame.
+	var second := now / 1000 if clock.is_running() else -1
+	if second == _shown_second:
+		return
+	_shown_second = second
 	var time_text := TimeFormat.clock(now)
 	_game_time_value.text = time_text if clock.is_running() else tr("HOME_GAME_TIME_PAUSED").format({"time": time_text})
 	var account := Services.session.account

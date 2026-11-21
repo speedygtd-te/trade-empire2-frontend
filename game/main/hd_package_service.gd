@@ -28,7 +28,8 @@ var _cache_tried := false
 var _stored := ""
 var _last_bytes := -1
 var _last_progress_ms := 0
-var _shown := ""
+var _shown_key := ""
+var _shown_percent := -1
 
 
 ## `device`: whether this device may reach the top tier (DetailGovernor.device_allows_ultra).
@@ -69,9 +70,12 @@ func _process(_delta: float) -> void:
 			package.progress(bytes)
 		elif now - _last_progress_ms > STALL_MS:
 			_download.cancel()
-	var shown := "%s %d" % [package.status_key(), package.percent()]
-	if shown != _shown:
-		_shown = shown
+	# Compared as values: no text is put together every frame.
+	var key := package.status_key()
+	var percent := package.percent()
+	if key != _shown_key or percent != _shown_percent:
+		_shown_key = key
+		_shown_percent = percent
 		changed.emit()
 
 

@@ -189,7 +189,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_left -= delta
-	if _left <= 0.0:
+	if _left <= 0.0 and is_visible_in_tree():
 		_left = REFRESH_SECONDS
 		_tick()
 

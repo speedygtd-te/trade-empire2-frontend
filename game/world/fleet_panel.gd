@@ -265,7 +265,8 @@ func handle_back() -> bool:
 
 func _process(delta: float) -> void:
 	_left -= delta
-	if _left <= 0.0:
+	# Under a layer or in another tab nothing is seen: the rows wait (shown again at once).
+	if _left <= 0.0 and is_visible_in_tree():
 		_left = REFRESH_SECONDS
 		_update_lines()
 		_probes.tick()

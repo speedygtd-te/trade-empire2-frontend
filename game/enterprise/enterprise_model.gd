@@ -28,6 +28,8 @@ signal event_seen(type: String, data: Dictionary)
 signal reloaded
 
 const LIST_PAGE := 50
+## How old the session's answer of /v2/me may be for the first load (it came with the sign-in).
+const ME_FRESH_MS := 5000
 
 var api: ApiClient
 var events: EventStream
@@ -124,7 +126,10 @@ func reload() -> void:
 
 
 func _load_once() -> void:
-	var me := await api.get_json("/v2/me")
+	# The first load right after the sign-in uses the session's answer of /v2/me.
+	var me: ApiResult = Services.session.recent_me(ME_FRESH_MS) if not loaded and api == Services.api else null
+	if me == null:
+		me = await api.get_json("/v2/me")
 	if not me.is_ok():
 		error = me.error
 		return

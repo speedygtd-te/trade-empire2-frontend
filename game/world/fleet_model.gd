@@ -54,13 +54,15 @@ func _ready() -> void:
 	add_child(trade)
 
 
-## Loads the list again, and the details of everything that can move.
-func reload() -> void:
+## Loads the list again, and the details of everything that can move. `known_list` is a list
+## just read elsewhere (the colony's `ColonyModel.structure_list`): it is used instead of asking
+## again, once.
+func reload(known_list: ApiResult = null) -> void:
 	if _loading:
 		_again = true
 		return
 	_loading = true
-	var list := await list_structures()
+	var list := known_list if known_list != null and known_list.is_ok() else await list_structures()
 	if not list.is_ok():
 		_loading = false
 		error = list.error
@@ -70,15 +72,19 @@ func reload() -> void:
 	error = null
 	var items: Array = list.data.get("items")
 	fleet.apply_list(items)
-	await _load_groups()
 	routes.reload()
 	probes.reload()
+	# The fleets, the trips of everything that can move and the enterprise's structures load
+	# side by side.
+	var tasks := Concurrent.new()
+	tasks.add(_load_groups)
+	var moving: Array[int] = []
 	for entry: Fleet.Entry in fleet.entries():
 		if entry.can_fly() or entry.can_drive() or entry.where() == Fleet.Where.TRANSIT:
-			var details := await Services.api.get_json("/v2/structures/%d" % entry.structure_id)
-			if details.is_ok():
-				fleet.apply_details(details.data)
-	await _load_enterprise()
+			moving.append(entry.structure_id)
+	tasks.add(_load_details.bind(moving))
+	tasks.add(_load_enterprise)
+	await tasks.wait()
 	_sync_members()
 	await _name_bodies()
 	loaded = true
@@ -113,13 +119,34 @@ func _load_enterprise() -> void:
 		else:
 			return
 	fleet.apply_enterprise(refs, id)
-	for entry: Fleet.Entry in fleet.enterprise_entries():
-		var details := await Services.api.get_json("/v2/structures/%d" % entry.structure_id)
+	var entries := fleet.enterprise_entries()
+	var ids: Array[int] = []
+	for entry: Fleet.Entry in entries:
+		ids.append(entry.structure_id)
+	var answers := await _fetch_details(ids)
+	for index: int in entries.size():
+		var details := answers[index] as ApiResult
 		if details.is_ok():
 			fleet.apply_details(details.data)
 			# The list does not say it; the structure itself does.
-			entry.owner_kind = "enterprise"
-			entry.enterprise_id = id
+			entries[index].owner_kind = "enterprise"
+			entries[index].enterprise_id = id
+
+
+## The details of structures (`GET /v2/structures/{id}`), all asked at once; answers in order.
+static func _fetch_details(ids: Array[int]) -> Array:
+	var tasks := Concurrent.new()
+	for id: int in ids:
+		tasks.add(Services.api.get_json.bind("/v2/structures/%d" % id))
+	return await tasks.wait()
+
+
+## Loads the details (trips) of own structures into the fleet.
+func _load_details(ids: Array[int]) -> void:
+	for answer: Variant in await _fetch_details(ids):
+		var details := answer as ApiResult
+		if details.is_ok():
+			fleet.apply_details(details.data)
 
 
 ## Every structure of the player, all pages in one answer (`data.items`).
@@ -214,10 +241,10 @@ func start_group_travel(fleet_id: int, body_id: String) -> ApiResult:
 	groups.put(group)
 	_sync_members()
 	if group != null:
+		var members: Array[int] = []
 		for id: int in group.member_ids():
-			var details := await Services.api.get_json("/v2/structures/%d" % id)
-			if details.is_ok():
-				fleet.apply_details(details.data)
+			members.append(id)
+		await _load_details(members)
 	await _name_bodies()
 	changed.emit()
 	return result
@@ -249,12 +276,18 @@ func _name_bodies() -> void:
 		for body_id: String in [group.location_body_id, group.target_body_id()]:
 			if not body_id.is_empty():
 				wanted[body_id] = true
+	var missing: Array[String] = []
+	var tasks := Concurrent.new()
 	for body_id: String in wanted.keys():
 		if body_names.has(body_id):
 			continue
-		var body := await Services.api.get_json("/v2/bodies/" + body_id.uri_encode())
+		missing.append(body_id)
+		tasks.add(Services.api.get_json.bind("/v2/bodies/" + body_id.uri_encode()))
+	var answers := await tasks.wait()
+	for index: int in missing.size():
+		var body := answers[index] as ApiResult
 		if body.is_ok():
-			body_names[body_id] = Wire.as_string(body.data.get("name"))
+			body_names[missing[index]] = Wire.as_string(body.data.get("name"))
 
 
 func _finish() -> void:

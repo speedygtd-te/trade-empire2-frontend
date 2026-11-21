@@ -117,6 +117,35 @@ func test_another_tab_pauses_the_colony_and_back_returns_to_base() -> void:
 	assert_bool(_colony(shell).rendering).is_true()
 
 
+func test_hidden_tabs_rest_and_base_keeps_running() -> void:
+	var shell := _shell()
+
+	shell.show_tab(MainShell.Tab.FLEET)
+	assert_int(shell.stack(MainShell.Tab.FLEET).process_mode).is_equal(Node.PROCESS_MODE_INHERIT)
+	assert_int(shell.stack(MainShell.Tab.MAP).process_mode).is_equal(Node.PROCESS_MODE_DISABLED)
+	assert_int(shell.stack(MainShell.Tab.PROFILE).process_mode).is_equal(Node.PROCESS_MODE_DISABLED)
+	# Base pauses by itself (its models keep listening).
+	assert_int(shell.stack(MainShell.Tab.BASE).process_mode).is_equal(Node.PROCESS_MODE_INHERIT)
+
+	shell.show_tab(MainShell.Tab.BASE)
+	assert_int(shell.stack(MainShell.Tab.FLEET).process_mode).is_equal(Node.PROCESS_MODE_DISABLED)
+
+
+func test_power_saving_follows_the_colony_only_when_asked() -> void:
+	var before := OS.low_processor_usage_mode
+	var shell := _shell()
+	shell.saves_power = true
+	shell.show_tab(MainShell.Tab.PROFILE)
+	await await_idle_frame()
+	# Nothing draws 3D on the profile: frames only when something changes.
+	assert_bool(OS.low_processor_usage_mode).is_true()
+	shell.show_tab(MainShell.Tab.MAP)
+	await await_idle_frame()
+	assert_bool(OS.low_processor_usage_mode).is_false()
+	shell.saves_power = false
+	OS.low_processor_usage_mode = before
+
+
 func test_back_closes_layers_first_then_asks_the_colony_and_never_leaves() -> void:
 	var shell := _shell()
 	var base := shell.stack(MainShell.Tab.BASE)

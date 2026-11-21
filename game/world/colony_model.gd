@@ -24,6 +24,9 @@ signal deposits_loaded
 signal load_failed(error: ApiError)
 ## Everything needed to draw the colony is there.
 signal ready_to_show
+## Loading went one step further (`load_structure`): a text key of COLONY_STEP_* and the step
+## number of `LOAD_STEPS`, for the loading view.
+signal load_step(text_key: String, step: int)
 ## A guest was founded or removed, or its name arrived.
 signal guests_changed
 ## A build batch founded structures (a hull on a dock, `results[].created`): their ids. A
@@ -42,6 +45,8 @@ signal surface_reset
 const SURFACE_RADIUS := 2
 ## Deposits are loaded only where the player looks, in small blocks (a cell carries a dozen).
 const DEPOSIT_BLOCK := 4
+## The steps of `load_structure` the loading view counts (load_step).
+const LOAD_STEPS := 4
 ## Seconds to wait after a membership or enterprise research event before the member blueprints
 ## are loaded again (the enterprise model updates the account first).
 const MEMBERSHIP_SETTLE_SECONDS := 2.0
@@ -175,6 +180,10 @@ var _activity_by_type: Dictionary = {}
 var _power_scale := 1.0
 var _production_known := false
 var _naming := false
+## The own structure list `load_structure` read (StructureSummary entries): guests and
+## neighbours are named from it, and the fleet starts from it (`structure_list`).
+var _listed: Array = []
+var _list_answer: ApiResult = null
 
 
 func _ready() -> void:
@@ -194,11 +203,14 @@ func load_home() -> void:
 ## `preferred` 0, or one that is gone: the home colony.
 func load_structure(preferred: int) -> void:
 	var account := Services.session.account
+	load_step.emit("COLONY_STEP_STRUCTURES", 1)
 	var list := await FleetModel.list_structures()
 	if not list.is_ok():
 		load_failed.emit(list.error)
 		return
 	var items: Array = list.data.get("items")
+	_listed = items
+	_list_answer = list
 	var by_id: Dictionary = {}
 	for entry: Variant in items:
 		var summary := Wire.as_dict(entry)
@@ -248,25 +260,56 @@ func load_structure(preferred: int) -> void:
 		and not Wire.as_string(where.get("bodyId")).is_empty()
 	detached = Wire.as_string(where.get("type")) == "free" and not in_orbit
 	body_id = Wire.as_string(where.get("bodyId"))
+	# The layout and the store need only the structure: they load side by side with the body,
+	# and are applied after it in the order the screen expects (body, layout, store).
+	load_step.emit("COLONY_STEP_PLACE", 2)
+	var tasks := Concurrent.new()
+	var body_task := -1
 	if not body_id.is_empty():
-		var body_error := await _load_body()
+		body_task = tasks.add(_load_body)
+	_layout_loading = true
+	var layout_task := tasks.add(_fetch_layout.bind(true))
+	var store_task := -1
+	if active and structure_id != 0 and not _inventory_loading:
+		_inventory_loading = true
+		store_task = tasks.add(_fetch_inventory)
+	var results := await tasks.wait()
+	if store_task >= 0:
+		_inventory_loading = false
+	if body_task >= 0:
+		var body_error := results[body_task] as ApiError
 		if body_error != null:
+			_layout_loading = false
+			_layout_again = false
 			load_failed.emit(body_error)
 			return
 	if in_orbit:
 		_leave_ground()
 
-	var layout_error := await _load_layout(true)
+	load_step.emit("COLONY_STEP_LAYOUT", 3)
+	# Guests are named below from the list just read, not from a list of their own (_sync_guests).
+	_naming = true
+	var layout_error := _apply_layout(results[layout_task] as ApiResult)
+	_naming = false
 	if layout_error != null:
 		load_failed.emit(layout_error)
 		return
 	_name_guests(items)
 	if not detached:
 		_add_neighbours(items)
-	await reload_inventory()
+	load_step.emit("COLONY_STEP_STORE", 4)
+	if store_task >= 0:
+		_apply_inventory(results[store_task] as ApiResult)
+	else:
+		await reload_inventory()
 	ready_to_show.emit()
 	reload_research()
 	reload_production()
+
+
+## The own structure list the last `load_structure` read (`data.items`); null before.
+func structure_list() -> ApiResult:
+	return _list_answer
 
 
 ## The body the structure is at: grid, air, sun and star. Returns why it failed.
@@ -295,11 +338,18 @@ func _load_body() -> ApiError:
 	var celsius: Variant = environment.get("temperature")
 	if typeof(celsius) == TYPE_FLOAT:
 		surface_celsius = celsius
-	# A moon sees its star along its planet's orbit.
+	# A moon sees its star along its planet's orbit. Planet and star load side by side (both
+	# from the cache of unchanging answers when they were asked for before).
 	var parent := {}
 	var parent_id := Wire.as_string(body.data.get("parentBodyId"))
+	var lookups := Concurrent.new()
+	var planet_task := -1
 	if not parent_id.is_empty():
-		var planet := await Services.api.get_json("/v2/bodies/" + parent_id.uri_encode())
+		planet_task = lookups.add(Services.api.get_json.bind("/v2/bodies/" + parent_id.uri_encode()))
+	var system_task := lookups.add(Services.api.get_json.bind("/v2/systems/" + system_id.uri_encode()))
+	var found := await lookups.wait()
+	if planet_task >= 0:
+		var planet := found[planet_task] as ApiResult
 		if planet.is_ok():
 			parent = planet.data
 	sun = SunPosition.from_body(body.data, parent)
@@ -311,7 +361,7 @@ func _load_body() -> ApiError:
 	var physics := BodyPhysics.from_wire(body.data.get("physics"))
 	if physics != null and physics.star_distance_au > 0.0:
 		star_distance_au = physics.star_distance_au
-	var system := await Services.api.get_json("/v2/systems/" + system_id.uri_encode())
+	var system := found[system_task] as ApiResult
 	if system.is_ok():
 		var star := StarInfo.from_wire(Wire.as_dict(system.data.get("star")))
 		star_kelvin = star.kelvin
@@ -1023,8 +1073,16 @@ func reload_inventory() -> void:
 	if _inventory_loading or structure_id == 0 or not active:
 		return
 	_inventory_loading = true
-	var answer := await Services.api.get_json("/v2/structures/%d/inventory" % structure_id)
+	var answer := await _fetch_inventory()
 	_inventory_loading = false
+	_apply_inventory(answer)
+
+
+func _fetch_inventory() -> ApiResult:
+	return await Services.api.get_json("/v2/structures/%d/inventory" % structure_id)
+
+
+func _apply_inventory(answer: ApiResult) -> void:
 	if answer.is_ok():
 		var scale := Services.definitions.fixed_point_scale if Services.definitions != null else 1000000
 		inventory = Inventory.from_wire(answer.data, scale)
@@ -1106,10 +1164,19 @@ func manage_reason() -> String:
 
 func _load_layout(full: bool) -> ApiError:
 	_layout_loading = true
+	var answer := await _fetch_layout(full)
+	return _apply_layout(answer)
+
+
+func _fetch_layout(full: bool) -> ApiResult:
 	var path := "/v2/structures/%d/layout" % structure_id
 	if not full and layout.rev >= 0:
 		path += "?since=%d" % layout.rev
-	var answer := await Services.api.get_ndjson(path)
+	return await Services.api.get_ndjson(path)
+
+
+## Takes a layout answer in (the load that ran ends here; one asked for meanwhile follows).
+func _apply_layout(answer: ApiResult) -> ApiError:
 	_layout_loading = false
 	var failure: ApiError = answer.error
 	if Services.definitions != null:
@@ -1152,6 +1219,11 @@ func _sync_guests() -> void:
 	if changed:
 		guests_changed.emit()
 	if unnamed and structure_id != 0 and not _naming:
+		# A neighbour's guests are in the list its structure was loaded with.
+		var known: Array = neighbour_of._listed if neighbour_of != null else []
+		if _names_all(known):
+			_name_guests(known)
+			return
 		_naming = true
 		var list := await FleetModel.list_structures()
 		_naming = false
@@ -1176,6 +1248,19 @@ func _add_guest(id: int) -> ColonyModel:
 	guest.telescopes_changed.connect(telescopes_changed.emit)
 	guest.reload_layout()
 	return guest
+
+
+## Whether a structure list (`StructureSummary` entries) names every guest.
+func _names_all(items: Array) -> bool:
+	if items.is_empty():
+		return false
+	var listed: Dictionary = {}
+	for entry: Variant in items:
+		listed[Wire.as_int(Wire.as_dict(entry).get("structureId"))] = true
+	for id: int in guests.keys():
+		if not listed.has(id):
+			return false
+	return true
 
 
 ## Gives the guests their names from a structure list (`StructureSummary` entries).
