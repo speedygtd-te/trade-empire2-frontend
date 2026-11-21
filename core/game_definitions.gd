@@ -170,6 +170,10 @@ var _hulls: Dictionary = {}
 var _resource_names: Dictionary = {}
 ## Resource key → [kind (NATURAL, PRODUCED, MODULE_ITEM, HULL_ITEM), utility].
 var _resource_kinds: Dictionary = {}
+## Keys of the items that may be traded on a trade platform (draft.44, `DefResource.tradable`).
+var _tradable: Dictionary = {}
+## Least amount per side of a trade offer (draft.44 `tradeMinAmount`; 20 when the bundle has none).
+var trade_min_amount := 20
 var _blueprints: Dictionary = {}
 ## Emission key → decay per hull (micro-units).
 var _emission_decay: Dictionary = {}
@@ -204,10 +208,14 @@ static func from_bundle(data: Dictionary) -> GameDefinitions:
 		if not key.is_empty():
 			definitions._resource_names[key] = Wire.as_string(resource.get("displayName"))
 			definitions._resource_kinds[key] = [Wire.as_string(resource.get("kind")), resource.get("utility") == true]
+			if resource.get("tradable") == true:
+				definitions._tradable[key] = true
 	for entry: Variant in _list(data.get("blueprints")):
 		var blueprint := _read_blueprint(Wire.as_dict(entry))
 		if not blueprint.key.is_empty():
 			definitions._blueprints[blueprint.key] = blueprint
+	if data.has("tradeMinAmount"):
+		definitions.trade_min_amount = maxi(Wire.as_int(data.get("tradeMinAmount")), 1)
 	definitions.research = ResearchCatalog.from_wire(Wire.as_dict(data.get("research")))
 	for entry: Variant in _list(data.get("emissions")):
 		var emission := Wire.as_dict(entry)
@@ -268,6 +276,20 @@ func taxable_resources() -> PackedStringArray:
 	for key: String in _resource_kinds.keys():
 		if is_taxable(key):
 			keys.append(key)
+	keys.sort_custom(func(a: String, b: String) -> bool: return resource_name(a).naturalnocasecmp_to(resource_name(b)) < 0)
+	return PackedStringArray(keys)
+
+
+## Whether item `key` may be offered or demanded on a trade platform (draft.44).
+func is_tradable(key: String) -> bool:
+	return _tradable.has(key)
+
+
+## Every tradable item, sorted by display name.
+func tradable_items() -> PackedStringArray:
+	var keys: Array[String] = []
+	for key: String in _tradable.keys():
+		keys.append(key)
 	keys.sort_custom(func(a: String, b: String) -> bool: return resource_name(a).naturalnocasecmp_to(resource_name(b)) < 0)
 	return PackedStringArray(keys)
 

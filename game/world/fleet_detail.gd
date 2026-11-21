@@ -15,6 +15,8 @@ signal show_requested(structure_id: int)
 signal route_requested(route_id: int)
 ## The player wants the fleet this structure is a member of (draft.33).
 signal group_requested(fleet_id: int)
+## The ship is docked at a trade platform and the player wants to trade there (draft.44).
+signal trade_requested(host_id: int, ship_id: int)
 
 ## How long the loaded structure may take to bring its layout (seconds).
 const LOAD_SECONDS := 15.0
@@ -38,6 +40,7 @@ var _travel_button: Button
 var _travel_note: Label
 var _route_button: Button
 var _group_button: Button
+var _trade_button: Button
 var _status: Label
 var _travel_panel: TravelPanel
 
@@ -94,6 +97,10 @@ func _ready() -> void:
 	_actions.add_child(_travel_button)
 	_travel_note = Ui.dynamic_label(AppTheme.VARIATION_MUTED)
 	_actions.add_child(_travel_note)
+	_trade_button = Ui.primary_button("TRADE_AT_PLATFORM")
+	_trade_button.visible = false
+	_trade_button.pressed.connect(_on_trade)
+	_actions.add_child(_trade_button)
 	_group_button = Ui.secondary_button("FLEETS_OPEN_FLEET")
 	_group_button.visible = false
 	_group_button.pressed.connect(_on_group)
@@ -114,6 +121,11 @@ func _ready() -> void:
 	content.add_child(_travel_panel)
 
 	_fleet.changed.connect(_update)
+	_fleet.trade.changed.connect(_update)
+	# Docked somewhere: whether it is a trade platform is known from the platforms in sight.
+	var docked := _fleet.fleet.find(_id)
+	if docked != null and docked.where() == Fleet.Where.DOCKED and not _fleet.trade.loaded:
+		_fleet.trade.reload()
 	_info.setup(_fleet, _id)
 	_update()
 	if _travel_on_open:
@@ -171,6 +183,10 @@ func _update() -> void:
 	_group_button.visible = group != null
 	if group != null:
 		_group_button.text = tr("FLEETS_OPEN_NAMED").format({"name": group.name})
+	var platform := _fleet.trade.book.host(entry.host_id) if entry.where() == Fleet.Where.DOCKED else null
+	_trade_button.visible = platform != null
+	if platform != null:
+		_trade_button.text = tr("TRADE_AT_NAMED").format({"host": platform.name})
 	var reason := _travel_reason(entry)
 	_travel_button.disabled = not reason.is_empty()
 	_travel_note.text = reason
@@ -201,6 +217,12 @@ func _on_group() -> void:
 	var group := _fleet.group_of(_id)
 	if group != null:
 		group_requested.emit(group.fleet_id)
+
+
+func _on_trade() -> void:
+	var entry := _fleet.fleet.find(_id)
+	if entry != null:
+		trade_requested.emit(entry.host_id, _id)
 
 
 func _on_route() -> void:

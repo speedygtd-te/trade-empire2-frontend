@@ -52,6 +52,11 @@ var _area := AREA_SUPPLY
 var _move_bar: VBoxContainer
 var _move_label: Label
 var _move_buttons: Array[Button] = []
+## The trade inventory of this structure when it is a trade platform (draft.44, read only); null
+## until loaded. `_trade_for`: the structure it belongs to.
+var _trade: Trade.HostInventory = null
+var _trade_for := 0
+var _trade_loading := false
 
 
 func setup(model: ColonyModel) -> void:
@@ -235,6 +240,7 @@ func show_inventory(inventory: Inventory) -> void:
 		_list.add_child(row_button)
 		_rows[key] = [amount_label, rate_label]
 	_add_cargo(inventory)
+	_add_trade()
 	var still := _rows.has(_selected) if _area == AREA_SUPPLY else inventory.cargo_amount(_selected) > 0
 	if not still:
 		_selected = ""
@@ -280,6 +286,61 @@ func _add_cargo(inventory: Inventory) -> void:
 	_list.add_child(Ui.label("STORE_MODULES_TITLE", AppTheme.VARIATION_HEADING))
 	for module: StructureLayout.Module in modules:
 		_list.add_child(_module_row(module, inventory.scale))
+
+
+## The trade inventory of a trade platform below the cargo hold: how full, how many offers, whether
+## the structure may move, and the goods held in escrow. The owner only looks (the goods belong to
+## the traders).
+func _add_trade() -> void:
+	if _model == null or not _has_platform():
+		return
+	if _trade_for != _model.structure_id:
+		_trade = null
+		_load_trade()
+	_list.add_child(Ui.spacer(8))
+	_list.add_child(Ui.label("STORE_TRADE_TITLE", AppTheme.VARIATION_HEADING))
+	if _trade == null:
+		_list.add_child(Ui.label("COMMON_LOADING", AppTheme.VARIATION_MUTED))
+		return
+	var fill := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	fill.text = tr("STORE_TRADE_FILL").format({"used": AmountFormat.units(_trade.used),
+		"capacity": AmountFormat.units(_trade.capacity), "offers": _trade.offers.size()})
+	_list.add_child(fill)
+	var lock := Ui.dynamic_label(AppTheme.VARIATION_MUTED)
+	lock.text = tr("STORE_TRADE_LOCKED") if _trade.locked else tr("STORE_TRADE_FREE")
+	if _trade.locked:
+		lock.add_theme_color_override("font_color", AppTheme.COLOR_PENDING)
+	_list.add_child(lock)
+	for goods: Trade.Goods in _trade.items:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		row.add_child(Ui.resource_icon(goods.resource, ResourceIcon.ROW_SIZE, true))
+		var line := Ui.dynamic_label()
+		line.text = tr("STORE_CARGO_ROW").format({"name": _item_name(goods.resource), "count": AmountFormat.units(goods.amount)})
+		row.add_child(line)
+		_list.add_child(row)
+
+
+func _has_platform() -> bool:
+	for module: StructureLayout.Module in _model.layout.modules():
+		if module.module_type == Trade.HOST:
+			return true
+	return false
+
+
+func _load_trade() -> void:
+	if _trade_loading:
+		return
+	_trade_loading = true
+	var id := _model.structure_id
+	var answer := await TradeModel.load_inventory(id)
+	_trade_loading = false
+	if _model == null or _model.structure_id != id or not is_inside_tree():
+		return
+	_trade_for = id
+	_trade = Trade.HostInventory.from_wire(answer.data) if answer.is_ok() else Trade.HostInventory.new()
+	if _inventory != null:
+		show_inventory(_inventory)
 
 
 ## One storage module: its name, size and mode, and a button switching it to the other area.
@@ -388,6 +449,11 @@ func _on_move(amount: int) -> void:
 
 
 func _on_event(event: SseEvent) -> void:
+	if _model != null and Trade.EVENTS.has(event.type) 			and Wire.as_int(Wire.parse_object(event.data).get("hostId")) == _model.structure_id:
+		_trade_for = 0
+		if _inventory != null:
+			show_inventory(_inventory)
+		return
 	if _model == null or _model.structure_id == 0 or not event.type.begins_with("route."):
 		return
 	if event.type != "route.arrived" and event.type != "route.departed":

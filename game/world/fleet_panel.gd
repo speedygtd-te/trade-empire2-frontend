@@ -18,6 +18,7 @@ const REFRESH_SECONDS := 1.0
 const TAB_STRUCTURES := 0
 const TAB_ROUTES := 1
 const TAB_PROBES := 2
+const TAB_TRADE := 3
 
 var _fleet: FleetModel
 var _current := 0
@@ -36,6 +37,9 @@ var _probes: ProbeList
 var _exploration: ProbeTargetScreen = null
 var _group: FleetGroupDetail = null
 var _create: FleetGroupCreate = null
+var _trade_tab: Button
+var _trade: TradeList
+var _platform: TradeDockScreen = null
 
 
 ## `current`: the structure Base shows; `routes`: open on the routes tab.
@@ -67,6 +71,8 @@ func _ready() -> void:
 	_tabs.add_tab("ROUTE_TAB")
 	# Probes only on a server that has them (draft.31 game data).
 	_probes_tab = _tabs.add_tab("PROBE_TAB")
+	# Trade only on a server that has it (draft.44 game data).
+	_trade_tab = _tabs.add_tab("TRADE_TAB")
 	_tabs.tab_selected.connect(_show_tab)
 	column.add_child(_tabs)
 	_structures = Ui.column(16)
@@ -94,6 +100,10 @@ func _ready() -> void:
 	_probes.setup(_fleet)
 	_probes.view_requested.connect(open_exploration)
 	column.add_child(_probes)
+	_trade = TradeList.new()
+	_trade.setup(_fleet)
+	_trade.platform_requested.connect(func(host_id: int, ship_id: int) -> void: open_platform(host_id, ship_id))
+	column.add_child(_trade)
 	_fleet.changed.connect(_rebuild)
 	_fleet.load_failed.connect(_on_failed)
 	Services.definitions_loaded.connect(_offer_probes)
@@ -110,13 +120,34 @@ func _show_tab(index: int) -> void:
 	_structures.visible = index == TAB_STRUCTURES
 	_routes.visible = index == TAB_ROUTES
 	_probes.visible = index == TAB_PROBES
+	_trade.visible = index == TAB_TRADE
 
 
-## The Probes tab shows only on a server with probes.
+## The Probes and Trade tabs show only on a server with probes or trade.
 func _offer_probes() -> void:
 	_probes_tab.visible = _fleet.probes.supported()
-	if not _probes_tab.visible and _tabs.selected() == TAB_PROBES:
+	_trade_tab.visible = _fleet.trade.supported()
+	if (not _probes_tab.visible and _tabs.selected() == TAB_PROBES) 			or (not _trade_tab.visible and _tabs.selected() == TAB_TRADE):
 		_show_tab(TAB_STRUCTURES)
+
+
+## Opens the Trade tab (for review scenes).
+func show_trade() -> void:
+	_show_tab(TAB_TRADE)
+
+
+## Opens a trade platform as a layer, with an own ship docked there (0: only look).
+func open_platform(host_id: int, ship_id: int = 0) -> TradeDockScreen:
+	ScreenStack.close_layer(_platform)
+	_platform = TradeDockScreen.new()
+	_platform.setup(_fleet, host_id, ship_id)
+	ScreenStack.push_onto(self, _platform)
+	return _platform
+
+
+## The platform layer while it is open; null otherwise.
+func platform() -> TradeDockScreen:
+	return _platform if ScreenStack.is_open(_platform) else null
 
 
 ## Opens the Probes tab (for review scenes and the launcher).
@@ -153,6 +184,7 @@ func open_detail(structure_id: int, travel: bool = false) -> FleetDetail:
 	_detail.show_requested.connect(func(id: int) -> void: chosen.emit(id))
 	_detail.route_requested.connect(_on_route_requested)
 	_detail.group_requested.connect(func(fleet_id: int) -> void: open_group(fleet_id))
+	_detail.trade_requested.connect(func(host_id: int, ship_id: int) -> void: open_platform(host_id, ship_id))
 	ScreenStack.push_onto(self, _detail)
 	return _detail
 
@@ -370,7 +402,12 @@ static func status_text(fleet_model: FleetModel, entry: Fleet.Entry, now: int, t
 				place = translator.tr("FLEET_IN_ORBIT").format({"body": _body(fleet_model, entry.body_id, translator)})
 			Fleet.Where.DOCKED:
 				var host := fleet_model.fleet.find(entry.host_id)
-				place = translator.tr("FLEET_DOCKED").format({"host": host.name if host != null else translator.tr("FLEET_UNKNOWN_PLACE")})
+				var host_name := host.name if host != null else translator.tr("FLEET_UNKNOWN_PLACE")
+				# A foreign trade platform (draft.44) is not in the fleet.
+				var platform := fleet_model.trade.book.host(entry.host_id) if host == null and fleet_model.trade != null else null
+				if platform != null:
+					host_name = platform.name
+				place = translator.tr("FLEET_DOCKED").format({"host": host_name})
 			_:
 				place = translator.tr("FLEET_IN_TRANSIT")
 	var line := "%s · %s" % [kind, place] if not kind.is_empty() else place

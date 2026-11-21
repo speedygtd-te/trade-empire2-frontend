@@ -23,6 +23,9 @@ var body_names: Dictionary = {}
 var routes: RouteModel
 ## The player's exploration probes and the explored areas of bodies (draft.31); loaded with the fleet.
 var probes: ProbeModel
+## Trade on platforms (draft.44): platforms and offers in sight, own offers; loaded when the Trade
+## tab or a platform is shown.
+var trade: TradeModel
 ## The player's fleets (draft.33): groups of ships that act as one; loaded with the structures.
 var groups := FleetGroups.new()
 ## Whether the server has fleets (false on one older than draft.33, after its 404).
@@ -45,6 +48,10 @@ func _ready() -> void:
 	probes = ProbeModel.new()
 	probes.name = "Probes"
 	add_child(probes)
+	trade = TradeModel.new()
+	trade.name = "Trade"
+	trade.body_names = body_names
+	add_child(trade)
 
 
 ## Loads the list again, and the details of everything that can move.

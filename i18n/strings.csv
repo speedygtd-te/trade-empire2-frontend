@@ -343,7 +343,7 @@ ERROR_INSUFFICIENT_WORKERS,There are not that many free people of this tier.
 ERROR_INSUFFICIENT_ROBOTS,There are not that many robots of this tier in the store.
 RESEARCH_NO_STAFF,"This lab has no staff: inspect it and assign workers with Staff."
 ERROR_STRUCTURE_MOVING,"This structure is travelling; building has to wait until it has arrived."
-ERROR_HOST_MOVING,"The structure this one is docked at is travelling; building has to wait."
+ERROR_HOST_MOVING,"The structure this one is docked at is travelling or on a route or in a fleet; this has to wait."
 ERROR_TARGET_MOVING,"The destination is travelling itself; wait until it rests."
 ERROR_NO_SPACE_DRIVE,"This structure has no finished space drive."
 ERROR_NO_GROUND_DRIVE,"This structure has no finished wheels or tracks."
@@ -1450,3 +1450,72 @@ MEMBER_FOCUS_WAITING,Extraction focus: a Mining Optimizer is near but inactive.
 SIGHT_PLATFORM_NET,Node of the enterprise's observation net while it sees.
 PROBE_EXPLORED_SHARED,{count} of them shared by the enterprise archive (dashed edge).
 PROBE_SIGHTING_SHARED,(shared by the enterprise archive)
+COMMON_CANCEL,Cancel
+TRADE_TAB,Trade
+TRADE_NOT_SUPPORTED,This server has no trade yet.
+TRADE_LOADING,Loading trade…
+TRADE_SECTION_DOCKED,Your ships at platforms
+TRADE_SHIP_AT,Docked at {host} · tap to trade
+TRADE_SECTION_MINE,Your offers
+TRADE_SECTION_COLLECT,Waiting for you
+TRADE_PLATFORM_OUT_OF_SIGHT,A platform out of sight
+TRADE_COLLECT_HINT,Dock a ship with a Trade Reader at the platform to load these goods.
+TRADE_SECTION_PLATFORMS,Platforms in range
+TRADE_READER_MISSING,Build a Trade Reader into a ship to see the trade platforms in range of your telescopes and their offers.
+TRADE_NO_PLATFORMS,No trade platform in range of your telescopes.
+TRADE_PLATFORM_LINE,{owner} · {place} · {offers} offers
+TRADE_OFFER_LINE,{offer} {offer_item} for {demand} {demand_item}
+TRADE_MINE_LINE,At {host} · you get {net} {item} · ends in {duration}
+TRADE_WITHDRAW,Withdraw
+TRADE_WITHDRAW_CONFIRM,Tap again to withdraw
+TRADE_COLLECT,Collect
+TRADE_COLLECT_GOODS,Collect {goods}
+TRADE_NEW_OFFER,New offer
+TRADE_SECTION_OFFERS,Offers
+TRADE_FORM_GIVE,You give (from the cargo hold)
+TRADE_FORM_WANT,You want
+TRADE_FORM_ALL,All
+TRADE_FORM_AMOUNT,Amount
+TRADE_PLACE,Place offer
+TRADE_PLACED,Offer placed. Its goods wait on the platform until someone takes it.
+TRADE_PLATFORM,Trade platform
+TRADE_PLATFORM_FILL,Trade inventory {used} of {capacity} · {hosts} platform modules
+TRADE_PLATFORM_GUESTS,Docked: {ships}
+TRADE_DOCK_TO_TRADE,"To trade here, dock one of your ships with a working Trade Reader at this platform."
+TRADE_DUE_HERE,Waiting for you here: {goods}
+TRADE_SHIP_HERE,{ship} is docked here · cargo hold {hold}
+TRADE_NO_OFFERS,No open offers here.
+TRADE_OFFER_DETAIL,By {owner} · you get {net} {item} (fee {fee}) · ends in {duration}
+TRADE_YOUR_OFFER,Your offer
+TRADE_TAKE,Take
+TRADE_TAKE_CONFIRM,Tap again to trade
+TRADE_TAKE_DEAL,"You give {give} {give_item} and get {get} {get_item}."
+TRADE_TAKEN,Traded. The goods are in the cargo hold.
+TRADE_COLLECTED,Loaded: {goods}
+TRADE_COLLECTED_NOTHING,Nothing to load.
+TRADE_COLLECT_REST,"Not enough room, still waiting: {goods}"
+TRADE_PICK_GIVE,Choose what to give
+TRADE_PICK_GIVE_NONE,The cargo hold holds nothing to trade. Move goods into it in the ship's store.
+TRADE_PICK_WANT,Choose what you want
+TRADE_FORM_HINT,At least {least} on each side. The platform takes 5 % of each side when the offer is taken.
+TRADE_FORM_VALIDATION_FAILED,Give and want must be different items.
+TRADE_FORM_NOT_TRADEABLE,This item cannot be traded.
+TRADE_FORM_AMOUNT_TOO_SMALL,At least {least} on each side.
+TRADE_FORM_INSUFFICIENT_STOCK,The cargo hold holds only {held}.
+TRADE_FORM_PREVIEW,"The taker gets {taker} {give_item}, you get {you} {want_item} (fees {fee_give} and {fee_want})."
+TRADE_AT_PLATFORM,Trade here
+TRADE_AT_NAMED,Trade at {host}
+STORE_TRADE_TITLE,Trade inventory
+STORE_TRADE_FILL,"{used} of {capacity} · {offers} open offers · held for the traders, not yours to use"
+STORE_TRADE_LOCKED,Goods or foreign ships are here: this structure cannot move.
+STORE_TRADE_FREE,Empty: this structure may move.
+ERROR_READER_REQUIRED,"This needs a working Trade Reader (in the ship, or somewhere for the market)."
+ERROR_NOT_DOCKED_AT_HOST,The ship must be docked directly at a trade platform.
+ERROR_HOST_INACTIVE,"The platform is not working (switched off, without power or still being built)."
+ERROR_TRADE_HOST_FULL,The platform's trade inventory is full.
+ERROR_OFFER_NOT_AVAILABLE,"This offer is gone: someone else was faster, or it was withdrawn or ended."
+ERROR_OWN_OFFER,You cannot take your own offer.
+ERROR_NOT_TRADEABLE,This item cannot be traded.
+ERROR_AMOUNT_TOO_SMALL,Each side of an offer needs at least 20 units.
+ERROR_TRADE_INVENTORY_NOT_EMPTY,Traders still have goods on this platform; it cannot be removed until they are gone.
+ERROR_TRADE_HOST_LOCKED,A trade platform holding goods or foreign ships cannot move.
