@@ -144,6 +144,7 @@ func _grow(size: int) -> void:
 			layout._hulls[cell] = DockRules.DOCK
 	var start := Time.get_ticks_usec()
 	_colony._model.layout_changed.emit()
+	_colony._view.flush_rebuild()
 	print("GROW  %d hulls: layout change handled in %d ms" % [size, roundi((Time.get_ticks_usec() - start) / 1000.0)])
 
 

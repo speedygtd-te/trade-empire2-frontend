@@ -21,6 +21,10 @@ signal origin_moved
 ## block loaded beside them or a structure's pad changed. Whatever stands there is placed again.
 signal relief_changed(blocks: Dictionary)
 
+## Footprints kept (footprint_of), and the cache.
+const FOOTPRINTS_KEPT := 16
+static var _footprints: Dictionary = {}
+
 ## Height of a hull's floor plate: modules stand on top of it (scripts/3d/models/hulls.py).
 const HULL_FLOOR_HEIGHT := 0.06
 ## Roof height of a shut hull on a closed structure (scripts/3d/models/hulls.py).
@@ -105,6 +109,9 @@ const COLOR_PATH_UNCONNECTED := Color(0.973, 0.443, 0.443, 0.95)
 const LANDING_HEIGHT := 12.0
 ## How often (seconds) the view checks whether a trip changed what is drawn (a phase began).
 const TRAVEL_CHECK_SECONDS := 0.5
+## Blocks around a structure's footprint whose heights move what stands beside it (fence, masts and
+## cleared land reach a little more than one block out).
+const NEAR_BLOCKS := 2
 ## Ground blocks whose relief mesh is built again per frame (cheaper than a new block).
 const RELIEF_BLOCKS_PER_FRAME := 2
 ## How long a loaded block waits for the blocks beside it that are still on their way, before it is
@@ -119,6 +126,34 @@ const MARK_LIFT := 0.03
 ## Concrete of the foundations under structures on a slope.
 const FOUNDATION_TEXTURE := preload("res://game/world/grounds/paving.webp")
 const FOUNDATION_COLOR := Color(0.62, 0.61, 0.58)
+
+## What is drawn of one structure: its hulls in chunks (ColonyChunks: one node per chunk with a
+## MultiMesh per hull model), its modules by a key of everything that decides their look, and the
+## heads of its shafts. Kept between rebuilds; a part whose signature stayed is not built again.
+class Drawn:
+	extends RefCounted
+	var structure: ColonyModel
+	var hulls: Node3D
+	var modules: Node3D
+	var heads: Node3D
+	## Signature of everything the structure draws; 0 while something is missing (a model still
+	## loading), so the next rebuild looks again.
+	var signature := 0
+	## Chunk → signature of its hulls, and chunk → its node.
+	var chunk_signatures: Dictionary = {}
+	var chunks: Dictionary = {}
+	## Module key (_module_key) → its node, module id → its key and whether it stands in a room
+	## (interior light), and the floor height they were placed at.
+	var module_nodes: Dictionary = {}
+	var module_ids: Dictionary = {}
+	var module_interior: Dictionary = {}
+	var lift := NAN
+	## Signature of the hulls (cells, the cells modules cover, the view), the layout's revision
+	## drawn, and the hull signature the modules were drawn with.
+	var hull_signature := 0
+	var revision := -1
+	var drawn_hulls_for := 0
+
 
 ## How a drawn structure takes part in a trip right now.
 enum Trip {
@@ -176,14 +211,38 @@ var _world: WorldEnvironment
 var _underground: UndergroundLayer
 ## The last arguments of set_sun, to light the surface again after the cutaway.
 var _sun_args: Array = []
-var _scenes: Dictionary = {}
-var _hull_meshes: Dictionary = {}
+## Models shared by every view, by path: the PackedScene, or null when the file is missing. A new
+## screen (another structure or body) finds them loaded. Module models load in the background
+## (paths loading → true); hull models and previews are loaded when asked for.
+static var _models: Dictionary = {}
+static var _models_loading: Dictionary = {}
+## Whether a model file exists, by path (asked often).
+static var _model_files: Dictionary = {}
+## Meshes of hull models by key (with "#hd" for the high-detail ones), shared as well.
+static var _hull_meshes: Dictionary = {}
 ## High-detail models: whether they are shown, whether the tier wants them (they load in the
-## background first: key → path while loading), and the loaded ones (key → scene or null).
+## background first: key → path while loading).
 var _hd := false
 var _hd_wanted := false
 var _hd_loading: Dictionary = {}
-var _scenes_hd: Dictionary = {}
+## What is drawn of each structure (id → Drawn), kept between rebuilds: only what changed is
+## built again.
+var _drawn: Dictionary = {}
+## A rebuild is asked for and runs at the end of the frame (several triggers in one frame make one).
+var _rebuild_due := false
+## How long the phases of the last rebuild took (ms; rebuild_timings).
+var _timings: Dictionary = {}
+## The origin the drawn structures were placed around.
+var _drawn_origin := Vector3i.ZERO
+## Key of what the layers beside the structures stand on (footprints, bases, trips, origin): the
+## foundations, the perimeter and the wrecks are laid again only when it changes.
+var _ground_key := 0
+## Cached base elevation per structure id: [hull key, loaded blocks under it, base].
+var _base_cache: Dictionary = {}
+## Cached roof cell per structure (instance id → [layout state, cell]) for roof_point.
+var _roof_cache: Dictionary = {}
+## Counts the changes of the ground's heights (relief_changed): the glow on the ground follows it.
+var heights_generation := 0
 ## Meshes of a shaft head (opening, rails, post), made once.
 var _head_meshes: Array[Mesh] = []
 ## Materials of the loaded models that glow (instance id → material), and their strength now.
@@ -235,6 +294,10 @@ var _relief_queue: Dictionary = {}
 var _waiting_since: Dictionary = {}
 ## Layers standing on the ground wait to be placed again (heights changed).
 var _followers_due := false
+## The blocks whose heights changed since they were placed, and the blocks near the structures
+## (_blocks_near): ground arriving elsewhere does not move the perimeter or the foundations.
+var _followers_blocks: Dictionary = {}
+var _near_blocks: Dictionary = {}
 ## Footprint middles (scene, at their site) of the structures driving here: they follow the ground.
 var _drive_centres: Dictionary = {}
 
@@ -243,8 +306,8 @@ func setup(colony: ColonyModel) -> void:
 	model = colony
 	relief = TerrainRelief.new(colony.surface, colony.size_x)
 	relief.water_level = WaterColumn.sea_level(colony.body_type)
-	model.layout_changed.connect(_rebuild_structure)
-	model.guests_changed.connect(_rebuild_structure)
+	model.layout_changed.connect(_request_rebuild)
+	model.guests_changed.connect(_request_rebuild)
 	model.surface_loaded.connect(_on_surface_loaded)
 	model.surface_reset.connect(_on_surface_reset)
 	model.production_changed.connect(_mover.refresh_activity)
@@ -515,20 +578,38 @@ func _base_lift(structure: ColonyModel) -> float:
 
 ## The cells of a structure's ground footprint (x, y): its hulls on the ground level, else on its
 ## lowest level from the ground up.
+## Kept per layout (by its hull_key), as many layers ask after every change.
 static func footprint_of(layout: StructureLayout) -> Array[Vector2i]:
+	var key := layout.hull_key()
+	var cached: Variant = _footprints.get(key)
+	if cached != null:
+		var known: Array[Vector2i] = cached
+		return known
+	if _footprints.size() >= FOOTPRINTS_KEPT:
+		_footprints.clear()
+	var found := _footprint_now(layout)
+	_footprints[key] = found
+	return found
+
+
+static func _footprint_now(layout: StructureLayout) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
-	var levels := layout.absolute_levels()
-	if levels.is_empty():
+	var hulls := layout.hull_map()
+	if hulls.is_empty():
 		return result
-	var ground := levels[0]
-	for z: int in levels:
+	var shift := layout.offset + layout.base
+	# The lowest level from the ground up, else the lowest of all.
+	var lowest := 1 << 30
+	var lowest_up := 1 << 30
+	for local: Vector3i in hulls:
+		var z := local.z + shift.z
+		lowest = mini(lowest, z)
 		if z >= 0:
-			ground = z
-			break
-	for local: Vector3i in layout.hull_cells():
-		var cell := layout.to_absolute(local)
-		if cell.z == ground:
-			result.append(Vector2i(cell.x, cell.y))
+			lowest_up = mini(lowest_up, z)
+	var ground := lowest_up if lowest_up != 1 << 30 else lowest
+	for local: Vector3i in hulls:
+		if local.z + shift.z == ground:
+			result.append(Vector2i(local.x + shift.x, local.y + shift.y))
 	return result
 
 
@@ -599,7 +680,7 @@ func _update_relief() -> void:
 			docking.append(structure)
 			continue
 		var cells := footprint_of(structure.layout)
-		var base := relief.base_of(cells)
+		var base := _base_of(structure, cells)
 		_bases[structure.structure_id] = base
 		if is_nan(base):
 			# Its ground is not loaded: on the ground as drawn until then.
@@ -617,9 +698,36 @@ func _update_relief() -> void:
 	for structure: ColonyModel in docking:
 		var host := model.structure(_trip_entry(structure).motion.target_host_id())
 		_lifts[structure.structure_id] = _base_lift(host) if host != null else 0.0
+	var started := Time.get_ticks_usec()
 	var touched := relief.set_pads(pads)
+	_timed("pads", started)
 	if not touched.is_empty():
 		_heights_changed(touched)
+
+
+## The base elevation of a structure's footprint (TerrainRelief.base_of), kept while its hulls and
+## the loaded ground under them stay the same (it only changes when a block under it arrives).
+func _base_of(structure: ColonyModel, cells: Array[Vector2i]) -> float:
+	var key := structure.layout.hull_key()
+	var cached: Array = _base_cache.get(structure.structure_id, [])
+	var blocks: Array[Vector2i] = []
+	if not cached.is_empty() and cached[0] == key:
+		blocks = cached[1]
+	else:
+		var seen: Dictionary = {}
+		for cell: Vector2i in cells:
+			seen[model.surface.block_of(cell.x, cell.y)] = true
+		blocks.assign(seen.keys())
+		cached = []
+	var loaded := 0
+	for block: Vector2i in blocks:
+		if model.surface.is_loaded(block):
+			loaded += 1
+	if not cached.is_empty() and cached[2] == loaded:
+		return cached[3]
+	var base := relief.base_of(cells)
+	_base_cache[structure.structure_id] = [key, blocks, loaded, base]
+	return base
 
 
 ## Whether the base elevation of a drawn structure changed (its ground loaded meanwhile).
@@ -628,7 +736,7 @@ func _bases_changed() -> bool:
 		if structure.is_guest() or not _bases.has(structure.structure_id):
 			continue
 		var before: float = _bases[structure.structure_id]
-		var now := relief.base_of(footprint_of(structure.layout))
+		var now := _base_of(structure, footprint_of(structure.layout))
 		if is_nan(before) != is_nan(now) or (not is_nan(now) and not is_equal_approx(before, now)):
 			return true
 	return false
@@ -638,6 +746,8 @@ func _bases_changed() -> bool:
 ## `meshes` false when the blocks are built anyway) and whatever stands on the ground is placed
 ## again.
 func _heights_changed(blocks: Dictionary, meshes: bool = true) -> void:
+	heights_generation += 1
+	_followers_blocks.merge(blocks)
 	if meshes:
 		_relief_queue.merge(blocks)
 	_followers_due = true
@@ -646,11 +756,24 @@ func _heights_changed(blocks: Dictionary, meshes: bool = true) -> void:
 
 ## Places the layers that stand on the ground again: masts, fences and concrete, the glow, the
 ## foundations, wrecks, ghosts and marks.
-func _place_followers() -> void:
+## The perimeter and the foundations are laid again only when the ground changed near a structure
+## (or `all`): panning far from the base loads ground that does not touch them.
+func _place_followers(all: bool = false) -> void:
 	_followers_due = false
-	_perimeter.rebuild()
-	_build_foundations()
+	var near := all or _followers_blocks.is_empty()
+	for block: Vector2i in _followers_blocks.keys():
+		if near:
+			break
+		near = _near_blocks.has(block)
+	_followers_blocks.clear()
+	var started := Time.get_ticks_usec()
+	if near:
+		_perimeter.rebuild()
+		started = _timed("perimeter", started)
+		_build_foundations()
+		started = _timed("foundations", started)
 	_wrecks.redraw()
+	started = _timed("wrecks", started)
 	_sightings.redraw()
 	_travel.redraw()
 
@@ -667,7 +790,7 @@ func set_level(z: int, cut: bool) -> void:
 	focus.y = (float(z - origin.z) if cut else 0.0) + home_lift()
 	_update_camera()
 	_apply_cutaway(was_cutaway)
-	_rebuild_structure()
+	_request_rebuild()
 
 
 ## Whether the view shows an underground level cut open (the surface away).
@@ -788,7 +911,7 @@ func open_structure(structure_id: int) -> void:
 		_apply_cutaway(was_cutaway)
 	else:
 		_underground.show_level(level, _shows_bearings())
-	_rebuild_structure()
+	_request_rebuild()
 
 
 ## Lays a light tint over the home structure (it is selected) or takes it away.
@@ -807,13 +930,27 @@ func highlight(structure_id: int) -> void:
 func roof_point(structure: ColonyModel) -> Vector2:
 	if _camera == null or structure == null:
 		return Vector2.ZERO
-	var cell := structure.centre_cell()
-	var top := cell.z
-	for hull: Vector3i in structure.layout.hull_cells():
-		top = maxi(top, structure.layout.to_absolute(hull).z)
-	var point := WorldGrid.to_scene(Vector3i(cell.x, cell.y, top), origin, model.size_x)
+	var point := WorldGrid.to_scene(roof_cell(structure), origin, model.size_x)
 	point.y += lift_of(structure) + HULL_CLOSED_HEIGHT
 	return _camera.unproject_position(point)
+
+
+## The middle of a structure's footprint at its top level (absolute): where roof_point looks.
+## Asked every frame while a card shows, so it is kept until the layout changes (its revision,
+## hull count or place).
+func roof_cell(structure: ColonyModel) -> Vector3i:
+	var layout := structure.layout
+	var state := [layout.revision, layout.hull_count(), layout.offset, layout.base]
+	var cached: Array = _roof_cache.get(structure.get_instance_id(), [])
+	if not cached.is_empty() and cached[0] == state:
+		return cached[1]
+	var cell := structure.centre_cell()
+	var top := cell.z
+	for hull: Vector3i in layout.hull_cells():
+		top = maxi(top, layout.to_absolute(hull).z)
+	var roof := Vector3i(cell.x, cell.y, top)
+	_roof_cache[structure.get_instance_id()] = [state, roof]
+	return roof
 
 
 ## Where the top of a cell (absolute; a module standing on it) appears in the view (viewport
@@ -845,21 +982,34 @@ func floor_lift(cell: Vector3i, guest: bool) -> float:
 
 
 func _apply_highlight() -> void:
+	for holder: Node3D in [_hulls, _modules]:
+		for group: Node in holder.get_children():
+			var tagged: int = group.get_meta("structure", 0)
+			_highlight_node(group, _highlight_id != 0 and tagged == _highlight_id)
+
+
+## Lays the selection tint over every mesh under a node, or takes it away.
+func _highlight_node(node: Node, on: bool) -> void:
 	if _highlight_material == null:
 		_highlight_material = StandardMaterial3D.new()
 		_highlight_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_highlight_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_highlight_material.albedo_color = COLOR_STRUCTURE
-	for holder: Node3D in [_hulls, _modules]:
-		for group: Node in holder.get_children():
-			var tagged: int = group.get_meta("structure", 0)
-			var on := _highlight_id != 0 and tagged == _highlight_id
-			var overlay: Material = _highlight_material if on else null
-			for found: Node in group.find_children("*", "GeometryInstance3D", true, false):
-				var geometry := found as GeometryInstance3D
-				# Modules under construction keep their own tint.
-				if geometry.material_overlay == null or geometry.material_overlay == _highlight_material:
-					geometry.material_overlay = overlay
+	var overlay: Material = _highlight_material if on else null
+	var found := node.find_children("*", "GeometryInstance3D", true, false)
+	if node is GeometryInstance3D:
+		found.append(node)
+	for child: Node in found:
+		var geometry := child as GeometryInstance3D
+		# Modules under construction keep their own tint.
+		if geometry.material_overlay == null or geometry.material_overlay == _highlight_material:
+			geometry.material_overlay = overlay
+
+
+## A node built for a structure takes the selection tint when that structure is selected.
+func _highlight_new(node: Node, structure_id: int) -> void:
+	if _highlight_id != 0 and structure_id == _highlight_id:
+		_highlight_node(node, true)
 
 
 ## Every structure drawn: the loaded one, its guests, the neighbours and their guests, and the
@@ -880,10 +1030,20 @@ func _structures() -> Array[ColonyModel]:
 # --- trips ----------------------------------------------------------------------------------
 
 ## Sets the fleet whose trips the view follows, and draws again.
+## The fleet changes with every leg of a trade route anywhere: the structures are built again only
+## when one drawn here comes, goes or moves (its trip phase changed, or one is travelling here).
 func set_fleet(value: Fleet) -> void:
+	var now := Services.clock.now_ms()
+	var had_fleet := fleet != null
 	fleet = value
-	_trip_signature = _signature(Services.clock.now_ms())
-	_rebuild_structure()
+	var signature := _signature(now)
+	var changed := signature != _trip_signature or had_fleet != (value != null) or not _travelling.is_empty()
+	_trip_signature = signature
+	if changed:
+		_request_rebuild()
+	elif _travel != null and is_inside_tree():
+		# Cells reserved for structures on their way here follow the fleet without a rebuild.
+		_travel.show_reserved(_reserved_cells(now))
 
 
 ## The ghost, drive line and reserved cells of trips (TravelLayer).
@@ -1267,7 +1427,7 @@ func _rebuild_all() -> void:
 	_redraw_ground()
 	_props.rebuild()
 	_underground.redraw()
-	_rebuild_structure()
+	_rebuild_now()
 	_travel.redraw()
 	_sightings.redraw()
 	origin_moved.emit()
@@ -1298,19 +1458,38 @@ func _on_surface_reset() -> void:
 	if not is_inside_tree():
 		return
 	relief.clear()
+	_base_cache.clear()
 	_rebuild_all()
 	model.ensure_surface(focus_cell())
 
 
-func _rebuild_structure() -> void:
+## Asks for the structures to be built again at the end of this frame: several triggers in one
+## frame (a layout and its guests, the fleet, a level) make one rebuild.
+func _request_rebuild() -> void:
+	if _rebuild_due:
+		return
+	_rebuild_due = true
+	flush_rebuild.call_deferred()
+
+
+## Runs a rebuild that was asked for now instead of at the end of the frame (nothing when none is due).
+func flush_rebuild() -> void:
+	if _rebuild_due:
+		_rebuild_now()
+
+
+## Draws the structures as they stand now. Only what changed is built again: a structure whose
+## signature stayed is kept whole, otherwise the chunks of hulls and the modules whose look changed
+## (Drawn). The foundations, the perimeter and the wrecks are laid again when the footprints, bases,
+## trips or the origin changed.
+func _rebuild_now() -> void:
+	_rebuild_due = false
 	if model == null or not is_inside_tree():
 		return
-	for child: Node in _hulls.get_children():
-		child.queue_free()
-	for child: Node in _modules.get_children():
-		child.queue_free()
-	_mover.clear()
-	_module_looks.clear()
+	if origin != _drawn_origin:
+		# Everything is placed around the origin: drawn anew around the new one.
+		_clear_drawn()
+		_drawn_origin = origin
 	_travelling.clear()
 	var now := Services.clock.now_ms()
 	var structures := _structures()
@@ -1321,102 +1500,406 @@ func _rebuild_structure() -> void:
 			_place_on_site(structure, entry)
 		if trip != Trip.RESTING:
 			_travelling[structure.structure_id] = structure
+	_timings.clear()
+	var started := Time.get_ticks_usec()
 	# Bases and pads from where everything stands now.
 	_update_relief()
+	started = _timed("relief", started)
+	var shown: Dictionary = {}
 	for structure: ColonyModel in structures:
-		_build_structure(structure)
-	_build_foundations()
-	_perimeter.rebuild()
-	# A hull placed or removed over a wreck hides or shows it.
-	_wrecks.redraw()
-	_apply_highlight()
+		shown[structure.structure_id] = true
+		_draw_structure(structure)
+	for id: int in _drawn.keys():
+		if not shown.has(id):
+			_drop_drawn(id)
+	_mover.prune()
+	_prune_module_looks()
+	started = _timed("structures", started)
+	var ground_key := _ground_key_now(structures, now)
+	var ground_changed := ground_key != _ground_key
+	if ground_changed:
+		_ground_key = ground_key
+		_near_blocks = _blocks_near(structures)
+	started = _timed("ground key", started)
+	if _followers_due:
+		# Pads changed the ground: everything standing on it follows it now.
+		_place_followers(ground_changed)
+		started = _timed("followers", started)
+	elif ground_changed:
+		_build_foundations()
+		started = _timed("foundations", started)
+		_perimeter.rebuild()
+		started = _timed("perimeter", started)
+		# A hull placed or removed over a wreck hides or shows it.
+		_wrecks.redraw()
+		started = _timed("wrecks", started)
 	_travel.show_reserved(_reserved_cells(now))
 	_apply_trips(now)
-	if _followers_due:
-		# Pads changed the ground: what was not placed again above follows it now.
-		_followers_due = false
-		_sightings.redraw()
-		_travel.redraw()
+	_timed("trips", started)
+
+
+## Adds the time since `started` to a phase of the last rebuild; the time now.
+func _timed(phase: String, started: int) -> int:
+	var now := Time.get_ticks_usec()
+	var before: float = _timings.get(phase, 0.0)
+	_timings[phase] = before + (now - started) / 1000.0
+	return now
+
+
+## How long the phases of the last rebuild took, ms (for measuring).
+func rebuild_timings() -> Dictionary:
+	return _timings.duplicate()
+
+
+## What the foundations, the perimeter and the wrecks depend on: the drawn structures' footprints,
+## bases and trips, and the origin.
+func _ground_key_now(structures: Array[ColonyModel], now: int) -> int:
+	var parts: Array = [origin, model.size_x, PerimeterLayer.structures_key(model)]
+	for structure: ColonyModel in structures:
+		var id := structure.structure_id
+		parts.append_array([id, structure.layout.hull_key(), trip_of(structure, now), _bases.get(id, NAN),
+			_lifts.get(id, 0.0)])
+	return hash(parts)
+
+
+## The ground blocks under the drawn structures and NEAR_BLOCKS around them (block → true).
+func _blocks_near(structures: Array[ColonyModel]) -> Dictionary:
+	var under: Dictionary = {}
+	for structure: ColonyModel in structures:
+		var cached: Array = _base_cache.get(structure.structure_id, [])
+		if cached.is_empty():
+			continue
+		for block: Vector2i in cached[1] as Array[Vector2i]:
+			under[block] = true
+	var result: Dictionary = {}
+	for block: Vector2i in under.keys():
+		for dy: int in range(-NEAR_BLOCKS, NEAR_BLOCKS + 1):
+			for dx: int in range(-NEAR_BLOCKS, NEAR_BLOCKS + 1):
+				result[model.surface.block_of((block.x + dx) * SurfaceBlocks.BLOCK, (block.y + dy) * SurfaceBlocks.BLOCK)] = true
+	return result
+
+
+## Forgets everything drawn of the structures (the models changed): the next rebuild builds all.
+func _clear_drawn() -> void:
+	for id: int in _drawn.keys():
+		_drop_drawn(id)
+	_mover.prune()
+	_prune_module_looks()
+
+
+func _drop_drawn(id: int) -> void:
+	var drawn: Drawn = _drawn[id]
+	_drawn.erase(id)
+	# Each module node on its own, so the moving parts and state colours let go of it (prune).
+	for node: Node3D in drawn.module_nodes.values():
+		node.queue_free()
+	drawn.hulls.queue_free()
+	drawn.modules.queue_free()
+
+
+func _prune_module_looks() -> void:
+	var kept: Array[Array] = []
+	for entry: Array in _module_looks:
+		var node: Node3D = entry[0]
+		if is_instance_valid(node) and not node.is_queued_for_deletion():
+			kept.append(entry)
+	_module_looks = kept
+
+
+## How a structure is drawn now, besides its layout: shut or open, which of its levels show, how
+## high it stands, the origin and the kind of models.
+func _view_key(structure: ColonyModel) -> Array:
+	var cut := level_cut and structure.structure_id == open_id
+	return [structure.structure_id != open_id, cutaway(), cut, level if cutaway() or cut else 0, lift_of(structure),
+		origin, model.size_x, _hd]
 
 
 ## Hulls and modules of one structure, each in a group tagged with the structure's id (for the
-## highlight).
-func _build_structure(structure: ColonyModel) -> void:
+## highlight and the trips): only what changed since it was drawn last. The hulls are looked at
+## again only when the hulls, the cells modules cover or the view changed; modules that only
+## finished (module.completed) are put up again one by one.
+func _draw_structure(structure: ColonyModel) -> void:
+	var id := structure.structure_id
+	var drawn: Drawn = _drawn.get(id)
+	if drawn != null and drawn.structure != structure:
+		_drop_drawn(id)
+		drawn = null
+	if drawn == null:
+		drawn = Drawn.new()
+		drawn.structure = structure
+		drawn.hulls = Node3D.new()
+		drawn.hulls.set_meta("structure", id)
+		_hulls.add_child(drawn.hulls)
+		drawn.modules = Node3D.new()
+		drawn.modules.set_meta("structure", id)
+		_modules.add_child(drawn.modules)
+		_drawn[id] = drawn
+	if not _travelling.has(id):
+		# It may have been moved by a trip before.
+		drawn.hulls.position = Vector3.ZERO
+		drawn.modules.position = Vector3.ZERO
+	var layout := structure.layout
+	var view_key := _view_key(structure)
+	var started := Time.get_ticks_usec()
+	var hull_signature := hash([layout.hull_key(), layout.module_cells_key(), view_key])
+	if hull_signature != drawn.hull_signature:
+		_draw_hulls(structure, drawn)
+		drawn.hull_signature = hull_signature
+	started = _timed("hulls", started)
+	var signature := hash([layout.content_key(), view_key])
+	if signature == drawn.signature:
+		return
+	var finished: Variant = layout.completed_since(drawn.revision) if drawn.signature != 0 and hull_signature == drawn.drawn_hulls_for else null
+	var complete := true
+	if finished != null:
+		for module_id: int in finished as Array[int]:
+			if not _redraw_module(structure, drawn, module_id):
+				complete = false
+		started = _timed("modules", started)
+	else:
+		complete = _draw_modules(structure, drawn)
+		started = _timed("modules", started)
+		_draw_heads(structure, drawn)
+		_timed("heads", started)
+	drawn.signature = signature if complete else 0
+	drawn.revision = layout.revision
+	drawn.drawn_hulls_for = hull_signature
+
+
+## One module of a drawn structure put up again (it finished): its old node goes, a new one comes
+## with its new look. False when its model is still loading.
+func _redraw_module(structure: ColonyModel, drawn: Drawn, module_id: int) -> bool:
+	var old_key: Variant = drawn.module_ids.get(module_id)
+	if old_key == null:
+		# Not drawn (inside a shut hull).
+		return true
+	var node: Node3D = drawn.module_nodes.get(old_key)
+	if node != null:
+		node.queue_free()
+	drawn.module_nodes.erase(old_key)
+	drawn.module_ids.erase(module_id)
+	var placed := structure.layout.module(module_id)
+	if placed == null:
+		return true
+	var interior: bool = drawn.module_interior.get(module_id, false)
+	var done := _put_module(structure, drawn, _module_key(structure, placed, interior), placed, interior,
+		Vector3(0.0, lift_of(structure), 0.0))
+	# A shaft's floor that finished loses the amber of its head too.
+	if structure.layout.is_shaft(placed):
+		_draw_heads(structure, drawn)
+	return done
+
+
+## The hulls of a structure in chunks (ColonyChunks): one MultiMesh per model and chunk, so the
+## renderer culls what is off screen; a closed structure shows its indoor hulls shut. Chunks whose
+## hulls stayed the same are kept. Looked up once per hull type and module type, not per cell (a
+## base may have 100 000 hulls).
+func _draw_hulls(structure: ColonyModel, drawn: Drawn) -> void:
+	var layout := structure.layout
+	var shut := structure.structure_id != open_id
+	var lift := lift_of(structure)
+	var definitions := Services.definitions
+	var shift := layout.offset + layout.base
+	var size_x := model.size_x
+	# Which levels show (shows_level): 0 from the ground up, 1 only `level`, 2 the ground up to it.
+	var mode := 1 if cutaway() else (2 if level_cut and structure.structure_id == open_id else 0)
+	var turns: Array[Basis] = []
+	var tall: Array[Basis] = []
+	for quarter: int in 4:
+		var turn := Basis(Vector3.UP, PI / 2.0 * quarter)
+		turns.append(turn)
+		# With a hull on the level above, the container reaches up to its floor (no gap).
+		tall.append(turn.scaled(Vector3(1.0, 1.0 / HULL_CLOSED_HEIGHT, 1.0)))
+	# Hull type → [closed, model open, model shut]; module type → works in the open.
+	var types: Dictionary = {}
+	var outdoor: Dictionary = {}
+	var hulls := layout.hull_map()
+	# Chunk → [model key, transform, model key, transform …].
+	var groups: Dictionary = {}
+	for cell: Vector3i in hulls:
+		var absolute := cell + shift
+		var z := absolute.z
+		if (mode == 0 and z < 0) or (mode == 1 and z != level) or (mode == 2 and (z < 0 or z > level)):
+			continue
+		var hull_type: String = hulls[cell]
+		var known: Array = types.get(hull_type, [])
+		if known.is_empty():
+			known = [StructureLook.hull_closed(definitions, hull_type), StructureLook.hull_model(hull_type, false),
+				StructureLook.hull_model(hull_type, true)]
+			types[hull_type] = known
+		var closed: bool = known[0]
+		if closed:
+			# An outdoor module keeps its cell open (StructureLook.cell_closed).
+			var placed := layout.module_at(cell)
+			if placed != null:
+				if not outdoor.has(placed.module_type):
+					outdoor[placed.module_type] = StructureLook.module_outdoor(definitions, placed.module_type)
+				closed = not outdoor[placed.module_type]
+		var key: String
+		var turn := Basis.IDENTITY
+		if shut and closed:
+			key = known[2]
+			# Shut containers turn by a quarter now and then, so the roofs do not repeat.
+			var quarter := hash(absolute) % 4
+			turn = tall[quarter] if hulls.has(cell + Vector3i(0, 0, 1)) else turns[quarter]
+		elif closed:
+			# Open: a room floor under the interior light (shut: the closed container).
+			key = known[1] + INTERIOR_SUFFIX
+		else:
+			key = known[1]
+		var at := Vector3(WorldGrid.wrapped_delta(origin.x, absolute.x, size_x) + 0.5, z - origin.z + lift,
+			-(absolute.y - origin.y + 0.5))
+		var chunk := Vector2i(floori(absolute.x / float(ColonyChunks.SIZE)), floori(absolute.y / float(ColonyChunks.SIZE)))
+		var list: Array = groups.get(chunk, [])
+		if list.is_empty():
+			groups[chunk] = list
+		list.append(key)
+		list.append(Transform3D(turn, at))
+	var signatures := ColonyChunks.signatures(groups)
+	for chunk: Vector2i in ColonyChunks.removed(drawn.chunk_signatures, signatures):
+		(drawn.chunks[chunk] as Node3D).queue_free()
+		drawn.chunks.erase(chunk)
+	for chunk: Vector2i in ColonyChunks.changed(drawn.chunk_signatures, signatures):
+		if drawn.chunks.has(chunk):
+			(drawn.chunks[chunk] as Node3D).queue_free()
+		var holder := _hull_chunk(groups[chunk] as Array)
+		holder.name = "Chunk_%d_%d" % [chunk.x, chunk.y]
+		drawn.hulls.add_child(holder)
+		_highlight_new(holder, structure.structure_id)
+		drawn.chunks[chunk] = holder
+	drawn.chunk_signatures = signatures
+
+
+## One chunk of hulls: a MultiMesh per model from [model key, transform, …].
+func _hull_chunk(list: Array) -> Node3D:
+	var holder := Node3D.new()
+	var by_model: Dictionary = {}
+	for index: int in range(0, list.size(), 2):
+		var key: String = list[index]
+		var transforms: Array = by_model.get(key, [])
+		if transforms.is_empty():
+			by_model[key] = transforms
+		transforms.append(list[index + 1])
+	for key: String in by_model.keys():
+		var transforms: Array = by_model[key]
+		var multimesh := MultiMesh.new()
+		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		multimesh.mesh = _hull_mesh(key.trim_suffix(INTERIOR_SUFFIX))
+		multimesh.instance_count = transforms.size()
+		for index: int in transforms.size():
+			multimesh.set_instance_transform(index, transforms[index] as Transform3D)
+		var instance := MultiMeshInstance3D.new()
+		instance.multimesh = multimesh
+		if key.ends_with(INTERIOR_SUFFIX):
+			instance.layers = INTERIOR_LAYER
+		holder.add_child(instance)
+	return holder
+
+
+## What decides how a module is drawn: which, where, turned how, its state and its light (one key
+## per module node; a node whose key stayed is kept).
+func _module_key(structure: ColonyModel, placed: StructureLayout.Module, interior: bool) -> int:
+	var layout := structure.layout
+	return hash([placed.module_id, placed.module_type, layout.to_absolute(placed.origin), placed.extent(),
+		placed.rotation, placed.is_building(), placed.is_disabled(), interior])
+
+
+## The modules of a structure, one scene each; a closed structure shows only those not in a shut
+## hull. Models still loading are left out for now (false: drawn incomplete; the view builds again
+## once they are there).
+func _draw_modules(structure: ColonyModel, drawn: Drawn) -> bool:
 	var layout := structure.layout
 	var shut := structure.structure_id != open_id
 	var lift := Vector3(0.0, lift_of(structure), 0.0)
-	var hull_group := Node3D.new()
-	hull_group.set_meta("structure", structure.structure_id)
-	_hulls.add_child(hull_group)
-	var module_group := Node3D.new()
-	module_group.set_meta("structure", structure.structure_id)
-	_modules.add_child(module_group)
-
 	var definitions := Services.definitions
-	# Hulls: one MultiMesh per model; a closed structure shows its indoor hulls shut.
-	var by_model: Dictionary = {}
-	for cell: Vector3i in layout.hull_cells():
-		if not shows_level(structure, layout.to_absolute(cell).z):
-			continue
-		var closed := StructureLook.cell_closed(layout, definitions, cell)
-		var key := StructureLook.hull_model(layout.hull_at(cell), shut and closed)
-		if closed and not shut:
-			# Open: a room floor under the interior light (shut: the closed container).
-			key += INTERIOR_SUFFIX
-		if not by_model.has(key):
-			by_model[key] = []
-		var cells: Array = by_model[key]
-		cells.append(cell)
-	for key: String in by_model.keys():
-		var cells: Array = by_model[key]
-		var interior := key.ends_with(INTERIOR_SUFFIX)
-		var mesh := _hull_mesh(key.trim_suffix(INTERIOR_SUFFIX))
-		var multimesh := MultiMesh.new()
-		multimesh.transform_format = MultiMesh.TRANSFORM_3D
-		multimesh.mesh = mesh
-		multimesh.instance_count = cells.size()
-		for index: int in cells.size():
-			var local: Vector3i = cells[index]
-			var absolute := layout.to_absolute(local)
-			var at := WorldGrid.to_scene(absolute, origin, model.size_x) + lift
-			# Shut containers turn by a quarter now and then, so the roofs do not repeat.
-			var turn := Basis.IDENTITY
-			if key.ends_with("_closed"):
-				turn = Basis(Vector3.UP, PI / 2.0 * (hash(absolute) % 4))
-				# With a hull on the level above, the container reaches up to its floor (no gap).
-				if not layout.hull_at(local + Vector3i(0, 0, 1)).is_empty():
-					turn = turn.scaled(Vector3(1.0, 1.0 / HULL_CLOSED_HEIGHT, 1.0))
-			multimesh.set_instance_transform(index, Transform3D(turn, at))
-		var instance := MultiMeshInstance3D.new()
-		instance.multimesh = multimesh
-		if interior:
-			instance.layers = INTERIOR_LAYER
-		hull_group.add_child(instance)
-
-	# Modules: one scene each.
+	var wanted: Dictionary = {}
+	# Looked up once per hull type and module type (StructureLook.cell_closed per module).
+	var closed_hulls: Dictionary = {}
+	var outdoor: Dictionary = {}
 	for placed: StructureLayout.Module in layout.modules():
 		if not shows_level(structure, layout.to_absolute(placed.origin).z):
 			continue
-		if shut and not StructureLook.module_visible_closed(layout, definitions, placed):
+		var hull_type := layout.hull_at(placed.origin)
+		if not closed_hulls.has(hull_type):
+			closed_hulls[hull_type] = StructureLook.hull_closed(definitions, hull_type)
+		if not outdoor.has(placed.module_type):
+			outdoor[placed.module_type] = StructureLook.module_outdoor(definitions, placed.module_type)
+		var closed: bool = closed_hulls[hull_type] and not outdoor[placed.module_type]
+		if shut and closed:
 			continue
-		var node := _instance(placed.module_type.to_lower())
+		var interior := not shut and closed
+		wanted[_module_key(structure, placed, interior)] = [placed, interior]
+	for key: int in drawn.module_nodes.keys():
+		if not wanted.has(key):
+			(drawn.module_nodes[key] as Node3D).queue_free()
+			drawn.module_nodes.erase(key)
+	drawn.module_ids.clear()
+	drawn.module_interior.clear()
+	var complete := true
+	# Kept nodes stay where they are unless the structure stands higher or lower now.
+	var moved := not is_equal_approx(drawn.lift, lift.y)
+	drawn.lift = lift.y
+	for key: int in wanted.keys():
+		var pair: Array = wanted[key]
+		var placed: StructureLayout.Module = pair[0]
+		var interior: bool = pair[1]
+		drawn.module_interior[placed.module_id] = interior
+		var node: Node3D = drawn.module_nodes.get(key)
 		if node == null:
-			node = _placeholder(placed.module_type)
-		var cells: Array[Vector3i] = []
-		for local: Vector3i in placed.cells():
-			if local.z == placed.origin.z:
-				cells.append(layout.to_absolute(local))
-		# The footprint centre already stands on the module's level.
-		node.position = _footprint_centre(cells) + Vector3(0.0, HULL_FLOOR_HEIGHT, 0.0) + lift
-		node.rotation.y = -deg_to_rad(placed.rotation)
-		_apply_module_look(node, structure, placed)
-		_module_looks.append([node, structure, placed])
-		if not shut and StructureLook.cell_closed(layout, definitions, placed.origin):
-			_set_layers(node, INTERIOR_LAYER)
-		module_group.add_child(node)
-		_mover.add(node, structure, placed)
+			if not _put_module(structure, drawn, key, placed, interior, lift):
+				complete = false
+			continue
+		drawn.module_ids[placed.module_id] = key
+		if moved:
+			_place_module(node, placed, layout, lift)
+	return complete
 
-	# Shaft heads: the landing the top floor of a staircase or elevator takes on the level above.
+
+## Puts up the model of one module (its key from _module_key); false when its model is still
+## loading (it is left out for now).
+func _put_module(structure: ColonyModel, drawn: Drawn, key: int, placed: StructureLayout.Module, interior: bool,
+		lift: Vector3) -> bool:
+	var model_key := placed.module_type.to_lower()
+	if not _model_ready(model_key):
+		return false
+	var node := _instance(model_key)
+	if node == null:
+		node = _placeholder(placed.module_type)
+	node.rotation.y = -deg_to_rad(placed.rotation)
+	_apply_module_look(node, structure, placed)
+	_module_looks.append([node, structure, placed])
+	if interior:
+		_set_layers(node, INTERIOR_LAYER)
+	drawn.modules.add_child(node)
+	_place_module(node, placed, structure.layout, lift)
+	_mover.add(node, structure, placed)
+	_highlight_new(node, structure.structure_id)
+	drawn.module_nodes[key] = node
+	drawn.module_ids[placed.module_id] = key
+	return true
+
+
+## Stands a module's model on its footprint (the centre already stands on the module's level).
+func _place_module(node: Node3D, placed: StructureLayout.Module, layout: StructureLayout, lift: Vector3) -> void:
+	var cells: Array[Vector3i] = []
+	for local: Vector3i in placed.cells():
+		if local.z == placed.origin.z:
+			cells.append(layout.to_absolute(local))
+	node.position = _footprint_centre(cells) + Vector3(0.0, HULL_FLOOR_HEIGHT, 0.0) + lift
+
+
+## Shaft heads: the landing the top floor of a staircase or elevator takes on the level above
+## (few; built again with the structure).
+func _draw_heads(structure: ColonyModel, drawn: Drawn) -> void:
+	if drawn.heads != null:
+		drawn.heads.queue_free()
+	drawn.heads = Node3D.new()
+	drawn.heads.name = "ShaftHeads"
+	drawn.modules.add_child(drawn.heads)
+	var layout := structure.layout
+	var shut := structure.structure_id != open_id
+	var lift := Vector3(0.0, lift_of(structure), 0.0)
+	var definitions := Services.definitions
 	for head: Vector3i in layout.shaft_heads():
 		var placed := layout.module_at(head)
 		var absolute := layout.to_absolute(head)
@@ -1431,7 +1914,8 @@ func _build_structure(structure: ColonyModel) -> void:
 			_tint(landing, COLOR_BUILDING)
 		if StructureLook.cell_closed(layout, definitions, head):
 			_set_layers(landing, INTERIOR_LAYER)
-		module_group.add_child(landing)
+		drawn.heads.add_child(landing)
+	_highlight_new(drawn.heads, structure.structure_id)
 
 
 ## The concrete foundations of the structures standing on the ground (resting, or launching from
@@ -1571,7 +2055,7 @@ func _on_surface_loaded(request: SurfaceBlocks.Request, _patch: SurfacePatch) ->
 		return
 	if not had_reference or _bases_changed():
 		# Structures whose ground arrived stand at their base now (and cut or fill it).
-		_rebuild_structure()
+		_request_rebuild()
 	# The blocks beside the new ones renew their edge (a new block renews its neighbours' meshes
 	# itself); everything standing there, and the impact sites that came with the ground
 	# (draft.32), is placed again.
@@ -1630,17 +2114,70 @@ func _footprint_centre(cells: Array[Vector3i]) -> Vector3:
 	return sum / maxf(cells.size(), 1)
 
 
-func _scene(key: String) -> PackedScene:
+## The file of a model: the high-detail one while those are shown and one exists, else the normal.
+func _model_path(key: String) -> String:
 	if _hd:
-		if not _scenes_hd.has(key):
-			var hd_path := MODELS_HD + key + ".glb"
-			_scenes_hd[key] = load(hd_path) as PackedScene if ResourceLoader.exists(hd_path) else null
-		if _scenes_hd[key] != null:
-			return _scenes_hd[key] as PackedScene
-	if not _scenes.has(key):
-		var path := MODELS + key + ".glb"
-		_scenes[key] = load(path) as PackedScene if ResourceLoader.exists(path) else null
-	return _scenes[key] as PackedScene
+		var hd_path := MODELS_HD + key + ".glb"
+		if _file_exists(hd_path):
+			return hd_path
+	return MODELS + key + ".glb"
+
+
+static func _file_exists(path: String) -> bool:
+	if not _model_files.has(path):
+		_model_files[path] = ResourceLoader.exists(path)
+	return _model_files[path]
+
+
+## The scene of a model, loaded now when it is not yet (hulls, previews; a model loading in the
+## background is waited for); null when the file is missing.
+func _scene(key: String) -> PackedScene:
+	return _load_now(_model_path(key))
+
+
+static func _load_now(path: String) -> PackedScene:
+	if _models.has(path):
+		return _models[path] as PackedScene
+	var scene: PackedScene = null
+	if _models_loading.has(path):
+		_models_loading.erase(path)
+		scene = ResourceLoader.load_threaded_get(path) as PackedScene
+	elif _file_exists(path):
+		scene = load(path) as PackedScene
+	_models[path] = scene
+	return scene
+
+
+## Whether a model can be put up now (loaded, or its file is missing); otherwise it starts loading
+## in the background (_poll_models builds again once it is there).
+func _model_ready(key: String) -> bool:
+	var path := _model_path(key)
+	if _models.has(path):
+		return true
+	if not _file_exists(path):
+		_models[path] = null
+		return true
+	if not _models_loading.has(path):
+		if ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
+			_load_now(path)
+			return true
+		_models_loading[path] = true
+	return false
+
+
+## Takes the models that finished loading in the background; the structures are built again for
+## them (only the modules that waited are added).
+func _poll_models() -> void:
+	var done := false
+	for path: String in _models_loading.keys():
+		var status := ResourceLoader.load_threaded_get_status(path)
+		if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			continue
+		_models_loading.erase(path)
+		_models[path] = ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
+		done = true
+	if done:
+		_request_rebuild()
 
 
 func _instance(key: String) -> Node3D:
@@ -1675,10 +2212,12 @@ func _process(delta: float) -> void:
 		_ground.refresh_heights(batch)
 	if _followers_due:
 		_place_followers()
+	if not _models_loading.is_empty():
+		_poll_models()
 	if _hd_wanted != _hd:
 		_poll_hd()
 	if _moving:
-		_mover.step(delta, _to_sun, _sun_up)
+		_mover.step(delta, _to_sun, _sun_up, Vector2(focus.x, focus.z), _view_reach())
 	if fleet == null:
 		return
 	var now := Services.clock.now_ms()
@@ -1688,7 +2227,7 @@ func _process(delta: float) -> void:
 		var signature := _signature(now)
 		if signature != _trip_signature:
 			_trip_signature = signature
-			_rebuild_structure()
+			_request_rebuild()
 			return
 	_apply_trips(now)
 
@@ -1705,6 +2244,19 @@ func _apply_trips(now: int) -> void:
 				(group as Node3D).position = _trip_shift(structure, now)
 
 
+## How far from the focus (scene x, z) the ground in view reaches at most: half the diagonal of
+## what the camera shows on the ground, and a cell more.
+func _view_reach() -> float:
+	var viewport := get_viewport()
+	var aspect := 1.0
+	if viewport != null:
+		var area := viewport.get_visible_rect().size
+		aspect = area.x / maxf(area.y, 1.0)
+	var across := zoom * aspect
+	var along := zoom / sin(deg_to_rad(CAMERA_PITCH_DEGREES))
+	return 0.5 * sqrt(across * across + along * along) + 1.0
+
+
 ## Moving parts of the modules on screen (for measuring).
 func moving_parts() -> int:
 	return _mover.count()
@@ -1719,14 +2271,17 @@ func lamp_energy() -> float:
 ## instances of a model share its materials, so each is set once for all of them.
 func _collect_lamps(node: Node3D) -> void:
 	for found: Node in node.find_children("*", "MeshInstance3D", true, false):
-		var mesh := (found as MeshInstance3D).mesh
-		if mesh == null:
-			continue
-		for surface: int in mesh.get_surface_count():
-			var material := mesh.surface_get_material(surface) as StandardMaterial3D
-			if material != null and material.emission_enabled and not _lamps.has(material.get_instance_id()):
-				_lamps[material.get_instance_id()] = material
-				material.emission_energy_multiplier = _lamp_energy
+		_collect_mesh_lamps((found as MeshInstance3D).mesh)
+
+
+func _collect_mesh_lamps(mesh: Mesh) -> void:
+	if mesh == null:
+		return
+	for surface: int in mesh.get_surface_count():
+		var material := mesh.surface_get_material(surface) as StandardMaterial3D
+		if material != null and material.emission_enabled and not _lamps.has(material.get_instance_id()):
+			_lamps[material.get_instance_id()] = material
+			material.emission_energy_multiplier = _lamp_energy
 
 
 ## The mesh of a hull model ("hull_starter", "hull_starter_closed"); a hull type without its
@@ -1734,7 +2289,10 @@ func _collect_lamps(node: Node3D) -> void:
 func _hull_mesh(key: String) -> Mesh:
 	var cached := key + "#hd" if _hd else key
 	if _hull_meshes.has(cached):
-		return _hull_meshes[cached] as Mesh
+		var known := _hull_meshes[cached] as Mesh
+		# Shared with the views before: its windows still glow with this view's lamps.
+		_collect_mesh_lamps(known)
+		return known
 	var node := _instance(key)
 	if node == null:
 		node = _instance(StructureLook.hull_fallback(key.ends_with("_closed")))
@@ -1761,43 +2319,42 @@ func _want_hd(on: bool) -> void:
 		return
 	_hd_wanted = on
 	_hd_loading.clear()
-	var target := _scenes_hd if on else _scenes
 	var keys := {}
-	for cache: Dictionary in [_scenes, _scenes_hd]:
-		for key: String in cache.keys():
-			if cache[key] != null:
-				keys[key] = true
+	for path: String in _models.keys():
+		if _models[path] != null:
+			keys[path.get_file().get_basename()] = true
 	for key: String in keys.keys():
-		if target.has(key):
-			continue
 		var path := (MODELS_HD if on else MODELS) + key + ".glb"
-		if ResourceLoader.exists(path) and ResourceLoader.load_threaded_request(path, "PackedScene") == OK:
+		if _models.has(path) or not _file_exists(path):
+			continue
+		if ResourceLoader.load_threaded_request(path, "PackedScene") == OK:
 			_hd_loading[key] = path
 	_poll_hd()
 
 
 ## Takes the models of the wanted kind that finished loading; once all are there, shows them.
 func _poll_hd() -> void:
-	var target := _scenes_hd if _hd_wanted else _scenes
 	for key: String in _hd_loading.keys():
 		var path: String = _hd_loading[key]
 		var status := ResourceLoader.load_threaded_get_status(path)
 		if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			return
-		target[key] = ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
+		_models[path] = ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
 		_hd_loading.erase(key)
 	_hd = _hd_wanted
-	if _hd:
-		# Normal models stay only where no high-detail one exists.
-		for key: String in _scenes_hd.keys():
-			if _scenes_hd[key] != null:
-				_scenes.erase(key)
-	else:
-		_scenes_hd.clear()
+	for path: String in _models.keys():
+		if _hd and path.begins_with(MODELS):
+			# Normal models stay only where no high-detail one exists.
+			var hd_path := MODELS_HD + path.get_file()
+			if _models.get(hd_path) != null:
+				_models.erase(path)
+		elif not _hd and path.begins_with(MODELS_HD):
+			_models.erase(path)
 	_hull_meshes.clear()
 	# The remembered lamp materials would hold the old textures; the rebuild collects them again.
 	_lamps.clear()
-	_rebuild_structure()
+	_clear_drawn()
+	_request_rebuild()
 
 
 ## Whether modules and hulls show their high-detail models now.

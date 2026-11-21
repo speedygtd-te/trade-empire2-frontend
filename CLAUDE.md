@@ -72,6 +72,7 @@ verschärft, wenn es nötig wird.
 | Alle Module in eine Kolonie setzen (eigenes Showcase-Konto) | `node tools/showcase.cjs` (`--dry-run` zeigt nur den Plan; braucht den Test-Grant; einmal je frischem Konto) |
 | Showcase-Kolonie ansehen | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase` |
 | Normale gegen HD-Modelle vergleichen (Showcase-Konto; Bilder nah/mittel/fern, Frame-, CPU-/GPU-Zeit, Draw Calls, Primitive, Texturspeicher) | `godot --path . --resolution 720x1280 res://smoke/showcase_view.tscn -- --out=build/showcase-detail --detail-compare` |
+| Sehr große Strukturen messen (Showcase-Konto; Heimatstruktur nur im Client auf 2 500/10 000/100 000 Hüllen mit Modulen vergrößert, sendet nichts: erster Aufbau, Neuaufbau nach einer Hülle, Modul fertig, Flottenwechsel, Öffnen je mit Phasen; Frame-Zeit, Draw Calls, Primitive, Speicher bei Zoom 9 und 40, Bilder) | `godot --path . --resolution 720x1280 res://smoke/scale_view.tscn -- --out=build/scale [--sizes=2500,10000]` (Zeilen `BUILD`, `PHASES`, `FRAME`) |
 | Masten, Radar und Lichtkegel um die Basis ansehen | `godot --path . --resolution 720x1280 res://smoke/perimeter_view.tscn -- --out=build/perimeter` (Modelle: `tools\build-models.ps1 -Only perimeter`) |
 | Bewegte Modulteile ansehen (Rotoren, Lüfter, Schüsseln, Solarpanels; Showcase-Konto) | `godot --path . --resolution 720x1280 res://smoke/motion_view.tscn -- --out=build/motion` (Bildfolgen je Typ, Kosten je Frame) |
 | Gelände um wachsende Basen ansehen (Rodung, Zaun, Beton, Mauer; nur im Client vergrößert) | `godot --path . --resolution 720x1280 res://smoke/grounds_view.tscn -- --out=build/grounds` (Schwellen in `core/base_grounds.gd`; Modelle: `tools\build-models.ps1 -Only grounds`; Beton: `python -I tools/paving_texture.py`) |
@@ -149,6 +150,15 @@ Geräten, die ULTRA dürfen, nach `user://hd`, prüft SHA-256 und bindet es ein;
 Nach geänderten HD-Modellen: committen, `hd-bundle.ps1` laufen lassen; passt ein altes Pack nicht mehr zum
 Client (Namen, Ordner), `HdBundle.FORMAT` erhöhen; nach einem Godot-Update (major.minor) ebenfalls neu bauen
 (eigener Manifest-Eintrag je Godot-Version, ältere Clients behalten ihren).
+`ColonyView` baut Strukturen nicht mehr ganz neu (Ziel: 100 000 Hüllen): Auslöser im selben Frame
+werden zu einem Neuaufbau am Frame-Ende zusammengefasst (`_request_rebuild`, sofort: `flush_rebuild`);
+je Struktur bleibt erhalten, was sich nicht geändert hat (`Drawn`: Hüllen in Chunks von 16 × 16 Zellen
+je Modell, `ColonyChunks`, damit der Renderer außerhalb des Bildes verwirft; Module je Schlüssel;
+`module.completed` tauscht nur das eine Modul, `StructureLayout.completed_since`). Was nur vom
+Grundriss abhängt (Grundriss, Basis, Masten, Gelände, Requisiten, Wracks), hängt an
+`StructureLayout.hull_key` bzw. `PerimeterLayer.structures_key`. Wer Hüllen oder Module am Layout
+vorbei ändert (Prüfszenen), ruft danach `layout.touch()`. Modelle liegen in einem gemeinsamen
+Cache aller Ansichten; Module laden im Hintergrund und erscheinen, sobald sie da sind.
 Wiederkehrende Formen gehören in `parts.py`, nicht kopiert in einzelne Modelle. Stiländerungen gehören in Palette,
 Texturen oder Rezept, nie in einzelne Modelle. Ein 1×1×1-Modul bleibt innerhalb von 0,9 × 0,9
 am Boden und unter 1,0 in der Höhe; `build-models.ps1` meldet Verstöße. Eine Hülle füllt ihre

@@ -265,7 +265,14 @@ func _timed_change(change: Callable) -> float:
 	change.call()
 	if view.has_method("flush_rebuild"):
 		view.call("flush_rebuild")
-	return (Time.get_ticks_usec() - start) / 1000.0
+	var took := (Time.get_ticks_usec() - start) / 1000.0
+	if view.has_method("rebuild_timings"):
+		var phases: Dictionary = view.call("rebuild_timings")
+		var parts := PackedStringArray()
+		for phase: String in phases.keys():
+			parts.append("%s %.0f" % [phase, phases[phase]])
+		print("PHASES  %s" % ", ".join(parts))
+	return took
 
 
 ## The slowest of the next frames (ms): work the view leaves to its _process.
