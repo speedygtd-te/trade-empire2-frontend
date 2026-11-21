@@ -19,10 +19,13 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	Services.events.event_received.connect(_on_event)
+	# Drawn again whenever the map is (it moves, pans and zooms), not every frame.
+	if _view != null:
+		_view.draw.connect(_on_view_drawn)
 	_load()
 
 
-func _process(_delta: float) -> void:
+func _on_view_drawn() -> void:
 	if not _pairs.is_empty():
 		queue_redraw()
 
