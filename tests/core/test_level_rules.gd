@@ -214,3 +214,13 @@ func test_z_percent_rounds_the_change() -> void:
 	assert_int(LevelRules.z_percent(_definitions.module("MINE"), -3)).is_equal(6)
 	assert_int(LevelRules.z_percent(_definitions.module("MINE"), 2)).is_equal(-4)
 	assert_int(LevelRules.z_percent(_definitions.module("SMELTER"), 2)).is_equal(0)
+
+
+func test_level_environments_name_every_environment_in_view_centre_first() -> void:
+	# A coast: x 16 … 24 at level −1 has rock (16 … 19) and water (20 … 24) — both are offered,
+	# whichever has more cells.
+	assert_array(Array(LevelRules.level_environments(_site, Vector2i(20, 0), -1, 4))).is_equal(
+		[LevelRules.UNDERWATER, LevelRules.UNDERGROUND])
+	assert_array(Array(LevelRules.level_environments(_site, Vector2i(19, 0), -1, 4))).is_equal(
+		[LevelRules.UNDERGROUND, LevelRules.UNDERWATER])
+	assert_array(Array(LevelRules.level_environments(_site, Vector2i(5, 0), 0, 2))).is_equal([LevelRules.SURFACE])

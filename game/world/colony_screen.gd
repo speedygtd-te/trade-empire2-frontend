@@ -1059,10 +1059,17 @@ func _fill_palette() -> void:
 	var entries := BuildCatalog.entries(definitions, units, _focus.owner_kind if _focus != null else "player")
 	var hidden := PackedStringArray()
 	if _uses_levels():
-		var environment := _level_environment()
+		# Without a field every environment in view counts, and with a dock every hull type (a
+		# ship on the dock takes any hull, the server skips the environment there). A field of the
+		# host narrows to its environment; a field on a dock or a guest offers every hull.
+		var environments := LevelRules.level_environments(_model.site(), _view_column(), _level, LEVEL_ENV_RADIUS)
+		var any_type := DockRules.has_dock(_model.layout)
+		if _cell != null:
+			any_type = _cell_on_dock()
+			environments = PackedStringArray([_level_environment()])
 		var kept: Array[BuildCatalog.Entry] = []
 		for entry: BuildCatalog.Entry in entries:
-			if entry.tool.begins_with("hull:") and not _hull_offered(entry.tool.get_slice(":", 1), environment):
+			if entry.tool.begins_with("hull:") and not _hull_offered(entry.tool.get_slice(":", 1), environments, any_type):
 				hidden.append(entry.display_name)
 				if entry.tool == _tool:
 					_tool = ""
@@ -1139,11 +1146,33 @@ func _on_level_ground() -> void:
 		_fill_palette()
 
 
-## Whether a hull type can stand on the active level in `environment` (type, height limit, environment).
-func _hull_offered(hull_type: String, environment: String) -> bool:
+## Whether the palette offers a hull type on the active level: every known type when `any_type`
+## (a dock), otherwise a surface type within its height limit that works in one of `environments`.
+func _hull_offered(hull_type: String, environments: PackedStringArray, any_type: bool) -> bool:
 	var hull_def := Services.definitions.hull(hull_type)
-	return hull_def != null and LevelRules.SURFACE_HULLS.has(hull_type) \
-		and LevelRules.hull_z_allowed(hull_type, _level) and hull_def.environments.has(environment)
+	if hull_def == null:
+		return false
+	if any_type:
+		return true
+	if not LevelRules.SURFACE_HULLS.has(hull_type) or not LevelRules.hull_z_allowed(hull_type, _level):
+		return false
+	for environment: String in environments:
+		if hull_def.environments.has(environment):
+			return true
+	return false
+
+
+## Whether a new hull at the selected field would go onto a dock (found or extend a guest) or onto
+## a guest: the environment rules do not apply there.
+func _cell_on_dock() -> bool:
+	if _cell == null:
+		return false
+	if _focus.is_guest():
+		return true
+	var host := _model.layout
+	var tapped := host.to_local(_cell as Vector3i)
+	var target := DockRules.target_cell(host, _focus.layout, Vector2i(tapped.x, tapped.y), true, _level)
+	return DockRules.placement(host, _model.guest_layouts(), target) != DockRules.Placement.HOST
 
 
 ## "Ground", "Level 2", "Level -1".

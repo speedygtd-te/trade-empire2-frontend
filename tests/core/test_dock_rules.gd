@@ -248,3 +248,8 @@ func test_an_enterprise_dock_founds_a_daughter_like_a_dock() -> void:
 	assert_bool(DockRules.is_dock("ENTERPRISE_HULL_STANDARD")).is_false()
 	assert_int(DockRules.placement(flagship, none, Vector3i(1, 0, 1))).is_equal(DockRules.Placement.FOUND)
 	assert_int(DockRules.placement(flagship, none, Vector3i(0, 0, 1))).is_equal(DockRules.Placement.HOST)
+
+
+func test_has_dock_finds_a_dock_hull() -> void:
+	assert_bool(DockRules.has_dock(_host)).is_true()
+	assert_bool(DockRules.has_dock(_small_guest)).is_false()

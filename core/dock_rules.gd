@@ -23,6 +23,14 @@ static func is_dock(hull_type: String) -> bool:
 	return DOCK_TYPES.has(hull_type)
 
 
+## Whether a structure has a dock hull (new structures can be founded on it).
+static func has_dock(layout: StructureLayout) -> bool:
+	for cell: Vector3i in layout.hull_cells():
+		if is_dock(layout.hull_at(cell)):
+			return true
+	return false
+
+
 ## What a hull placed at a host cell does.
 enum Placement {
 	## Joins the host (or is refused by the host's rules).

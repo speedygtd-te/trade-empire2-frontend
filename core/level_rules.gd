@@ -139,6 +139,19 @@ static func level_environment(site: Site, centre: Vector2i, z: int, radius: int)
 	return best
 
 
+## Every environment of level `z` in the square of `radius` cells around `centre` (absolute
+## column), the centre's first: what the palette may offer where the player looks (a coast shows
+## both land and water hulls, whichever has more cells).
+static func level_environments(site: Site, centre: Vector2i, z: int, radius: int) -> PackedStringArray:
+	var result := PackedStringArray([environment_of(site, Vector3i(centre.x, centre.y, z))])
+	for dy: int in range(-radius, radius + 1):
+		for dx: int in range(-radius, radius + 1):
+			var found := environment_of(site, Vector3i(centre.x + dx, centre.y + dy, z))
+			if not result.has(found):
+				result.append(found)
+	return result
+
+
 ## Whether a hull type's own height limit allows level `z`.
 static func hull_z_allowed(hull_type: String, z: int) -> bool:
 	if not HULL_Z_RANGE.has(hull_type):
