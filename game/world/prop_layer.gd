@@ -120,6 +120,8 @@ var _upright := Basis.IDENTITY
 var _decal_turn := Basis.IDENTITY
 ## Time spent building blocks so far (for measuring).
 var _build_usec := 0
+## The structures the bare cells were read for (PerimeterLayer.structures_key).
+var _structures_key := 0
 
 
 func setup(view: ColonyView) -> void:
@@ -413,6 +415,7 @@ func _block_distance(block: Vector2i) -> int:
 ## underground hull only (a vent cover may stand there): every structure the view draws.
 func _read_structures() -> void:
 	var model := _view.model
+	_structures_key = PerimeterLayer.structures_key(model)
 	_covered.clear()
 	_vented.clear()
 	_cleared.clear()
@@ -443,6 +446,9 @@ func _read_structures() -> void:
 ## Hulls changed: rebuild the blocks whose bare or vented cells changed.
 func _on_structures_changed() -> void:
 	if _view == null:
+		return
+	# A module finished or changed: the cells stay as they are.
+	if PerimeterLayer.structures_key(_view.model) == _structures_key:
 		return
 	var covered_before := _covered.duplicate()
 	var vented_before := _vented.duplicate()

@@ -12,6 +12,9 @@ const PANEL_FOLLOW := 0.6
 class _Part:
 	extends RefCounted
 	var node: Node3D
+	## The module's model the part belongs to, and where it stands (scene x, z) when taken.
+	var root: Node3D
+	var at := Vector2.ZERO
 	var rest := Transform3D.IDENTITY
 	var role := ""
 	var kind: ModuleMotion.Kind = ModuleMotion.Kind.SPIN
@@ -29,6 +32,16 @@ func clear() -> void:
 	_parts.clear()
 
 
+## Lets go of the parts of models that were taken away (freed or queued for it; ColonyView keeps
+## the others).
+func prune() -> void:
+	var kept: Array[_Part] = []
+	for part: _Part in _parts:
+		if is_instance_valid(part.root) and not part.root.is_queued_for_deletion():
+			kept.append(part)
+	_parts = kept
+
+
 ## Takes the moving parts of one module's model (its node from ColonyView).
 func add(model_node: Node3D, structure: ColonyModel, module: StructureLayout.Module) -> void:
 	var index := 0
@@ -39,6 +52,8 @@ func add(model_node: Node3D, structure: ColonyModel, module: StructureLayout.Mod
 			continue
 		var part := _Part.new()
 		part.node = node
+		part.root = model_node
+		part.at = Vector2(model_node.position.x, model_node.position.z)
 		part.rest = node.transform
 		part.role = role
 		part.kind = ModuleMotion.kind_of(role)
@@ -63,9 +78,14 @@ func count() -> int:
 
 
 ## Advances every part by `delta` seconds. `to_sun`: unit vector towards the sun in scene space;
-## `sun_up`: whether it stands high enough for the panels to follow it.
-func step(delta: float, to_sun: Vector3, sun_up: bool) -> void:
+## `sun_up`: whether it stands high enough for the panels to follow it. Only parts within `reach`
+## of `centre` (scene x, z: the camera's view) move; the others wait where they are, so a large
+## colony costs only what is on screen (a negative reach moves all).
+func step(delta: float, to_sun: Vector3, sun_up: bool, centre: Vector2 = Vector2.ZERO, reach: float = -1.0) -> void:
+	var limit := reach * reach
 	for part: _Part in _parts:
+		if reach >= 0.0 and part.at.distance_squared_to(centre) > limit:
+			continue
 		if not is_instance_valid(part.node):
 			continue
 		if part.kind == ModuleMotion.Kind.SUN:

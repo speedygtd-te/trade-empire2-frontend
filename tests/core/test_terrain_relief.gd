@@ -455,3 +455,26 @@ func test_terraces_follow_ground_arriving_beside_a_pad() -> void:
 	assert_bool(touched.has(Vector2i(1, 0))).is_true()
 	# Ground arriving far away leaves the pads alone.
 	assert_int(relief.refresh_pads([Vector2i(5, 5)]).size()).is_equal(0)
+
+
+func test_footprint_knows_its_cells_and_inner_ones() -> void:
+	var cells: Array[Vector2i] = []
+	for y: int in range(-1, 2):
+		for x: int in range(10, 13):
+			cells.append(Vector2i(x, y))
+	cells.append(Vector2i(13, 0))
+	var footprint := TerrainRelief.Footprint.new(cells)
+
+	assert_bool(footprint.has(Vector2i(10, -1))).is_true()
+	assert_bool(footprint.has(Vector2i(13, 0))).is_true()
+	assert_bool(footprint.has(Vector2i(13, 1))).is_false()
+	assert_bool(footprint.has(Vector2i(-100, 0))).is_false()
+	assert_bool(footprint.inner(Vector2i(11, 0))).is_true()
+	assert_bool(footprint.inner(Vector2i(12, 0))).is_false()
+	assert_bool(footprint.inner(Vector2i(13, 0))).is_false()
+
+
+func test_an_empty_footprint_has_nothing() -> void:
+	var none: Array[Vector2i] = []
+
+	assert_bool(TerrainRelief.Footprint.new(none).has(Vector2i.ZERO)).is_false()

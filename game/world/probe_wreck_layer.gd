@@ -22,6 +22,11 @@ var _view: ColonyView
 var _landed: Array[Probes.Probe] = []
 
 
+## The cells covered by hulls (covered_cells) and the key they were read for.
+var _covered: Dictionary = {}
+var _covered_key := 0
+
+
 func setup(view: ColonyView) -> void:
 	_view = view
 
@@ -79,8 +84,14 @@ func impacts_at(x: int, y: int) -> Array:
 
 
 ## The cells (x wrapped) a hull of a drawn structure covers on the ground level.
+## Kept while the structures' hulls stay (PerimeterLayer.structures_key).
 func covered_cells() -> Dictionary:
+	var key := PerimeterLayer.structures_key(_view.model)
+	if key == _covered_key:
+		return _covered
 	var result := {}
+	_covered = result
+	_covered_key = key
 	var size_x := _view.model.size_x
 	for structure: ColonyModel in _view.model.drawn_structures():
 		var layout := structure.layout

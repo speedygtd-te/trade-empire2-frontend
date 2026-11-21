@@ -29,6 +29,9 @@ var _materials: Array[ShaderMaterial] = []
 var _darkness := 0.0
 var _textures: Dictionary = {}
 var _fields: Dictionary = {}
+## Whether the glow waits to be laid again, and the key it was laid for (_key).
+var _due := false
+var _built_key := 0
 
 
 func setup(view: ColonyView) -> void:
@@ -60,13 +63,31 @@ static func footprints_for(view: ColonyView) -> Array:
 	return result
 
 
-## Lays a glow under every structure on screen again, around the view's origin.
+## Lays a glow under every structure on screen again, around the view's origin. By day (or on the
+## slowest tier) nothing shows: the glow is laid once it does, and only when the structures, their
+## trips, the ground or the origin changed since it was laid last.
 func rebuild() -> void:
+	_due = true
+	if _shown() and is_visible_in_tree():
+		_build()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED and _due and _shown() and is_visible_in_tree():
+		_build()
+
+
+func _build() -> void:
+	_due = false
+	if _view == null or _view.model == null:
+		return
+	var built := _key()
+	if built == _built_key:
+		return
+	_built_key = built
 	for child: Node in get_children():
 		child.queue_free()
 	_materials.clear()
-	if _view == null or _view.model == null:
-		return
 	var size_x := _view.model.size_x
 	for cells: Array[Vector2i] in footprints_for(_view):
 		var key := hash([cells, size_x])
@@ -88,7 +109,18 @@ func rebuild() -> void:
 ## How dark it is (SkyLight.darkness): the glow follows it.
 func set_darkness(level: float) -> void:
 	_darkness = clampf(level, 0.0, 1.0)
+	if _due and _shown() and is_visible_in_tree():
+		_build()
 	_apply()
+
+
+## What the glow depends on: the structures and their trips, the ground's heights, the origin.
+func _key() -> int:
+	var now := Services.clock.now_ms()
+	var parts: Array = [_view.origin, _view.heights_generation, PerimeterLayer.structures_key(_view.model)]
+	for structure: ColonyModel in _view.model.drawn_structures():
+		parts.append(_view.trip_of(structure, now))
+	return hash(parts)
 
 
 ## Structures glowing and how many are drawn now (for measuring).

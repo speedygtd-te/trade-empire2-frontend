@@ -8,6 +8,8 @@ extends RefCounted
 const CHUNK := 16
 ## "No level": what top_in_column answers for an empty column.
 const NO_LEVEL := -(1 << 30)
+## Finished modules remembered for completed_since.
+const COMPLETIONS_KEPT := 64
 
 
 ## A guest docked on this structure (header `guests`).
@@ -100,6 +102,13 @@ var access: Access = null
 ## is not in the layout, but it is taken (module_at answers the shaft there).
 var vertical_types: Dictionary = {}
 
+## Counts every change made through this class (apply, complete_module); part of content_key, so
+## a module that changed only its state is noticed. Whoever edits the dictionaries below directly
+## (review tools) calls touch().
+var revision := 0
+## The last modules finished (complete_module): (revision, module id), oldest first.
+var _completed: Array[Vector2i] = []
+
 ## Local cell → hull type.
 var _hulls: Dictionary = {}
 ## Module id → Module.
@@ -142,7 +151,54 @@ func apply(stream: Ndjson) -> bool:
 	for chunk: Dictionary in chunks:
 		_apply_chunk(chunk)
 	rev = Wire.as_int(header.get("rev"), rev)
+	revision += 1
 	return true
+
+
+## A key that changes whenever the hulls (cells, types) or where they stand (offset, base) change:
+## what depends on the footprint only (relief pads, perimeter, props) is kept while it stays.
+## Cheap: the dictionary is hashed natively (about 3 ms for 100 000 hulls on a desktop).
+func hull_key() -> int:
+	return hash([_hulls.hash(), offset, base])
+
+
+## A key that changes with anything drawn of the structure: hulls, modules (cells and state) and
+## where it stands.
+func content_key() -> int:
+	return hash([_hulls.hash(), _module_cells.hash(), revision, offset, base])
+
+
+## A key of which cells modules cover (not their state): with hull_key, what decides which hulls
+## show shut.
+func module_cells_key() -> int:
+	return _module_cells.hash()
+
+
+## Marks a change made to the hulls or modules from outside this class (review tools).
+func touch() -> void:
+	revision += 1
+
+
+## The modules finished (complete_module) since `since` (a revision), when finishing modules is all
+## that changed since then; null when anything else changed or it lies too far back.
+func completed_since(since: int) -> Variant:
+	var result: Array[int] = []
+	if since == revision:
+		return result
+	var expected := since + 1
+	for entry: Vector2i in _completed:
+		if entry.x <= since:
+			continue
+		if entry.x != expected:
+			return null
+		result.append(entry.y)
+		expected += 1
+	return result if expected == revision + 1 else null
+
+
+## The hulls by local cell (hull type). Read only: changes go through apply (or touch after them).
+func hull_map() -> Dictionary:
+	return _hulls
 
 
 ## Hull type at a local cell; "" when there is none.
@@ -287,6 +343,10 @@ func complete_module(module_id: int) -> void:
 	var entry := module(module_id)
 	if entry != null:
 		entry.status = "active"
+		revision += 1
+		_completed.append(Vector2i(revision, module_id))
+		if _completed.size() > COMPLETIONS_KEPT:
+			_completed.remove_at(0)
 
 
 func _clear() -> void:

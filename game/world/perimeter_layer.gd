@@ -13,8 +13,8 @@ extends Node3D
 ## drawn with the fence posts' caissons by a RetainingLayer of its own. Every structure on screen (bases or not) also casts a soft glow
 ## on the ground around itself at night (StructureGlowLayer, a child of this layer).
 ##
-## Built around the view's origin; rebuilt with the structure (ColonyView._rebuild_structure),
-## which also runs when the origin moves.
+## Built around the view's origin; rebuilt when the footprints, bases or trips of the structures, the
+## ground beside them or the origin change (ColonyView._rebuild_now, _place_followers).
 
 const MODELS := "res://game/world/models/perimeter/"
 const CONE_SHADER := preload("res://game/world/perimeter_cone.gdshader")
@@ -74,9 +74,11 @@ var _cone_mesh: Mesh
 ## File → Mesh (null when missing), and the glow materials of the blinking models.
 var _meshes: Dictionary = {}
 var _blinkers: Array[StandardMaterial3D] = []
-## Grounds plans (BaseGrounds) computed lately, by a hash of their inputs (grounds_for).
+## Grounds plans (BaseGrounds) and spots computed lately, by structures_key (grounds_for, spots_for;
+## a plan is null for a base too small for grounds).
 const PLANS_KEPT := 8
 static var _plans: Dictionary = {}
+static var _spots: Dictionary = {}
 
 ## Fence, wall and concrete around large bases (BaseGroundsLayer), rebuilt with the items.
 var _grounds: BaseGroundsLayer
@@ -118,6 +120,15 @@ static func spots_for(model: ColonyModel) -> Array[Perimeter.Spot]:
 	var result: Array[Perimeter.Spot] = []
 	if model == null:
 		return result
+	# This layer and PropLayer ask after every change; for a large base it takes a while.
+	var key := structures_key(model)
+	var cached: Variant = _spots.get(key)
+	if cached != null:
+		var known: Array[Perimeter.Spot] = cached
+		return known
+	if _spots.size() >= PLANS_KEPT:
+		_spots.clear()
+	_spots[key] = result
 	var structures := model.drawn_structures()
 	var occupied: Array[Vector2i] = []
 	for structure: ColonyModel in structures:
@@ -141,6 +152,17 @@ static func spots_for(model: ColonyModel) -> Array[Perimeter.Spot]:
 	return result
 
 
+## A key of everything spots_for and grounds_for read: the drawn structures, which of them are
+## bases and their hulls (StructureLayout.hull_key). Layers that depend only on the footprints keep
+## their work while it stays.
+static func structures_key(model: ColonyModel) -> int:
+	var parts: Array = [model.size_x]
+	for structure: ColonyModel in model.drawn_structures():
+		parts.append_array([structure.structure_id, structure.is_guest(), structure.layout.kind,
+			structure.layout.hull_key()])
+	return hash(parts)
+
+
 ## What the land around every base on screen looks like as it grows (BaseGrounds): its hulls on
 ## and above the ground; other structures (and their guests) keep their cells, its own underground
 ## parts do not (concrete may lie over them).
@@ -149,10 +171,20 @@ static func grounds_for(model: ColonyModel) -> Array[BaseGrounds.Plan]:
 	if model == null:
 		return result
 	var structures := model.drawn_structures()
+	var key := structures_key(model)
 	for structure: ColonyModel in structures:
 		var layout := structure.layout
 		if structure.is_guest() or layout.kind != "base":
 			continue
+		# The layer and PropLayer both ask after every change; a large base takes a while.
+		var plan_key := hash([key, structure.structure_id])
+		if _plans.has(plan_key):
+			var known: Variant = _plans[plan_key]
+			if known != null:
+				result.append(known as BaseGrounds.Plan)
+			continue
+		if _plans.size() >= PLANS_KEPT:
+			_plans.clear()
 		var footprint: Array[Vector2i] = []
 		var docks: Array[Vector2i] = []
 		for local: Vector3i in layout.hull_cells():
@@ -163,6 +195,7 @@ static func grounds_for(model: ColonyModel) -> Array[BaseGrounds.Plan]:
 			if DockRules.is_dock(layout.hull_at(local)):
 				docks.append(Vector2i(cell.x, cell.y))
 		if BaseGrounds.stage(footprint.size()) == BaseGrounds.Stage.START:
+			_plans[plan_key] = null
 			continue
 		var occupied: Array[Vector2i] = []
 		for other: ColonyModel in structures:
@@ -171,14 +204,8 @@ static func grounds_for(model: ColonyModel) -> Array[BaseGrounds.Plan]:
 			for local: Vector3i in other.layout.hull_cells():
 				var cell := other.layout.to_absolute(local)
 				occupied.append(Vector2i(cell.x, cell.y))
-		# The layer and PropLayer both ask after every change; a large base takes a while.
-		var key := hash([footprint, occupied, docks, model.size_x])
-		var plan: BaseGrounds.Plan = _plans.get(key)
-		if plan == null:
-			if _plans.size() >= PLANS_KEPT:
-				_plans.clear()
-			plan = BaseGrounds.plan(footprint, occupied, model.size_x, docks)
-			_plans[key] = plan
+		var plan := BaseGrounds.plan(footprint, occupied, model.size_x, docks)
+		_plans[plan_key] = plan
 		result.append(plan)
 	return result
 

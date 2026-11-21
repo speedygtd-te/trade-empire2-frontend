@@ -279,3 +279,73 @@ func test_absolute_levels_add_offset_and_base() -> void:
 
 	# The guest's offset lifts it by 1, its host's offset by 2 more.
 	assert_array(guest.absolute_levels()).contains_exactly([3, 4])
+
+
+func test_hull_key_follows_hulls_and_place_only() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(_full(5, _starter()))
+	var before := layout.hull_key()
+
+	layout.complete_module(10)
+	assert_int(layout.hull_key()).is_equal(before)
+
+	layout._hulls[Vector3i(1, 0, 0)] = "STARTER"
+	assert_int(layout.hull_key()).is_not_equal(before)
+	layout._hulls.erase(Vector3i(1, 0, 0))
+	assert_int(layout.hull_key()).is_equal(before)
+
+	layout.offset += Vector3i(1, 0, 0)
+	assert_int(layout.hull_key()).is_not_equal(before)
+
+
+func test_content_key_follows_module_state_and_touch() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(_full(5, _starter()))
+	var before := layout.content_key()
+
+	layout.module(10).status = "building"
+	layout.complete_module(10)
+	var finished := layout.content_key()
+	assert_int(finished).is_not_equal(before)
+
+	layout.touch()
+	assert_int(layout.content_key()).is_not_equal(finished)
+
+
+func test_completed_since_lists_finished_modules_only() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(_full(5, _starter()))
+	var drawn := layout.revision
+
+	assert_array(layout.completed_since(drawn) as Array).is_empty()
+	layout.complete_module(10)
+	layout.complete_module(10)
+	assert_array(layout.completed_since(drawn) as Array).is_equal([10, 10])
+	assert_array(layout.completed_since(drawn + 1) as Array).is_equal([10])
+
+	# Anything else that changed (a delta, an edit) needs the whole layout looked at.
+	layout.touch()
+	assert_that(layout.completed_since(drawn)).is_null()
+	layout.complete_module(10)
+	assert_that(layout.completed_since(drawn)).is_null()
+	assert_array(layout.completed_since(layout.revision - 1) as Array).is_equal([10])
+
+
+func test_completed_since_forgets_far_back() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(_full(5, _starter()))
+	var drawn := layout.revision
+	for _index: int in StructureLayout.COMPLETIONS_KEPT + 1:
+		layout.complete_module(10)
+
+	assert_that(layout.completed_since(drawn)).is_null()
+
+
+func test_every_apply_counts_as_a_change() -> void:
+	var layout := StructureLayout.new()
+	layout.apply(_full(5, _starter()))
+	var first := layout.revision
+
+	layout.apply(_delta(6, 5, []))
+
+	assert_int(layout.revision).is_equal(first + 1)
